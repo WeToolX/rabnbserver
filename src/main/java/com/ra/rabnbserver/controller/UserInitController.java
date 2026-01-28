@@ -7,6 +7,8 @@ import cn.dev33.satoken.stp.StpUtil;
 import cn.dev33.satoken.stp.parameter.SaLoginParameter;
 import com.ra.rabnbserver.advice.IgnoreResponseWrap;
 import com.ra.rabnbserver.crypto.ResponseCryptoService;
+import com.ra.rabnbserver.dto.LoginDataDTO;
+import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.utils.RandomIdGenerator;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +22,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 用户初始化接口
+ * 用户接口（初始化，登录）
  */
 @Slf4j(topic = "com.ra.rabnbserver.controller.user")
 @RestController
@@ -74,4 +76,24 @@ public class UserInitController {
         log.info("初始化明文数据: {}", plainJson);
         return cipherMorse;
     }
+
+    /**
+     * 用户登录接口
+     * @param request
+     * @param loginDataDTO
+     * @return
+     * @throws Exception
+     */
+    @IgnoreResponseWrap
+    @PostMapping("/login")
+    public String login(HttpServletRequest request, @RequestBody LoginDataDTO loginDataDTO) throws Exception {
+        String userAgent = request.getHeader("User-Agent");
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        log.info("登录请求传入参数：{}", loginDataDTO);
+        if (loginDataDTO.getUserWalletAddress() == null || loginDataDTO.getUserWalletAddress().isEmpty()) {
+            return ApiResponse.error("钱包地址不能为空");
+        }
+        return ApiResponse.success("cg");
+    }
+
 }
