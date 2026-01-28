@@ -1,5 +1,6 @@
 package com.ra.rabnbserver.controller;
 
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.dev33.satoken.stp.parameter.SaLoginParameter;
 import cn.hutool.core.util.StrUtil;
@@ -14,10 +15,7 @@ import com.ra.rabnbserver.server.user.userServe;
 import com.ra.rabnbserver.utils.RandomIdGenerator;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -113,6 +111,22 @@ public class UserInitController {
         User newUser = userService.register(walletAddress);
         upgradeToUserSession(newUser.getId().toString());
         return ApiResponse.success("注册成功", newUser);
+    }
+
+    /**
+     * 获取当前登录用户信息
+     */
+    @SaCheckLogin
+    @GetMapping("/info")
+    public String getUserInfo() throws Exception {
+        Object loginId = StpUtil.getLoginId();
+        log.info("获取用户信息，当前登录ID: {}", loginId);
+        User user = userService.getById(loginId.toString());
+        if (user == null) {
+            return ApiResponse.error("用户不存在或会话已失效");
+        }
+        log.info("获取登录信息：{}", user);
+        return ApiResponse.success("获取成功", user);
     }
 
     /**

@@ -3,7 +3,7 @@ spring:
     name: rabnbserver
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/BNB
+    url: jdbc:mysql://192.168.110.104:3306/BNB
     username: root
     password: 123456789
     hikari:
@@ -22,7 +22,7 @@ spring:
   data:
     redis:
       database: 4
-      host: 127.0.0.1
+      host: 192.168.110.104
       port: 6379
       # password:
       timeout: 10s
@@ -37,6 +37,7 @@ spring:
       enabled: true
 server:
   port: 8080
+
 # Sa-Token 配置
 sa-token:
   token-name: Account-token
@@ -58,7 +59,7 @@ blockchain:
 # 合约管理员私钥密文（Base64: iv:cipher）
 contract:
   admin:
-    private-key-enc: OoibPmnygOVuSNqTgIVkXg==:GvTlS63/Jrim21+uFUTm5MPS6gS0M7ly9WTu4maS51Li2WIoL+mRsDDoBlpjjCUAEepkUFmI0JWAQYP/gxP40dwCxbdMpPi6UqVIhXOHSKg=
+    private-key-enc: 4r8x//lODh2x0o550QPYOw==:vfxYz+4+abVK6nk4VaduB9rNRx5vPUqYBN+Ykij9I3BRFLNYHkGQ+kEeuuTeBoJ1zEwLt63/Qegqystuc8M+sKolgyD2h298dm97Sl+sCa4=
   address:
     payment-usdt: 0xd8521BAD8d3be5111b593Bf14d3bA3A3252d4B3D
     card-nft: 0x198Ae8DAd81C6C74a171B48715e3bB20DDeB8fb7
