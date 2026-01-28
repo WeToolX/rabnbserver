@@ -2,19 +2,28 @@ package com.ra.rabnbserver.model;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 通用响应结构
  */
+@Slf4j
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class ApiResponse<T> {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    static {
+        OBJECT_MAPPER.registerModule(new JavaTimeModule());
+        OBJECT_MAPPER.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+    }
 
     /**
      * 状态码
@@ -55,6 +64,7 @@ public class ApiResponse<T> {
         try {
             return OBJECT_MAPPER.writeValueAsString(response);
         } catch (JsonProcessingException e) {
+            log.info(e.getMessage());
             return "{\"code\":500,\"message\":\"响应序列化失败\",\"data\":null}";
         }
     }

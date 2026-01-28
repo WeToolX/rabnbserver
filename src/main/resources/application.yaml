@@ -1,6 +1,10 @@
 spring:
   application:
     name: rabnbserver
+  jackson:
+    # 设置全局日期格式
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://192.168.110.104:3306/BNB
