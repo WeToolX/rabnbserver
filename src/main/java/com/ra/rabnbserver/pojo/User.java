@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ra.rabnbserver.annotation.ColumnComment;
+import com.ra.rabnbserver.annotation.ColumnType;
 import com.ra.rabnbserver.annotation.DefaultValue;
 import com.ra.rabnbserver.annotation.TableComment;
 import com.ra.rabnbserver.common.BaseEntity;
@@ -39,7 +40,8 @@ public class User extends BaseEntity {
      */
     @ColumnComment("账户余额(作为余额缓存，实际余额需要根据账本数据进行计算)")
     @TableField("balance")
-    @DefaultValue("0.00")
+    @DefaultValue("0.000000")
+    @ColumnType("DECIMAL(36, 6)")
     private BigDecimal balance;
 
 }

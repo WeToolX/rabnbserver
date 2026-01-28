@@ -15,6 +15,7 @@ import com.ra.rabnbserver.enums.TransactionType;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -25,7 +26,6 @@ import java.time.LocalDateTime;
 @TableComment("用户账单表")
 @TableName("user_bill")
 public class UserBill extends BaseEntity {
-
 
     @ColumnComment("用户ID")
     @TableField("user_id")
@@ -47,7 +47,7 @@ public class UserBill extends BaseEntity {
     private String txId;
 
     /**
-     * 账单类型：PLATFORM-平台资金, ON_CHAIN-链上资金
+     * 账单类型：使用枚举 BillType (PLATFORM/ON_CHAIN)
      */
     @ColumnComment("账单类型（PLATFORM-平台, ON_CHAIN-链上）")
     @TableField("bill_type")
@@ -55,7 +55,7 @@ public class UserBill extends BaseEntity {
     private BillType billType;
 
     /**
-     * 资金类型：INCOME-入账, EXPENSE-出账
+     * 资金类型：使用枚举 FundType (INCOME/EXPENSE)
      */
     @ColumnComment("资金类型（INCOME-入账, EXPENSE-出账）")
     @TableField("fund_type")
@@ -63,27 +63,36 @@ public class UserBill extends BaseEntity {
     private FundType fundType;
 
     /**
-     * 交易业务类型：PURCHASE, SELL, REWARD等
+     * 交易业务类型：使用枚举 TransactionType
      */
     @ColumnComment("交易类型（PURCHASE-购买, SELL-卖出, DEPOSIT-充值, WITHDRAWAL-提现, EXCHANGE-闪兑, REWARD-奖励, PROFIT-收益）")
     @TableField("transaction_type")
     @ColumnType("VARCHAR(50)")
     private TransactionType transactionType;
 
+    /**
+     * 交易金额使用 BigDecimal 保证精度
+     */
     @ColumnComment("交易金额")
     @TableField("amount")
-    @ColumnType("VARCHAR(64)")
-    private String amount;
+    @ColumnType("DECIMAL(36, 6)") // 推荐精度：总长度36位，小数位18位
+    private BigDecimal amount;
 
+    /**
+     * 交易前余额
+     */
     @ColumnComment("交易前余额")
     @TableField("balance_before")
-    @ColumnType("VARCHAR(64)")
-    private String balanceBefore;
+    @ColumnType("DECIMAL(36, 6)")
+    private BigDecimal balanceBefore;
 
+    /**
+     * 交易后余额
+     */
     @ColumnComment("交易后余额")
     @TableField("balance_after")
-    @ColumnType("VARCHAR(64)")
-    private String balanceAfter;
+    @ColumnType("DECIMAL(36, 6)")
+    private BigDecimal balanceAfter;
 
     @ColumnComment("交易备注")
     @TableField("remark")
