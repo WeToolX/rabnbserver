@@ -35,6 +35,10 @@ public class ApiResponse<T> {
         return toJson(new ApiResponse<>(200, "操作成功", data));
     }
 
+    public static <T> String success(String message,T data) {
+        return toJson(new ApiResponse<>(200, message, data));
+    }
+
     public static String success() {
         return toJson(new ApiResponse<>(200, "操作成功", null));
     }

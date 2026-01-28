@@ -1,7 +1,5 @@
 package com.ra.rabnbserver.advice;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import cn.dev33.satoken.stp.StpUtil;
 import com.ra.rabnbserver.crypto.ResponseCryptoService;
 import lombok.RequiredArgsConstructor;
@@ -10,21 +8,22 @@ import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
-import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 
 /**
- * 响应加密处理（返回统一的“明文+密文”结构）
+ * 响应加密处理（仅返回密文字符串）
  */
 @Slf4j(topic = "com.ra.rabnbserver.service.response")
 @RestControllerAdvice
 @RequiredArgsConstructor
 public class ResponseEncryptAdvice implements ResponseBodyAdvice<Object> {
 
+    private static final String ADMIN_PATH_PREFIX = "/api/admin/";
+    private static final String INIT_PATH = "/api/user/init";
+
     private final ResponseCryptoService responseCryptoService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public boolean supports(MethodParameter returnType, Class<? extends HttpMessageConverter<?>> converterType) {
@@ -40,65 +39,26 @@ public class ResponseEncryptAdvice implements ResponseBodyAdvice<Object> {
             ServerHttpRequest request,
             ServerHttpResponse response
     ) {
-        if (shouldIgnore(returnType)) {
+        String path = request.getURI().getPath();
+        if (path != null && path.startsWith(ADMIN_PATH_PREFIX)) {
+            return body;
+        }
+        if (INIT_PATH.equals(path)) {
             return body;
         }
         String plainJson = body == null ? "" : body.toString();
-        if (isWrappedStructure(plainJson)) {
-            return body;
-        }
         if (!StpUtil.isLogin()) {
-            return wrapResponse(plainJson, null);
+            return plainJson;
         }
         String token = StpUtil.getTokenValue();
         if (token == null || token.isBlank()) {
-            return wrapResponse(plainJson, null);
+            return plainJson;
         }
         try {
-            String cipher = responseCryptoService.encryptToMorse(plainJson, token);
-            return wrapResponse(plainJson, cipher);
+            return responseCryptoService.encryptToMorse(plainJson, token);
         } catch (Exception e) {
-            log.warn("响应加密失败，返回明文结构: {}", e.getMessage());
-            return wrapResponse(plainJson, null);
+            log.warn("响应加密失败，返回明文：{}", e.getMessage());
+            return plainJson;
         }
-    }
-
-    private boolean isWrappedStructure(String json) {
-        if (json == null || json.isBlank()) {
-            return false;
-        }
-        try {
-            JsonNode node = objectMapper.readTree(json);
-            return node.has("明文") && node.has("密文");
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private String wrapResponse(Object body, String cipher) {
-        try {
-            JsonNode plainNode = null;
-            if (body != null) {
-                plainNode = objectMapper.readTree(body.toString());
-            }
-            var wrapper = new java.util.LinkedHashMap<String, Object>();
-            wrapper.put("明文", plainNode == null ? null : plainNode);
-            wrapper.put("密文", cipher);
-            return objectMapper.writeValueAsString(wrapper);
-        } catch (Exception e) {
-            log.warn("包装响应失败，返回原始内容: {}", e.getMessage());
-            return body == null ? "" : body.toString();
-        }
-    }
-
-    private boolean shouldIgnore(MethodParameter returnType) {
-        if (returnType == null) {
-            return false;
-        }
-        if (returnType.getMethod() != null && returnType.getMethod().isAnnotationPresent(IgnoreResponseWrap.class)) {
-            return true;
-        }
-        Class<?> declaringClass = returnType.getDeclaringClass();
-        return declaringClass != null && declaringClass.isAnnotationPresent(IgnoreResponseWrap.class);
     }
 }

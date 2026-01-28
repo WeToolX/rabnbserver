@@ -2966,3 +2966,130 @@ Caused by: tools.jackson.core.exc.StreamReadException: Unexpected character ('}'
 2026-01-28 18:33:38.893 [tomcat-handler-14] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"7X8ejAWv2WIVFWdcryVuRA"}
 2026-01-28 18:33:38.894 [tomcat-handler-14] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/144.0.0.0, 时间片: 1769596
 2026-01-28 18:33:38.911 [tomcat-handler-14] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"158a58bf0ac9c44f73919c523a94329d","token":"8c43107d-8bb1-4d48-bc9f-bb7d3609f5d9"}
+2026-01-28 18:36:25.018 [tomcat-handler-16] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"YDid8IHDGnC393piQqvicRxCUleYtccIhSHcOecmIOsSPUj6kT"}
+2026-01-28 18:36:25.018 [tomcat-handler-16] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/144.0.0.0, 时间片: 1769596
+2026-01-28 18:36:25.033 [tomcat-handler-16] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"55430f9261a4ae4dd4642f529cb56db1","token":"7ad00961-a38d-45d7-bff4-fbac30eb72b5"}
+2026-01-28 18:36:30.713 [tomcat-handler-17] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"95DcaLqkyOCdInMoRNQwYNNE0jp7JHQtY4"}
+2026-01-28 18:36:30.713 [tomcat-handler-17] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/144.0.0.0, 时间片: 1769596
+2026-01-28 18:36:30.726 [tomcat-handler-17] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"c4c7cb9693e7c32a443e4dff427685ac","token":"7d6e110f-5a26-4be4-8758-ed63c1b22f9b"}
+2026-01-28 18:36:31.014 [tomcat-handler-18] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"QuNbO0xb63bZ"}
+2026-01-28 18:36:31.014 [tomcat-handler-18] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/144.0.0.0, 时间片: 1769596
+2026-01-28 18:36:31.027 [tomcat-handler-18] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"f069f0dc65b2791d5633946728082c82","token":"55821555-b324-46cb-9211-97733f9d6652"}
+2026-01-28 18:36:31.203 [tomcat-handler-19] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"SIOM9aPNUhza"}
+2026-01-28 18:36:31.204 [tomcat-handler-19] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/144.0.0.0, 时间片: 1769596
+2026-01-28 18:36:31.233 [tomcat-handler-19] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"b1dcbcd62eeb2f8ff9fc7d1555d5889d","token":"6a3c5443-913a-40a5-9d14-5062796a5486"}
+2026-01-28 18:36:34.228 [tomcat-handler-20] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"wKN5kJcu6zClV2qfJtNKyr4sNyzqbiaL2luD6VXohG"}
+2026-01-28 18:36:34.228 [tomcat-handler-20] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/144.0.0.0, 时间片: 1769596
+2026-01-28 18:36:34.241 [tomcat-handler-20] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"9f5fd5cd122bcce3d0507c6eb7502121","token":"8ac4dae6-2f7d-49da-8360-5b90a09a9003"}
+2026-01-28 18:44:07.663 [tomcat-handler-22] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"AGEL2qlLCwHDQ1Wd2FjB8v"}
+2026-01-28 18:44:07.663 [tomcat-handler-22] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/144.0.0.0, 时间片: 1769597
+2026-01-28 18:44:07.677 [tomcat-handler-22] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"5fb3258b3b35781e88692931f93ce78f","token":"c192c07d-1b23-4a74-8df7-5d8a15601aaf"}
+2026-01-28 19:05:06.143 [SpringApplicationShutdownHook] INFO  org.springframework.boot.tomcat.GracefulShutdown - Commencing graceful shutdown. Waiting for active requests to complete
+2026-01-28 19:05:06.148 [tomcat-shutdown] INFO  org.springframework.boot.tomcat.GracefulShutdown - Graceful shutdown complete
+2026-01-28 19:05:06.163 [SpringApplicationShutdownHook] INFO  com.zaxxer.hikari.HikariDataSource - MyHikariCP - Shutdown initiated...
+2026-01-28 19:05:06.171 [SpringApplicationShutdownHook] INFO  com.zaxxer.hikari.HikariDataSource - MyHikariCP - Shutdown completed.
+2026-01-28 19:05:10.267 [main] INFO  com.ra.rabnbserver.RabnbserverApplication - Starting RabnbserverApplication using Java 21.0.9 with PID 19048 (C:\Users\32139\IdeaProjects\rabnbserver\target\classes started by 32139 in C:\Users\32139\IdeaProjects\rabnbserver)
+2026-01-28 19:05:10.269 [main] INFO  com.ra.rabnbserver.RabnbserverApplication - No active profile set, falling back to 1 default profile: "default"
+2026-01-28 19:05:10.601 [background-preinit] INFO  org.hibernate.validator.internal.util.Version - HV000001: Hibernate Validator 9.0.1.Final
+2026-01-28 19:05:11.029 [main] INFO  o.s.data.repository.config.RepositoryConfigurationDelegate - Multiple Spring Data modules found, entering strict repository configuration mode
+2026-01-28 19:05:11.031 [main] INFO  o.s.data.repository.config.RepositoryConfigurationDelegate - Bootstrapping Spring Data Redis repositories in DEFAULT mode.
+2026-01-28 19:05:11.052 [main] INFO  o.s.data.repository.config.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 9 ms. Found 0 Redis repository interfaces.
+2026-01-28 19:05:11.538 [main] INFO  org.springframework.boot.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2026-01-28 19:05:11.548 [main] INFO  org.apache.coyote.http11.Http11NioProtocol - Initializing ProtocolHandler ["http-nio-8080"]
+2026-01-28 19:05:11.548 [main] INFO  org.apache.catalina.core.StandardService - Starting service [Tomcat]
+2026-01-28 19:05:11.548 [main] INFO  org.apache.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/11.0.15]
+2026-01-28 19:05:11.594 [main] INFO  o.s.b.web.context.servlet.WebApplicationContextInitializer - Root WebApplicationContext: initialization completed in 1294 ms
+2026-01-28 19:05:11.929 [main] INFO  com.zaxxer.hikari.HikariDataSource - MyHikariCP - Starting...
+2026-01-28 19:05:12.160 [main] INFO  com.zaxxer.hikari.pool.HikariPool - MyHikariCP - Added connection com.mysql.cj.jdbc.ConnectionImpl@c7673ae
+2026-01-28 19:05:12.161 [main] INFO  com.zaxxer.hikari.HikariDataSource - MyHikariCP - Start completed.
+2026-01-28 19:05:12.742 [main] INFO  c.b.m.extension.spring.MybatisPlusApplicationContextAware - Register ApplicationContext instances org.springframework.boot.web.server.servlet.context.AnnotationConfigServletWebServerApplicationContext@3ecedf21
+2026-01-28 19:05:13.025 [main] INFO  o.s.boot.actuate.endpoint.web.EndpointLinksResolver - Exposing 1 endpoint beneath base path '/actuator'
+2026-01-28 19:05:13.075 [main] INFO  org.apache.coyote.http11.Http11NioProtocol - Starting ProtocolHandler ["http-nio-8080"]
+2026-01-28 19:05:13.086 [main] INFO  org.springframework.boot.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+2026-01-28 19:05:13.095 [main] INFO  com.ra.rabnbserver.RabnbserverApplication - Started RabnbserverApplication in 3.246 seconds (process running for 3.735)
+2026-01-28 19:05:13.099 [main] WARN  org.springdoc.core.events.SpringDocAppInitializer - SpringDoc /v3/api-docs endpoint is enabled by default. To disable it in production, set the property 'springdoc.api-docs.enabled=false'
+2026-01-28 19:05:13.100 [main] WARN  org.springdoc.core.events.SpringDocAppInitializer - SpringDoc /swagger-ui.html endpoint is enabled by default. To disable it in production, set the property 'springdoc.swagger-ui.enabled=false'
+2026-01-28 19:05:13.554 [RMI TCP Connection(4)-198.18.0.1] INFO  o.a.catalina.core.ContainerBase.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-01-28 19:05:13.555 [RMI TCP Connection(4)-198.18.0.1] INFO  org.springframework.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2026-01-28 19:05:13.556 [RMI TCP Connection(4)-198.18.0.1] INFO  org.springframework.web.servlet.DispatcherServlet - Completed initialization in 1 ms
+2026-01-28 19:05:29.676 [tomcat-handler-0] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体：{
+    "data": "45"
+}
+2026-01-28 19:05:29.676 [tomcat-handler-0] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口UA: Apifox/1.0.0 (https://apifox.com), 时间戳: 1769598
+2026-01-28 19:05:29.765 [tomcat-handler-0] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据：{"Key":"4ed48937c96d3b01b41f00cbdfe76ec8","token":"c3a089e8-7ca6-4228-a4a9-82d5686101b3"}
+2026-01-28 19:05:38.336 [tomcat-handler-1] INFO  com.ra.rabnbserver.controller.user - 登录请求传入参数：LoginDataDTO(userWalletAddress=表旁6号)
+2026-01-28 19:17:42.064 [tomcat-handler-3] INFO  com.ra.rabnbserver.controller.user - 登录请求传入参数：LoginDataDTO(userWalletAddress=表旁6号)
+2026-01-28 19:18:32.058 [SpringApplicationShutdownHook] INFO  org.springframework.boot.tomcat.GracefulShutdown - Commencing graceful shutdown. Waiting for active requests to complete
+2026-01-28 19:18:32.064 [tomcat-shutdown] INFO  org.springframework.boot.tomcat.GracefulShutdown - Graceful shutdown complete
+2026-01-28 19:18:32.095 [SpringApplicationShutdownHook] INFO  com.zaxxer.hikari.HikariDataSource - MyHikariCP - Shutdown initiated...
+2026-01-28 19:18:32.111 [SpringApplicationShutdownHook] INFO  com.zaxxer.hikari.HikariDataSource - MyHikariCP - Shutdown completed.
+2026-01-28 19:18:36.158 [main] INFO  com.ra.rabnbserver.RabnbserverApplication - Starting RabnbserverApplication using Java 21.0.9 with PID 42632 (C:\Users\32139\IdeaProjects\rabnbserver\target\classes started by 32139 in C:\Users\32139\IdeaProjects\rabnbserver)
+2026-01-28 19:18:36.160 [main] INFO  com.ra.rabnbserver.RabnbserverApplication - No active profile set, falling back to 1 default profile: "default"
+2026-01-28 19:18:36.588 [background-preinit] INFO  org.hibernate.validator.internal.util.Version - HV000001: Hibernate Validator 9.0.1.Final
+2026-01-28 19:18:37.062 [main] INFO  o.s.data.repository.config.RepositoryConfigurationDelegate - Multiple Spring Data modules found, entering strict repository configuration mode
+2026-01-28 19:18:37.064 [main] INFO  o.s.data.repository.config.RepositoryConfigurationDelegate - Bootstrapping Spring Data Redis repositories in DEFAULT mode.
+2026-01-28 19:18:37.086 [main] INFO  o.s.data.repository.config.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 10 ms. Found 0 Redis repository interfaces.
+2026-01-28 19:18:37.617 [main] INFO  org.springframework.boot.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2026-01-28 19:18:37.627 [main] INFO  org.apache.coyote.http11.Http11NioProtocol - Initializing ProtocolHandler ["http-nio-8080"]
+2026-01-28 19:18:37.628 [main] INFO  org.apache.catalina.core.StandardService - Starting service [Tomcat]
+2026-01-28 19:18:37.628 [main] INFO  org.apache.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/11.0.15]
+2026-01-28 19:18:37.682 [main] INFO  o.s.b.web.context.servlet.WebApplicationContextInitializer - Root WebApplicationContext: initialization completed in 1485 ms
+2026-01-28 19:18:38.062 [main] INFO  com.zaxxer.hikari.HikariDataSource - MyHikariCP - Starting...
+2026-01-28 19:18:38.325 [main] INFO  com.zaxxer.hikari.pool.HikariPool - MyHikariCP - Added connection com.mysql.cj.jdbc.ConnectionImpl@6032622
+2026-01-28 19:18:38.326 [main] INFO  com.zaxxer.hikari.HikariDataSource - MyHikariCP - Start completed.
+2026-01-28 19:18:38.976 [main] INFO  c.b.m.extension.spring.MybatisPlusApplicationContextAware - Register ApplicationContext instances org.springframework.boot.web.server.servlet.context.AnnotationConfigServletWebServerApplicationContext@3ecedf21
+2026-01-28 19:18:39.336 [main] INFO  o.s.boot.actuate.endpoint.web.EndpointLinksResolver - Exposing 1 endpoint beneath base path '/actuator'
+2026-01-28 19:18:39.397 [main] INFO  org.apache.coyote.http11.Http11NioProtocol - Starting ProtocolHandler ["http-nio-8080"]
+2026-01-28 19:18:39.409 [main] INFO  org.springframework.boot.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+2026-01-28 19:18:39.419 [main] INFO  com.ra.rabnbserver.RabnbserverApplication - Started RabnbserverApplication in 3.753 seconds (process running for 4.369)
+2026-01-28 19:18:39.424 [main] WARN  org.springdoc.core.events.SpringDocAppInitializer - SpringDoc /v3/api-docs endpoint is enabled by default. To disable it in production, set the property 'springdoc.api-docs.enabled=false'
+2026-01-28 19:18:39.424 [main] WARN  org.springdoc.core.events.SpringDocAppInitializer - SpringDoc /swagger-ui.html endpoint is enabled by default. To disable it in production, set the property 'springdoc.swagger-ui.enabled=false'
+2026-01-28 19:18:39.796 [RMI TCP Connection(2)-198.18.0.1] INFO  o.a.catalina.core.ContainerBase.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-01-28 19:18:39.796 [RMI TCP Connection(2)-198.18.0.1] INFO  org.springframework.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2026-01-28 19:18:39.798 [RMI TCP Connection(2)-198.18.0.1] INFO  org.springframework.web.servlet.DispatcherServlet - Completed initialization in 2 ms
+2026-01-28 19:25:52.644 [tomcat-handler-0] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体：{"data":"EU6B5TCAZYJXuoToQupnpgDfZAZK0Ce8Lsq"}
+2026-01-28 19:25:52.644 [tomcat-handler-0] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口UA: Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36 Edg/144.0.0.0, 时间戳: 1769599
+2026-01-28 19:25:52.727 [tomcat-handler-0] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据：{"Key":"0ad792268ca6e28c38a0d177696b116f","token":"c4b6f80b-b5f8-4e81-b94c-c76c1b7777ca"}
+2026-01-28 19:25:59.948 [tomcat-handler-2] INFO  com.ra.rabnbserver.controller.user - 登录请求传入参数：LoginDataDTO(userWalletAddress=112233)
+2026-01-28 19:26:53.289 [tomcat-handler-3] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体：{"data":"S6qYGz0R9OgzTHpD7KmWAhTI"}
+2026-01-28 19:26:53.289 [tomcat-handler-3] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口UA: Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36 Edg/144.0.0.0, 时间戳: 1769599
+2026-01-28 19:26:53.305 [tomcat-handler-3] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据：{"Key":"312352f95b075faf596aef65bbed04f2","token":"0d4cb8cd-5378-4206-8b7c-b41670348275"}
+2026-01-28 19:54:22.027 [tomcat-handler-6] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体：{"data":"29Vf7pDtPfy4m3n7lArnuDSAyrmTXqZw68mXffEC"}
+2026-01-28 19:54:22.027 [tomcat-handler-6] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间戳: 1769601
+2026-01-28 19:54:22.047 [tomcat-handler-6] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据：{"Key":"4c9e0fed13ab70108f5af630c573ccc3","token":"13f9d4a0-b846-4a03-b22b-3206ac6d23fd"}
+2026-01-28 19:54:22.102 [tomcat-handler-7] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体：{"data":"WaYyTt8EC9UPIxZv3PpGPw"}
+2026-01-28 19:54:22.102 [tomcat-handler-7] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口UA: Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36 Edg/144.0.0.0, 时间戳: 1769601
+2026-01-28 19:54:22.119 [tomcat-handler-7] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据：{"Key":"e4aa1c366b07ef9411ac30e5a25f2425","token":"8adef189-b680-40bf-b896-bcb165f35aef"}
+2026-01-28 20:02:25.290 [SpringApplicationShutdownHook] INFO  org.springframework.boot.tomcat.GracefulShutdown - Commencing graceful shutdown. Waiting for active requests to complete
+2026-01-28 20:02:25.295 [tomcat-shutdown] INFO  org.springframework.boot.tomcat.GracefulShutdown - Graceful shutdown complete
+2026-01-28 20:02:25.310 [SpringApplicationShutdownHook] INFO  com.zaxxer.hikari.HikariDataSource - MyHikariCP - Shutdown initiated...
+2026-01-28 20:02:25.319 [SpringApplicationShutdownHook] INFO  com.zaxxer.hikari.HikariDataSource - MyHikariCP - Shutdown completed.
+2026-01-28 20:02:31.502 [main] INFO  com.ra.rabnbserver.RabnbserverApplication - Starting RabnbserverApplication using Java 21.0.9 with PID 35904 (C:\Users\32139\IdeaProjects\rabnbserver\target\classes started by 32139 in C:\Users\32139\IdeaProjects\rabnbserver)
+2026-01-28 20:02:31.504 [main] INFO  com.ra.rabnbserver.RabnbserverApplication - No active profile set, falling back to 1 default profile: "default"
+2026-01-28 20:02:31.800 [background-preinit] INFO  org.hibernate.validator.internal.util.Version - HV000001: Hibernate Validator 9.0.1.Final
+2026-01-28 20:02:32.219 [main] INFO  o.s.data.repository.config.RepositoryConfigurationDelegate - Multiple Spring Data modules found, entering strict repository configuration mode
+2026-01-28 20:02:32.220 [main] INFO  o.s.data.repository.config.RepositoryConfigurationDelegate - Bootstrapping Spring Data Redis repositories in DEFAULT mode.
+2026-01-28 20:02:32.241 [main] INFO  o.s.data.repository.config.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 9 ms. Found 0 Redis repository interfaces.
+2026-01-28 20:02:32.736 [main] INFO  org.springframework.boot.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2026-01-28 20:02:32.746 [main] INFO  org.apache.coyote.http11.Http11NioProtocol - Initializing ProtocolHandler ["http-nio-8080"]
+2026-01-28 20:02:32.747 [main] INFO  org.apache.catalina.core.StandardService - Starting service [Tomcat]
+2026-01-28 20:02:32.747 [main] INFO  org.apache.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/11.0.15]
+2026-01-28 20:02:32.795 [main] INFO  o.s.b.web.context.servlet.WebApplicationContextInitializer - Root WebApplicationContext: initialization completed in 1261 ms
+2026-01-28 20:02:33.140 [main] INFO  com.zaxxer.hikari.HikariDataSource - MyHikariCP - Starting...
+2026-01-28 20:02:33.380 [main] INFO  com.zaxxer.hikari.pool.HikariPool - MyHikariCP - Added connection com.mysql.cj.jdbc.ConnectionImpl@637d111d
+2026-01-28 20:02:33.382 [main] INFO  com.zaxxer.hikari.HikariDataSource - MyHikariCP - Start completed.
+2026-01-28 20:02:33.970 [main] INFO  c.b.m.extension.spring.MybatisPlusApplicationContextAware - Register ApplicationContext instances org.springframework.boot.web.server.servlet.context.AnnotationConfigServletWebServerApplicationContext@7ba63fe5
+2026-01-28 20:02:34.261 [main] INFO  o.s.boot.actuate.endpoint.web.EndpointLinksResolver - Exposing 1 endpoint beneath base path '/actuator'
+2026-01-28 20:02:34.313 [main] INFO  org.apache.coyote.http11.Http11NioProtocol - Starting ProtocolHandler ["http-nio-8080"]
+2026-01-28 20:02:34.324 [main] INFO  org.springframework.boot.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+2026-01-28 20:02:34.331 [main] INFO  com.ra.rabnbserver.RabnbserverApplication - Started RabnbserverApplication in 3.242 seconds (process running for 3.737)
+2026-01-28 20:02:34.335 [main] WARN  org.springdoc.core.events.SpringDocAppInitializer - SpringDoc /v3/api-docs endpoint is enabled by default. To disable it in production, set the property 'springdoc.api-docs.enabled=false'
+2026-01-28 20:02:34.335 [main] WARN  org.springdoc.core.events.SpringDocAppInitializer - SpringDoc /swagger-ui.html endpoint is enabled by default. To disable it in production, set the property 'springdoc.swagger-ui.enabled=false'
+2026-01-28 20:02:34.802 [RMI TCP Connection(1)-198.18.0.1] INFO  o.a.catalina.core.ContainerBase.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-01-28 20:02:34.802 [RMI TCP Connection(1)-198.18.0.1] INFO  org.springframework.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2026-01-28 20:02:34.804 [RMI TCP Connection(1)-198.18.0.1] INFO  org.springframework.web.servlet.DispatcherServlet - Completed initialization in 1 ms
+2026-01-28 20:05:16.145 [tomcat-handler-0] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体："exercitation"
+2026-01-28 20:05:16.145 [tomcat-handler-0] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口UA: Apifox/1.0.0 (https://apifox.com), 时间戳: 1769601
+2026-01-28 20:05:16.234 [tomcat-handler-0] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据：{"Key":"35e09949b8b9008f75b222061b598bee","token":"0cd8d22c-1420-485b-9b09-31b2f0f68441"}
+2026-01-28 20:05:29.966 [tomcat-handler-1] INFO  com.ra.rabnbserver.controller.user - 注册请求：RegisterDataDTO(userWalletAddress=12311231213)
+2026-01-28 20:05:30.151 [tomcat-handler-1] INFO  com.ra.rabnbserver.controller.user - 用户ID 1 已成功绑定到原有 Token 0cd8d22c-1420-485b-9b09-31b2f0f68441
