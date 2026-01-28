@@ -21,7 +21,7 @@ public class PrivateKeyCryptoService {
     /**
      * 加密密钥（随机生成写入代码，生产需妥善保管）
      */
-    private static final String CIPHER_KEY = "SYkVCVzIMNKGLGpSMFQvQYoK+bBoaaloK0/x/I05tQI=";
+    private static final String CIPHER_KEY = "p9/g6H45izpW+d7dJPjn2Q6ULnLinHTIpUkGiBmh+/Y=";
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 

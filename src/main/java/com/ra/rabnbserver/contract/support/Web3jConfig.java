@@ -51,7 +51,7 @@ public class Web3jConfig {
      * @return 交易管理器
      */
     @Bean
-    public TransactionManager transactionManager(Web3j web3j, Credentials credentials) {
+    public TransactionManager web3jTransactionManager(Web3j web3j, Credentials credentials) {
         long chainId = blockchainProperties.getChainId();
         return new RawTransactionManager(web3j, credentials, chainId);
     }

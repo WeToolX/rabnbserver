@@ -49,4 +49,10 @@ public class BlockchainProperties {
      */
     @NotNull(message = "blockchain.tx-timeout-ms 不能为空")
     private Long txTimeoutMs = 20L * 60L * 1000L;
+
+    /**
+     * 主币符号（用于展示）
+     */
+    @NotBlank(message = "blockchain.currency-symbol 不能为空")
+    private String currencySymbol;
 }

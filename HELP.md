@@ -68,6 +68,7 @@ rabnbserver
 - 数据源：已启用 Spring Boot 数据源自动装配，使用 application.yaml 中的 MySQL 配置
 - 合约调用：合约类在 contract 包，依赖基座与配置在 contract/support
 - 回执轮询：使用 blockchain.tx-poll-interval-ms 与 blockchain.tx-timeout-ms 控制轮询间隔与超时
+- 主币符号：blockchain.currency-symbol 用于前端展示（如 tBNB）
 
 ### Reference Documentation
 
