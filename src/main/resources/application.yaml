@@ -50,7 +50,7 @@ sa-token:
   is-read-body: true
   is-read-cookie: true
 
-# 区块链配置（主网）
+# 区块链配置（BSC Testnet）
 blockchain:
   rpc-url: https://data-seed-prebsc-1-s1.binance.org:8545
   # 备用 RPC: https://data-seed-prebsc-2-s1.binance.org:8545
@@ -65,6 +65,18 @@ contract:
   admin:
     private-key-enc: 4r8x//lODh2x0o550QPYOw==:vfxYz+4+abVK6nk4VaduB9rNRx5vPUqYBN+Ykij9I3BRFLNYHkGQ+kEeuuTeBoJ1zEwLt63/Qegqystuc8M+sKolgyD2h298dm97Sl+sCa4=
   address:
-    payment-usdt: 0xd8521BAD8d3be5111b593Bf14d3bA3A3252d4B3D
-    card-nft: 0x198Ae8DAd81C6C74a171B48715e3bB20DDeB8fb7
-    aion: 0x4D49D3118450D8aA32d046fFb0dE163De220BBDc
+    payment-usdt: '0xd8521BAD8d3be5111b593Bf14d3bA3A3252d4B3D'
+    card-nft: '0x198Ae8DAd81C6C74a171B48715e3bB20DDeB8fb7'
+    aion: '0x4D49D3118450D8aA32d046fFb0dE163De220BBDc'
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

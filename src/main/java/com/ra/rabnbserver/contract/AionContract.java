@@ -43,6 +43,20 @@ public class AionContract extends ContractBase {
      * @param amount 发放数量
      * @param plan 锁仓计划（0=ONE_MONTH, 1=TWO_MONTHS, 2=FOUR_MONTHS）
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例（字段可能因节点实现略有差异）：
+     *         {
+     *           "status": "0x1",
+     *           "transactionHash": "0x...",
+     *           "from": "0x...",
+     *           "to": "0x...",
+     *           "blockNumber": "0x...",
+     *           "gasUsed": "0x...",
+     *           "effectiveGasPrice": "0x...",
+     *           "logs": [],
+     *           "revertReason": null
+     *         }
+     *         字段含义：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt faucetMint(String to, BigInteger amount, int plan) throws Exception {
         Function function = new Function(
@@ -58,6 +72,8 @@ public class AionContract extends ContractBase {
      *
      * @param newAdmin 新管理员地址
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt setAdmin(String newAdmin) throws Exception {
         Function function = new Function(
@@ -73,6 +89,8 @@ public class AionContract extends ContractBase {
      *
      * @param admin 管理员地址
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt revokeAdmin(String admin) throws Exception {
         Function function = new Function(
@@ -87,6 +105,8 @@ public class AionContract extends ContractBase {
      * 暂停合约
      *
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt pause() throws Exception {
         Function function = new Function("pause", List.of(), List.of());
@@ -97,6 +117,8 @@ public class AionContract extends ContractBase {
      * 解除暂停
      *
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt unpause() throws Exception {
         Function function = new Function("unpause", List.of(), List.of());
@@ -108,6 +130,8 @@ public class AionContract extends ContractBase {
      *
      * @param newCommunity 新社区地址
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt setCommunity(String newCommunity) throws Exception {
         Function function = new Function(
@@ -126,6 +150,8 @@ public class AionContract extends ContractBase {
      * @param burnBps 销毁比例（bps）
      * @param communityBps 社区比例（bps）
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt setExchangeParams(
             boolean fixedEnabled,
@@ -150,6 +176,9 @@ public class AionContract extends ContractBase {
      * 查询是否暂停
      *
      * @return 是否暂停
+     *         返回类型：Boolean
+     *         JSON 序列化示例：true / false
+     *         含义：true 表示暂停，false 表示未暂停，可能为 null（RPC 未返回）
      */
     public Boolean paused() throws Exception {
         Function function = buildViewFunction("paused", List.of(new TypeReference<Bool>() {}));
@@ -164,6 +193,9 @@ public class AionContract extends ContractBase {
      * 查询固定价格开关
      *
      * @return 是否启用固定价格
+     *         返回类型：Boolean
+     *         JSON 序列化示例：true / false
+     *         含义：true 表示启用，false 表示未启用，可能为 null（RPC 未返回）
      */
     public Boolean fixedPriceEnabled() throws Exception {
         Function function = buildViewFunction("fixedPriceEnabled", List.of(new TypeReference<Bool>() {}));
@@ -178,6 +210,9 @@ public class AionContract extends ContractBase {
      * 查询固定价格金额
      *
      * @return 固定价格
+     *         返回类型：BigInteger
+     *         JSON 序列化示例：1000000
+     *         含义：固定价格金额（链上原始数量），可能为 null（RPC 未返回）
      */
     public BigInteger fixedPriceAmount() throws Exception {
         Function function = buildViewFunction("fixedPriceAmount", List.of(new TypeReference<Uint256>() {}));
@@ -192,6 +227,9 @@ public class AionContract extends ContractBase {
      * 查询销毁比例
      *
      * @return 销毁比例
+     *         返回类型：BigInteger
+     *         JSON 序列化示例：500
+     *         含义：销毁比例（bps），可能为 null（RPC 未返回）
      */
     public BigInteger burnBps() throws Exception {
         Function function = buildViewFunction("burnBps", List.of(new TypeReference<Uint256>() {}));
@@ -206,6 +244,9 @@ public class AionContract extends ContractBase {
      * 查询社区比例
      *
      * @return 社区比例
+     *         返回类型：BigInteger
+     *         JSON 序列化示例：500
+     *         含义：社区比例（bps），可能为 null（RPC 未返回）
      */
     public BigInteger communityBps() throws Exception {
         Function function = buildViewFunction("communityBps", List.of(new TypeReference<Uint256>() {}));

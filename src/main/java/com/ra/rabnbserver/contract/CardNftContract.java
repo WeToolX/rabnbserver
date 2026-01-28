@@ -43,6 +43,20 @@ public class CardNftContract extends ContractBase {
      * @param to 接收地址
      * @param amount 数量
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例（字段可能因节点实现略有差异）：
+     *         {
+     *           "status": "0x1",
+     *           "transactionHash": "0x...",
+     *           "from": "0x...",
+     *           "to": "0x...",
+     *           "blockNumber": "0x...",
+     *           "gasUsed": "0x...",
+     *           "effectiveGasPrice": "0x...",
+     *           "logs": [],
+     *           "revertReason": null
+     *         }
+     *         字段含义：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt mint(String to, BigInteger amount) throws Exception {
         Function function = new Function(
@@ -59,6 +73,8 @@ public class CardNftContract extends ContractBase {
      * @param toList 接收地址列表
      * @param amountList 数量列表
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt mintBatch(List<String> toList, List<BigInteger> amountList) throws Exception {
         Function function = new Function(
@@ -75,6 +91,8 @@ public class CardNftContract extends ContractBase {
      * @param from 用户地址
      * @param amount 数量
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt adminBurn(String from, BigInteger amount) throws Exception {
         Function function = new Function(
@@ -90,6 +108,8 @@ public class CardNftContract extends ContractBase {
      *
      * @param newAdmin 新管理员地址
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt setAdmin(String newAdmin) throws Exception {
         Function function = new Function(
@@ -104,6 +124,8 @@ public class CardNftContract extends ContractBase {
      * 暂停合约
      *
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt pause() throws Exception {
         Function function = new Function("pause", List.of(), List.of());
@@ -114,6 +136,8 @@ public class CardNftContract extends ContractBase {
      * 解除暂停
      *
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt unpause() throws Exception {
         Function function = new Function("unpause", List.of(), List.of());
@@ -124,6 +148,9 @@ public class CardNftContract extends ContractBase {
      * 查询是否暂停
      *
      * @return 是否暂停
+     *         返回类型：Boolean
+     *         JSON 序列化示例：true / false
+     *         含义：true 表示暂停，false 表示未暂停，可能为 null（RPC 未返回）
      */
     public Boolean paused() throws Exception {
         Function function = buildViewFunction("paused", List.of(new TypeReference<Bool>() {}));
@@ -138,6 +165,9 @@ public class CardNftContract extends ContractBase {
      * 查询已铸造数量
      *
      * @return 已铸造数量
+     *         返回类型：BigInteger
+     *         JSON 序列化示例：123456
+     *         含义：已铸造数量（链上原始数量），可能为 null（RPC 未返回）
      */
     public BigInteger totalMinted() throws Exception {
         Function function = buildViewFunction("totalMinted", List.of(new TypeReference<Uint256>() {}));

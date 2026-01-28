@@ -48,6 +48,7 @@ rabnbserver
 │  │  │     │  └── ApiResponse.java                 # 统一响应结构
 │  │  │     ├── security
 │  │  │     │  └── TokenExtractor.java              # Sa-Token 请求头提取
+│  │  │     ├── PrivateKeyEncryptTool.java          # 私钥加密测试工具（控制台输入）
 │  │  │     └── utils
 │  │  │        └── RandomIdGenerator.java           # 随机 ID 生成
 │  │  └── resources
@@ -69,6 +70,9 @@ rabnbserver
 - 合约调用：合约类在 contract 包，依赖基座与配置在 contract/support
 - 回执轮询：使用 blockchain.tx-poll-interval-ms 与 blockchain.tx-timeout-ms 控制轮询间隔与超时
 - 主币符号：blockchain.currency-symbol 用于前端展示（如 tBNB）
+- 合约地址校验：contract.address.* 启动时校验 0x 地址格式并打印配置
+- 生产配置：prod profile 关闭 springdoc 的 api-docs 与 swagger-ui
+- 合约返回说明：交易方法返回 TransactionReceipt，并在方法注释中给出 JSON 字段示例与含义
 
 ### Reference Documentation
 

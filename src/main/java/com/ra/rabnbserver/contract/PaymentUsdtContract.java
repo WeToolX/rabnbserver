@@ -44,6 +44,29 @@ public class PaymentUsdtContract extends ContractBase {
      * @param user 用户地址
      * @param amount 扣款金额（最小单位）
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例（字段可能因节点实现略有差异）：
+     *         {
+     *           "status": "0x1",
+     *           "transactionHash": "0x...",
+     *           "from": "0x...",
+     *           "to": "0x...",
+     *           "blockNumber": "0x...",
+     *           "gasUsed": "0x...",
+     *           "effectiveGasPrice": "0x...",
+     *           "logs": [
+     *             { "address": "0x...", "topics": ["0x..."], "data": "0x..." }
+     *           ],
+     *           "revertReason": null
+     *         }
+     *         字段含义：
+     *         - status：0x1 成功，0x0 失败（回退）
+     *         - transactionHash：交易哈希
+     *         - from/to：发起地址/合约地址
+     *         - blockNumber：打包区块号（16 进制字符串）
+     *         - gasUsed/effectiveGasPrice：本次交易 gas 消耗/实际 gas 单价
+     *         - logs：事件列表（可能包含 USDT Transfer 与 PaymentUSDT Deposit）
+     *         - revertReason：失败原因（可能为空）
      */
     public TransactionReceipt deposit(String orderIdHex, String user, BigInteger amount) throws Exception {
         Function function = new Function(
@@ -59,6 +82,20 @@ public class PaymentUsdtContract extends ContractBase {
      *
      * @param newTreasury 新收款地址
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例：
+     *         {
+     *           "status": "0x1",
+     *           "transactionHash": "0x...",
+     *           "from": "0x...",
+     *           "to": "0x...",
+     *           "blockNumber": "0x...",
+     *           "gasUsed": "0x...",
+     *           "effectiveGasPrice": "0x...",
+     *           "logs": [],
+     *           "revertReason": null
+     *         }
+     *         字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt setTreasury(String newTreasury) throws Exception {
         Function function = new Function(
@@ -74,6 +111,8 @@ public class PaymentUsdtContract extends ContractBase {
      *
      * @param newExecutor 新执行者地址
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt setExecutor(String newExecutor) throws Exception {
         Function function = new Function(
@@ -89,6 +128,8 @@ public class PaymentUsdtContract extends ContractBase {
      *
      * @param newAdmin 新管理员地址
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt setAdmin(String newAdmin) throws Exception {
         Function function = new Function(
@@ -103,6 +144,8 @@ public class PaymentUsdtContract extends ContractBase {
      * 暂停合约（仅 admin）
      *
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt pause() throws Exception {
         Function function = new Function("pause", List.of(), List.of());
@@ -113,6 +156,8 @@ public class PaymentUsdtContract extends ContractBase {
      * 解除暂停（仅 admin）
      *
      * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
      */
     public TransactionReceipt unpause() throws Exception {
         Function function = new Function("unpause", List.of(), List.of());
@@ -124,6 +169,9 @@ public class PaymentUsdtContract extends ContractBase {
      *
      * @param orderIdHex 订单 ID（bytes32 十六进制）
      * @return 是否已执行
+     *         返回类型：Boolean
+     *         JSON 序列化示例：true / false
+     *         含义：true 支付成功，false 支付失败或者订单不存在，可能为 null（RPC 未返回）
      */
     public Boolean executed(String orderIdHex) throws Exception {
         Function function = new Function(
@@ -142,10 +190,76 @@ public class PaymentUsdtContract extends ContractBase {
      * 查询 USDT 合约地址（动态读取链上）
      *
      * @return USDT 合约地址
+     *         返回类型：String
+     *         JSON 序列化示例："0x..."
+     *         含义：USDT 合约地址，可能为 null（RPC 未返回）
      */
     public String usdtAddress() throws Exception {
         Function function = new Function(
                 "USDT",
+                List.of(),
+                List.of(new TypeReference<Address>() {})
+        );
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return outputs.get(0).getValue().toString();
+    }
+
+    /**
+     * 查询管理员地址
+     *
+     * @return 管理员地址
+     *         返回类型：String
+     *         JSON 序列化示例："0x..."
+     *         含义：管理员地址，可能为 null（RPC 未返回）
+     */
+    public String adminAddress() throws Exception {
+        Function function = new Function(
+                "admin",
+                List.of(),
+                List.of(new TypeReference<Address>() {})
+        );
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return outputs.get(0).getValue().toString();
+    }
+
+    /**
+     * 查询执行者地址
+     *
+     * @return 执行者地址
+     *         返回类型：String
+     *         JSON 序列化示例："0x..."
+     *         含义：执行者地址，可能为 null（RPC 未返回）
+     */
+    public String executorAddress() throws Exception {
+        Function function = new Function(
+                "executor",
+                List.of(),
+                List.of(new TypeReference<Address>() {})
+        );
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return outputs.get(0).getValue().toString();
+    }
+
+    /**
+     * 查询收款地址
+     *
+     * @return 收款地址
+     *         返回类型：String
+     *         JSON 序列化示例："0x..."
+     *         含义：收款地址，可能为 null（RPC 未返回）
+     */
+    public String treasuryAddress() throws Exception {
+        Function function = new Function(
+                "treasury",
                 List.of(),
                 List.of(new TypeReference<Address>() {})
         );
@@ -162,6 +276,9 @@ public class PaymentUsdtContract extends ContractBase {
      * @param owner 授权方地址
      * @param spender 被授权方地址
      * @return 授权额度
+     *         返回类型：BigInteger
+     *         JSON 序列化示例：123456789
+     *         含义：授权额度（链上原始最小单位），可能为 null（RPC 未返回）
      */
     public BigInteger allowance(String owner, String spender) throws Exception {
         String usdt = usdtAddress();
@@ -185,15 +302,47 @@ public class PaymentUsdtContract extends ContractBase {
      *
      * @param owner 授权方地址
      * @return 授权额度
+     *         返回类型：BigInteger
+     *         JSON 序列化示例：123456789
+     *         含义：授权额度（链上原始最小单位），可能为 null（RPC 未返回）
      */
     public BigInteger allowanceToPaymentUsdt(String owner) throws Exception {
         return allowance(owner, getAddress());
     }
 
     /**
+     * 查询用户 USDT 余额
+     *
+     * @param owner 用户地址
+     * @return 余额
+     *         返回类型：BigInteger
+     *         JSON 序列化示例：123456789
+     *         含义：余额（链上原始最小单位），可能为 null（RPC 未返回）
+     */
+    public BigInteger balanceOf(String owner) throws Exception {
+        String usdt = usdtAddress();
+        if (usdt == null || usdt.isBlank()) {
+            return null;
+        }
+        Function function = new Function(
+                "balanceOf",
+                List.of(address(owner)),
+                List.of(new TypeReference<Uint256>() {})
+        );
+        List<Type> outputs = callFunction(usdt, function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (BigInteger) outputs.get(0).getValue();
+    }
+
+    /**
      * 查询最小金额
      *
      * @return 最小金额
+     *         返回类型：BigInteger
+     *         JSON 序列化示例：1000000
+     *         含义：最小扣款金额（链上原始最小单位），可能为 null（RPC 未返回）
      */
     public BigInteger minAmount() throws Exception {
         Function function = buildViewFunction("MIN_AMOUNT", List.of(new TypeReference<Uint256>() {}));
