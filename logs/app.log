@@ -1,0 +1,96 @@
+2026-01-27 10:09:25.116 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"4YplJ1TPDxi"}
+2026-01-27 10:09:25.119 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769479
+2026-01-27 10:09:25.123 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"20781896f0ba03a9f7fc55ebba84818c","token":"52b71baa-5515-4446-aef5-71858280515d"}
+2026-01-27 10:11:43.415 [http-nio-8080-exec-1] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"3iIRAibt8vcOB7PpUXDENsYz1ylpZ4r"}
+2026-01-27 10:11:43.416 [http-nio-8080-exec-1] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769479
+2026-01-27 10:11:43.419 [http-nio-8080-exec-1] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"51919a36841c978d31a4de466b557313","token":"8ae5dcc9-8e06-46f1-b933-6fe0dbf675ef"}
+2026-01-27 10:11:51.829 [http-nio-8080-exec-2] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"86WmhFRpbvX29SN9It0xK0"}
+2026-01-27 10:11:51.830 [http-nio-8080-exec-2] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769479
+2026-01-27 10:11:51.832 [http-nio-8080-exec-2] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"9c0156a698a3a0dbebadc68bd15f9998","token":"c4f7aeb8-820b-44e3-8115-ddc8582b4388"}
+2026-01-27 10:13:53.327 [http-nio-8080-exec-4] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"sCUmxiDtUgzOyaqiBnv"}
+2026-01-27 10:13:53.327 [http-nio-8080-exec-4] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769480
+2026-01-27 10:13:53.329 [http-nio-8080-exec-4] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"28262d66c6d2e9f8c7d61fe6c5665ead","token":"da08df74-b69d-4c30-943c-9fc060ade6d4"}
+2026-01-27 10:15:10.310 [http-nio-8080-exec-6] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"K8YGGl0jQc19ThAU3lMPU6WpMprqhf5"}
+2026-01-27 10:15:10.312 [http-nio-8080-exec-6] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769480
+2026-01-27 10:15:10.315 [http-nio-8080-exec-6] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"6f691e0a213957956a4e5916e2b4b648","token":"39ffe628-cf6e-4ac5-9600-ddfb1cda4cbe"}
+2026-01-27 10:15:10.845 [http-nio-8080-exec-7] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"t7S0EV7LCy7YS"}
+2026-01-27 10:15:10.845 [http-nio-8080-exec-7] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769480
+2026-01-27 10:15:10.846 [http-nio-8080-exec-7] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"f1d8348046ce7f30eadd3747e0319cf3","token":"0db22142-bda0-4d71-946e-f0ae4225323f"}
+2026-01-27 10:16:51.846 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"N7ZpRve6gcT199TIhRD8wFfA5HaLx"}
+2026-01-27 10:16:51.847 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769480
+2026-01-27 10:16:51.848 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"9cd679b8f16cf90c86e3096a1cef4644","token":"9d02804b-aa27-4343-9f50-ea7e1e71a5f3"}
+2026-01-27 10:17:20.028 [http-nio-8080-exec-10] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"L2DJL0sD8hJXnV59c"}
+2026-01-27 10:17:20.028 [http-nio-8080-exec-10] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769480
+2026-01-27 10:17:20.030 [http-nio-8080-exec-10] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"b57e90131408145c9ab7d254996af130","token":"72287821-47fd-4465-910e-c76e4675dfde"}
+2026-01-27 10:22:51.557 [http-nio-8080-exec-2] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"5hyvikqZDoZpV2VVhStPi3JcJO7QcEY8G7ve9HRMYvBQiNDk4"}
+2026-01-27 10:22:51.557 [http-nio-8080-exec-2] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769480
+2026-01-27 10:22:51.560 [http-nio-8080-exec-2] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"860e1d851a8c5d0ea73fe79a4272bd61","token":"9f0e5e95-a8a2-490d-a32b-8b887cbe7a4d"}
+2026-01-27 10:28:04.623 [http-nio-8080-exec-5] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"xhnjnBA4FP3uzsYETXIvOeteP"}
+2026-01-27 10:28:04.624 [http-nio-8080-exec-5] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769480
+2026-01-27 10:28:04.626 [http-nio-8080-exec-5] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"9b92e9f27c2aa6555dbad4b8281ec689","token":"2b33d31e-05d7-444e-9b0c-144405b8fe5c"}
+2026-01-27 10:31:16.091 [http-nio-8080-exec-7] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"qztGIK8CZgqXOGb5Dq5dpntKP5FcYECYRaY"}
+2026-01-27 10:31:16.092 [http-nio-8080-exec-7] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769481
+2026-01-27 10:31:16.094 [http-nio-8080-exec-7] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"2d204fd2afa9ebee24f4b5299a4be92f","token":"800482c1-3f0c-4580-9f96-76081909cfee"}
+2026-01-27 10:34:21.264 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"geA56wK6Fsl4n1IB7NJzUoLARxLQuJKzo3QzyfjpKg"}
+2026-01-27 10:34:21.265 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769481
+2026-01-27 10:34:21.268 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"b090f710dc32b4c2c842b7a6adbf5c58","token":"07e07447-fc90-426b-a895-4b7c2acece1f"}
+2026-01-27 10:35:12.251 [http-nio-8080-exec-10] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"YdzKhqM2n1WtMB8imkSByfP"}
+2026-01-27 10:35:12.252 [http-nio-8080-exec-10] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769481
+2026-01-27 10:35:12.254 [http-nio-8080-exec-10] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"6202587f564ec95f1fda997118782cf9","token":"ee7daf19-7b00-4ba6-96c0-c34128e1da90"}
+2026-01-27 10:45:50.584 [http-nio-8080-exec-2] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"Txy5Y9Mmqv6akALWfiTUrIow2mKAwz7LlbckLTRmGMihMsFS9"}
+2026-01-27 10:45:50.585 [http-nio-8080-exec-2] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769481
+2026-01-27 10:45:50.588 [http-nio-8080-exec-2] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"790a0befb2d53b6f6a72b4db71349bfc","token":"4b78e86d-6b23-4717-85ed-af15538f9ce5"}
+2026-01-27 10:53:34.573 [http-nio-8080-exec-4] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"e7gs8WcOvS62tDkq6lS7u2duSzZv8W6m4YTv"}
+2026-01-27 10:53:34.576 [http-nio-8080-exec-4] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769482
+2026-01-27 10:53:34.578 [http-nio-8080-exec-4] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"516e312534d1d451e8449fa792ee1e2a","token":"ec4c4e7d-c9e4-4901-a623-cff42c8545c6"}
+2026-01-27 10:54:27.420 [http-nio-8080-exec-5] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"WXksszjeh5VgbFeMtquO"}
+2026-01-27 10:54:27.421 [http-nio-8080-exec-5] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769482
+2026-01-27 10:54:27.424 [http-nio-8080-exec-5] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"f310d26e146022ac1a2c52117cec4c8b","token":"4c274dc4-0942-4436-aab9-fdb7570281c3"}
+2026-01-27 11:00:55.350 [http-nio-8080-exec-7] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"IyoOIZ8JlIzFu9"}
+2026-01-27 11:00:55.351 [http-nio-8080-exec-7] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769482
+2026-01-27 11:00:55.353 [http-nio-8080-exec-7] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"0464d574d8aceb7413386c6b144caba5","token":"987c6e91-0384-4324-bc31-c25cb09704e3"}
+2026-01-27 11:07:11.674 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"Q5u7pQiAU0uwW0TlBD2dzIjg6t8aHh5tos"}
+2026-01-27 11:07:11.675 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769483
+2026-01-27 11:07:11.678 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"ce90f6ecf6cb024fc530b0788990bf0a","token":"d2c34214-f78f-4119-b5d0-0279d9e9d743"}
+2026-01-27 11:08:56.243 [http-nio-8080-exec-1] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"K0ZwOZOAY4IprV"}
+2026-01-27 11:08:56.244 [http-nio-8080-exec-1] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769483
+2026-01-27 11:08:56.246 [http-nio-8080-exec-1] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"005e3ec3cf668e0f253c14fce419a890","token":"9b029619-603b-42c1-b3b3-45af40ede345"}
+2026-01-27 11:18:48.701 [http-nio-8080-exec-3] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"EJiZrAbYr6D9SzIUAFhZeHrZwsAQ7fsxp672GiS"}
+2026-01-27 11:18:48.702 [http-nio-8080-exec-3] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769483
+2026-01-27 11:18:48.704 [http-nio-8080-exec-3] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"3f1f3422d4b04cd90b28c529fbf8af70","token":"48b8246b-e59f-4cc3-89bd-320778ec6417"}
+2026-01-27 11:19:35.829 [http-nio-8080-exec-4] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"c5JXIUmo5Kn3ZZ42GxFakIQ"}
+2026-01-27 11:19:35.829 [http-nio-8080-exec-4] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769483
+2026-01-27 11:19:35.831 [http-nio-8080-exec-4] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"840b79c9d110e456b03907a829c78190","token":"6c080430-e128-4399-a563-d5da66a24c02"}
+2026-01-27 11:19:36.703 [http-nio-8080-exec-5] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"N8PVwlTNmvvd"}
+2026-01-27 11:19:36.703 [http-nio-8080-exec-5] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769483
+2026-01-27 11:19:36.705 [http-nio-8080-exec-5] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"167ac243c62ea989025dba93f9796137","token":"764e18d3-3d54-41fb-9920-a303ad0c6c2a"}
+2026-01-27 11:19:57.407 [http-nio-8080-exec-6] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"2vbwSpEVC6B8u3LywgcpZA3J"}
+2026-01-27 11:19:57.407 [http-nio-8080-exec-6] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769483
+2026-01-27 11:19:57.408 [http-nio-8080-exec-6] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"f05aa0994a13168baa8327004f4f48dc","token":"a01c5472-a05e-4787-ade2-f6d8b078848f"}
+2026-01-27 14:29:30.236 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"l3IGb3YLgijjyacfyimlh"}
+2026-01-27 14:29:30.236 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769495
+2026-01-27 14:29:30.238 [http-nio-8080-exec-9] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"67cc178b299a1f4597ae375163af969a","token":"9707fe2e-d135-4203-8482-4d79cfe79315"}
+2026-01-27 14:30:14.283 [http-nio-8080-exec-10] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"x32xdpUNyu1q7Rv94F7A7D1csSNAOdnO447m1telwwTWUPJYtC"}
+2026-01-27 14:30:14.283 [http-nio-8080-exec-10] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769495
+2026-01-27 14:30:14.285 [http-nio-8080-exec-10] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"5c950cba00d7f96edbba058d3485dd84","token":"c58b7407-db86-4944-9f91-ffc23bf82147"}
+2026-01-27 14:31:24.321 [http-nio-8080-exec-2] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"SJDDrqagzM1cdk"}
+2026-01-27 14:31:24.323 [http-nio-8080-exec-2] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769495
+2026-01-27 14:31:24.326 [http-nio-8080-exec-2] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"e5414c53f61276c65c2d312281b35427","token":"076b1ed1-6d00-4972-bb4b-22f89cfe667e"}
+2026-01-27 14:31:29.179 [http-nio-8080-exec-3] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"0MTmngYSUuREBCdAoqbO9rKRTUL97j5getvPPWdDdXhpcos0"}
+2026-01-27 14:31:29.179 [http-nio-8080-exec-3] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769495
+2026-01-27 14:31:29.182 [http-nio-8080-exec-3] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"bbe28e34a32a526914fc1c55ac25c93d","token":"5fbdec83-8d71-4c85-9dad-1d8f8b38d404"}
+2026-01-27 18:28:38.156 [http-nio-8080-exec-7] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"TUs4erX1YpDKJsPVO9"}
+2026-01-27 18:28:38.157 [http-nio-8080-exec-7] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769509
+2026-01-27 18:28:38.159 [http-nio-8080-exec-7] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"85093b7c274c3ef8f5bff337adc4ac98","token":"50fc0d1b-0252-417a-96e8-68ccb7886358"}
+2026-01-27 21:48:37.246 [http-nio-8080-exec-10] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"gBqSOaORXnwtNNjn7RGqC"}
+2026-01-27 21:48:37.247 [http-nio-8080-exec-10] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769521
+2026-01-27 21:48:37.249 [http-nio-8080-exec-10] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"56a1bd2aaa9a07b5265241e8a298bf31","token":"845b536c-4a34-4bf7-bf3f-8a7823124d7b"}
+2026-01-27 21:49:03.778 [http-nio-8080-exec-1] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"EBvlXePoIIaKlCQl1iTEYmbllbK83S1gh90ep78"}
+2026-01-27 21:49:03.778 [http-nio-8080-exec-1] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769521
+2026-01-27 21:49:03.781 [http-nio-8080-exec-1] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"9444027c0c5a195306362bde7d27cdd5","token":"89cf2feb-31e6-4cfb-ab3f-0c30653b7a3d"}
+2026-01-27 21:52:05.146 [http-nio-8080-exec-3] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"lbQRKxSxPJq"}
+2026-01-27 21:52:05.146 [http-nio-8080-exec-3] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769521
+2026-01-27 21:52:05.147 [http-nio-8080-exec-3] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"e3296228a0de3287a8d89220b977e6e3","token":"7545f60c-02db-497e-b6ab-7f4412d7402b"}
+2026-01-27 21:52:18.211 [http-nio-8080-exec-4] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口收到请求，请求体: {"data":"WSsSBgXQzQTmefTZjvKiaDgQKbKbkw2f"}
+2026-01-27 21:52:18.211 [http-nio-8080-exec-4] INFO  com.ra.rabnbserver.controller.user - 用户初始化接口 UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0, 时间片: 1769521
+2026-01-27 21:52:18.212 [http-nio-8080-exec-4] INFO  com.ra.rabnbserver.controller.user - 初始化明文数据: {"Key":"c039d433e3b3731a3c6d679c53e5a3ce","token":"407f5e04-3e73-40e4-9e8d-50773c10219d"}

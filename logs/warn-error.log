@@ -1,0 +1,8 @@
+2026-01-26 14:03:54.920 [restartedMain] WARN  o.s.b.s.autoconfigure.UserDetailsServiceAutoConfiguration - 
+
+Using generated security password: 6cb49482-fcec-4035-b386-b372389aabbb
+
+This generated password is for development use only. Your security configuration must be updated before running your application in production.
+
+2026-01-26 14:03:55.006 [restartedMain] WARN  org.springdoc.core.events.SpringDocAppInitializer - SpringDoc /v3/api-docs endpoint is enabled by default. To disable it in production, set the property 'springdoc.api-docs.enabled=false'
+2026-01-26 14:03:55.006 [restartedMain] WARN  org.springdoc.core.events.SpringDocAppInitializer - SpringDoc /swagger-ui.html endpoint is enabled by default. To disable it in production, set the property 'springdoc.swagger-ui.enabled=false'
