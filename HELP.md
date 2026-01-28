@@ -15,6 +15,18 @@ rabnbserver
 │  │  │     ├── controller
 │  │  │     │  ├── AuthMockController.java          # 鉴权测试接口
 │  │  │     │  └── UserInitController.java          # 用户初始化接口
+│  │  │     ├── contract
+│  │  │     │  ├── AionContract.java                # AION 管理员合约调用
+│  │  │     │  ├── CardNftContract.java             # 卡牌合约管理员调用
+│  │  │     │  ├── PaymentUsdtContract.java         # USDT 收款合约管理员调用
+│  │  │     │  └── support
+│  │  │     │     ├── ContractBase.java             # 合约调用基座
+│  │  │     │     ├── ContractTypeUtils.java        # ABI 参数类型转换
+│  │  │     │     ├── BlockchainProperties.java     # 链配置
+│  │  │     │     ├── ContractAdminProperties.java  # 管理员私钥密文配置
+│  │  │     │     ├── ContractAddressProperties.java# 合约地址配置
+│  │  │     │     ├── PrivateKeyCryptoService.java  # 私钥加解密
+│  │  │     │     └── Web3jConfig.java              # Web3j 配置
 │  │  │     ├── db
 │  │  │     │  └── DatabaseInitService.java         # 数据库初始化与表结构维护
 │  │  │     ├── config
@@ -54,6 +66,8 @@ rabnbserver
 - 鉴权策略：放行 /api/user/init、/api/user/login、/api/user/register 与 OPTIONS 预检，其余接口需登录（由 Sa-Token 拦截器统一处理）
 - 加解密：使用 Sa-Token 的 token 参与加解密 key 派生与响应加密
 - 数据源：已启用 Spring Boot 数据源自动装配，使用 application.yaml 中的 MySQL 配置
+- 合约调用：合约类在 contract 包，依赖基座与配置在 contract/support
+- 回执轮询：使用 blockchain.tx-poll-interval-ms 与 blockchain.tx-timeout-ms 控制轮询间隔与超时
 
 ### Reference Documentation
 

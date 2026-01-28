@@ -44,3 +44,20 @@ sa-token:
   is-read-header: true
   is-read-body: true
   is-read-cookie: true
+
+# 区块链配置（主网）
+blockchain:
+  rpc-url:
+  chain-id:
+  gas-limit-default: 1000000
+  tx-poll-interval-ms: 2000
+  tx-timeout-ms: 1200000
+
+# 合约管理员私钥密文（Base64: iv:cipher）
+contract:
+  admin:
+    private-key-enc:
+  address:
+    payment-usdt:
+    card-nft:
+    aion:
