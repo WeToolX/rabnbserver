@@ -26,9 +26,6 @@ import java.time.LocalDateTime;
 @TableName("user_bill")
 public class UserBill extends BaseEntity {
 
-    @TableId(type = IdType.AUTO)
-    @ColumnComment("流水ID")
-    private Long id;
 
     @ColumnComment("用户ID")
     @TableField("user_id")
