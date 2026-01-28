@@ -58,7 +58,7 @@ public class CryptoRequestFilter extends OncePerRequestFilter {
 
         String token = tokenExtractor.extract(request);
         if (tokenMode && !StringUtils.hasText(token)) {
-            writeError(response, HttpStatus.UNAUTHORIZED, "缺少 Account-token 或 Authorization");
+            writeError(response, HttpStatus.UNAUTHORIZED, "缺少 Account-token");
             return;
         }
 
