@@ -24,6 +24,7 @@ public class SaTokenConfig implements WebMvcConfigurer {
                         .notMatch("/api/user/init")
                         .notMatch("/api/user/login")
                         .notMatch("/api/user/register")
+                        //.notMatch("/api/admin/**")
                         .notMatch(SaHttpMethod.OPTIONS)
                         .check(r -> StpUtil.checkLogin())
                 ))

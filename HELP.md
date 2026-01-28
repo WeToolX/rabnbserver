@@ -14,7 +14,7 @@ rabnbserver
 │  │  │     │  └── ResponseEncryptAdvice.java       # 响应加密拦截
 │  │  │     ├── controller
 │  │  │     │  ├── AuthMockController.java          # 鉴权测试接口
-│  │  │     │  └── UserInitController.java          # 用户初始化接口
+│  │  │     │  └── UserInitController.java          # 用户初始化/登录接口
 │  │  │     ├── db
 │  │  │     │  └── DatabaseInitService.java         # 数据库初始化与表结构维护
 │  │  │     ├── config
@@ -29,7 +29,7 @@ rabnbserver
 │  │  │     │  └── ResponseCryptoService.java       # 响应加密与摩斯编码
 │  │  │     ├── filter
 │  │  │     │  ├── CachedBodyHttpServletRequest.java # 可重复读取请求体
-│  │  │     │  └── CryptoRequestFilter.java         # 请求体解密过滤器
+│  │  │     │  └── CryptoRequestFilter.java         # 请求体解密与初始化处理
 │  │  │     ├── dto
 │  │  │     │  └── AuthMockRequest.java             # 测试接口入参
 │  │  │     ├── model
@@ -48,11 +48,11 @@ rabnbserver
 
 ## 架构摘要
 
-- 请求流程：CryptoRequestFilter 解密 -> Sa-Token 拦截器校验登录 -> 业务 Controller
-- 响应流程：Controller 返回 String -> ResponseEncryptAdvice 统一封装“明文/密文”（登录态才加密）
-- Sa-Token：token-name 为 Account-token，/api/user/init 负责登录并返回 token + Key
-- 鉴权策略：放行 /api/user/init、/api/user/login、/api/user/register 与 OPTIONS 预检，其余接口需登录（由 Sa-Token 拦截器统一处理）
-- 加解密：使用 Sa-Token 的 token 参与加解密 key 派生与响应加密
+- 请求流程：/api/user/init 先进入 Controller 生成明文与登录态，再由 CryptoRequestFilter 进行密文输出；其余接口按内容类型解密后进入 Controller
+- 响应流程：Controller 返回 String 后由 ResponseEncryptAdvice 直接返回密文字符串（/admin/** 与 /api/user/init 返回明文）
+- Sa-Token：token-name 为 Account-token，初始化登录在 Controller 完成，密文在拦截器生成
+- 鉴权策略：放行 /api/user/init、/api/user/login、/api/user/register、/admin/** 与 OPTIONS 预检，其余接口需登录
+- 加解密：/admin/** 不做请求解密与响应加密，其余接口基于 Sa-Token token 参与 key 派生
 - 数据源：已启用 Spring Boot 数据源自动装配，使用 application.yaml 中的 MySQL 配置
 
 ### Reference Documentation
