@@ -146,10 +146,10 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
     public IPage<UserBill> getUserBillPage(Long userId, BillQueryDTO query) {
         LambdaQueryWrapper<UserBill> wrapper = new LambdaQueryWrapper<>();
 
-        // 1. 锁定当前用户
+        // 锁定当前用户（核心安全条件）
         wrapper.eq(UserBill::getUserId, userId);
 
-        // 2. 账单类型和交易类型筛选
+        // 动态筛选条件
         if (query.getBillType() != null) {
             wrapper.eq(UserBill::getBillType, query.getBillType());
         }
@@ -159,23 +159,35 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (query.getFundType() != null) {
             wrapper.eq(UserBill::getFundType, query.getFundType());
         }
+        // 交易状态筛选
+        if (query.getTransactionStatus() != null) {
+            wrapper.eq(UserBill::getStatus, query.getTransactionStatus());
+        }
 
-
+        // 时间范围筛选
         if (StringUtils.isNotBlank(query.getStartDate())) {
+            // 使用 Hutool DateUtil 解析并转为当天开始时间 00:00:00
             LocalDateTime start = DateUtil.parse(query.getStartDate()).toLocalDateTime()
                     .with(LocalTime.MIN);
             wrapper.ge(UserBill::getTransactionTime, start);
         }
 
         if (StringUtils.isNotBlank(query.getEndDate())) {
+            // 使用 Hutool DateUtil 解析并转为当天结束时间 23:59:59
             LocalDateTime end = DateUtil.parse(query.getEndDate()).toLocalDateTime()
                     .with(LocalTime.MAX);
             wrapper.le(UserBill::getTransactionTime, end);
         }
-        // 4. 按时间倒序排序
-        wrapper.orderByDesc(UserBill::getId);
-        // 5. 执行分页查询
-        return this.page(new Page<>(query.getPage(), query.getSize()), wrapper);
+
+        // 排序：通常账单按交易时间倒序，时间相同按 ID 倒序
+        wrapper.orderByDesc(UserBill::getTransactionTime)
+                .orderByDesc(UserBill::getId);
+
+        // 执行分页查询 (对传入的 page 和 size 做基本校验)
+        long current = (query.getPage() == null || query.getPage() < 1) ? 1 : query.getPage();
+        long size = (query.getSize() == null || query.getSize() < 1) ? 10 : query.getSize();
+
+        return this.page(new Page<>(current, size), wrapper);
     }
 
     private final PaymentUsdtContract paymentUsdtContract;

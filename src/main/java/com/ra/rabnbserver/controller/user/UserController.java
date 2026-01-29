@@ -205,7 +205,10 @@ public class UserController {
      */
     @SaCheckLogin
     @PostMapping("/bill/list")
-    public String getBillList(@RequestBody BillQueryDTO query) throws Exception {
+    public String getBillList(@RequestBody(required = false) BillQueryDTO query) throws Exception {
+        if (query == null) {
+            query = new BillQueryDTO();
+        }
         Long userId;
         try {
             userId = getFormalUserId();
