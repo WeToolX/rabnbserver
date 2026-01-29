@@ -11,6 +11,7 @@ import com.ra.rabnbserver.annotation.TableComment;
 import com.ra.rabnbserver.common.BaseEntity;
 import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;
+import com.ra.rabnbserver.enums.TransactionStatus;
 import com.ra.rabnbserver.enums.TransactionType;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -103,4 +104,18 @@ public class UserBill extends BaseEntity {
     @TableField("transaction_time")
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime transactionTime;
+
+    @ColumnComment("链上返回响应（原始JSON数据）")
+    @TableField("chain_response")
+    @ColumnType("TEXT")
+    private String chainResponse;
+
+    /**
+     * 交易状态
+     * 0-处理中, 1-成功, 2-失败
+     */
+    @ColumnComment("交易状态（0-处理中, 1-成功, 2-失败）")
+    @TableField("status")
+    @ColumnType("TINYINT(1)") // 数据库中使用微整型存储
+    private TransactionStatus status;
 }

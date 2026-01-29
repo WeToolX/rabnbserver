@@ -1,10 +1,7 @@
 package com.ra.rabnbserver.controller;
 
 
-import com.ra.rabnbserver.enums.BaseEnum;
-import com.ra.rabnbserver.enums.BillType;
-import com.ra.rabnbserver.enums.FundType;
-import com.ra.rabnbserver.enums.TransactionType;
+import com.ra.rabnbserver.enums.*;
 import com.ra.rabnbserver.model.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,11 +32,13 @@ public class CommonController {
         result.put("billTypes", enumToMap(BillType.values()));
         result.put("fundTypes", enumToMap(FundType.values()));
         result.put("transactionTypes", enumToMap(TransactionType.values()));
+        result.put("TransactionStatus", enumToMap(TransactionStatus.values()));
         return ApiResponse.success(result);
     }
 
     /**
      * 根据类型名称动态获取（适合按需加载）
+     * BillType，FundType，TransactionType
      */
     @GetMapping("/enum")
     public String getEnumByType(@RequestParam String type) {
@@ -49,6 +48,7 @@ public class CommonController {
             case "BillType" -> ApiResponse.success(enumToMap(BillType.values()));
             case "FundType" -> ApiResponse.success(enumToMap(FundType.values()));
             case "TransactionType" -> ApiResponse.success(enumToMap(TransactionType.values()));
+            case "TransactionStatus" -> ApiResponse.success(enumToMap(TransactionStatus.values()));
             default -> ApiResponse.error("未找到指定的枚举类型");
         };
     }

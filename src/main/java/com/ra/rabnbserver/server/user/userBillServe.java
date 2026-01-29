@@ -15,7 +15,11 @@ public interface userBillServe extends IService<UserBill> {
     @Transactional(rollbackFor = Exception.class)
     void createBillAndUpdateBalance(Long userId, BigDecimal amount, BillType billType,
                                     FundType fundType, TransactionType txType,
-                                    String remark, String orderId, String txId);
+                                    String remark, String orderId, String txId,String res);
 
     IPage<UserBill> getUserBillPage(Long userId, BillQueryDTO query);
+
+    void rechargeFromChain(Long userId, BigDecimal amount);
+
+    void purchaseNftCard(Long userId, int quantity);
 }

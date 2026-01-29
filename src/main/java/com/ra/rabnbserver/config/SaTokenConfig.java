@@ -26,6 +26,7 @@ public class SaTokenConfig implements WebMvcConfigurer {
                         .notMatch("/api/user/register")
                         .notMatch("/api/admin/**")
                         .notMatch("/api/common/**")
+                        .notMatch("/swagger-ui/**")
                         .notMatch(SaHttpMethod.OPTIONS)
                         .check(r -> StpUtil.checkLogin())
                 ))
