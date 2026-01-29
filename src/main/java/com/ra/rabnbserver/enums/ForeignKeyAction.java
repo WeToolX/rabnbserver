@@ -3,7 +3,7 @@ package com.ra.rabnbserver.enums;
 /**
  * 外键级联操作类型
  */
-public enum ForeignKeyAction {
+public enum ForeignKeyAction{
     /**
      * 级联：主表记录删除/更新时，从表的相关记录也随之删除/更新
      */

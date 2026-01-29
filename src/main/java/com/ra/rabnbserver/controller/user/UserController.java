@@ -1,0 +1,289 @@
+package com.ra.rabnbserver.controller.user;
+
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.stp.StpUtil;
+import cn.dev33.satoken.stp.parameter.SaLoginParameter;
+import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ra.rabnbserver.crypto.CryptoConstants;
+import com.ra.rabnbserver.crypto.CryptoUtils;
+import com.ra.rabnbserver.dto.AmountRequestDTO;
+import com.ra.rabnbserver.dto.BillQueryDTO;
+import com.ra.rabnbserver.dto.LoginDataDTO;
+import com.ra.rabnbserver.dto.RegisterDataDTO;
+import com.ra.rabnbserver.enums.BillType;
+import com.ra.rabnbserver.enums.FundType;
+import com.ra.rabnbserver.enums.TransactionType;
+import com.ra.rabnbserver.exception.BusinessException;
+import com.ra.rabnbserver.model.ApiResponse;
+import com.ra.rabnbserver.pojo.User;
+import com.ra.rabnbserver.pojo.UserBill;
+import com.ra.rabnbserver.server.user.userServe;
+import com.ra.rabnbserver.utils.RandomIdGenerator;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.*;
+import com.ra.rabnbserver.server.user.userBillServe;
+
+import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * 用户接口（初始化、登录）
+ */
+@Slf4j(topic = "com.ra.rabnbserver.controller.user")
+@RestController
+@RequestMapping("/api/user")
+public class UserController {
+
+    private static final String INIT_ATTR_TOKEN = "initToken";
+    private static final String INIT_ATTR_TS6 = "initTs6";
+    private static final String INIT_ATTR_PLAIN = "initPlainJson";
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private final userServe userService;
+    private final userBillServe billService;
+
+
+    public UserController(userServe userService, userBillServe billService) {
+        this.userService = userService;
+        this.billService = billService;
+    }
+
+
+    /**
+     * 初始化接口（返回明文，密文由拦截器处理）
+     */
+    @PostMapping("/init")
+    public String init(HttpServletRequest request, @RequestBody String data) throws Exception {
+        log.info("用户初始化接口收到请求，请求体：{}", data);
+        String userAgent = request.getHeader("User-Agent");
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        String shortTimestamp = timestamp.substring(0, Math.min(7, timestamp.length()));
+        log.info("用户初始化接口UA: {}, 时间戳: {}", userAgent, shortTimestamp);
+        String subject = RandomIdGenerator.generateRandom16ByteHexString();
+        StpUtil.login(subject, new SaLoginParameter()
+                .setIsLastingCookie(true)
+                .setTimeout(60 * 60 * 24)
+                .setIsConcurrent(true)
+                .setIsShare(true)
+                .setMaxLoginCount(12)
+                .setMaxTryTimes(12)
+                .setIsWriteHeader(true)
+                .setTerminalExtra("Key", CryptoUtils.md5Hex(StpUtil.getTokenValue() + CryptoConstants.TOKEN_SALT))
+        );
+        String token = StpUtil.getTokenValue();
+        String key = CryptoUtils.md5Hex(token + CryptoConstants.TOKEN_SALT);
+        StpUtil.getTokenSession().set("Key", key);
+        Map<String, Object> plainMap = new HashMap<>();
+        plainMap.put("token", token);
+        plainMap.put("Key", key);
+        String ts6 = timestamp.substring(0, Math.min(6, timestamp.length()));
+        String plainJson = objectMapper.writeValueAsString(plainMap);
+        request.setAttribute(INIT_ATTR_TOKEN, token);
+        request.setAttribute(INIT_ATTR_TS6, ts6);
+        request.setAttribute(INIT_ATTR_PLAIN, plainJson);
+        log.info("初始化明文数据：{}", plainJson);
+        return plainJson;
+    }
+    /**
+     * 用户登录接口
+     */
+    @PostMapping("/login")
+    public String login(HttpServletRequest request, @RequestBody LoginDataDTO loginDataDTO) throws Exception {
+        log.info("登录请求：{}", loginDataDTO);
+        String walletAddress = loginDataDTO.getUserWalletAddress();
+        if (StrUtil.isBlank(walletAddress)) {
+            return ApiResponse.error("钱包地址不能为空");
+        }
+        User user = userService.getByWalletAddress(walletAddress);
+        if (user == null) {
+            return ApiResponse.error("用户不存在");
+        }
+        upgradeToUserSession(user.getId().toString());
+        return ApiResponse.success("登录成功", user);
+    }
+
+    /**
+     * 用户注册接口
+     */
+    @PostMapping("/register")
+    public String register(HttpServletRequest request, @RequestBody RegisterDataDTO registerDataDTO) throws Exception {
+        log.info("注册请求：{}", registerDataDTO);
+        String walletAddress = registerDataDTO.getUserWalletAddress();
+        if (StrUtil.isBlank(walletAddress)) {
+            return ApiResponse.error("钱包地址不能为空");
+        }
+        User existingUser = userService.getByWalletAddress(walletAddress);
+        if (existingUser != null) {
+            return ApiResponse.error("该地址已注册");
+        }
+        User newUser = userService.register(walletAddress);
+        upgradeToUserSession(newUser.getId().toString());
+        return ApiResponse.success("注册成功", newUser);
+    }
+
+    /**
+     * 获取当前登录用户信息
+     */
+    @SaCheckLogin
+    @GetMapping("/info")
+    public String getUserInfo() throws Exception {
+        try {
+            // 获取正式用户ID（如果是临时ID这里会直接抛异常）
+            Long userId = getFormalUserId();
+
+            User user = userService.getById(userId);
+            if (user == null) {
+                return ApiResponse.error("用户不存在");
+            }
+
+            log.info("获取用户信息成功: {}", user.getId());
+            return ApiResponse.success("获取成功", user);
+        } catch (BusinessException e) {
+            return ApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 核心复用方法：将当前的临时 Token 绑定到正式用户 ID
+     * @param realUserId 真实的数据库用户ID
+     */
+    private void upgradeToUserSession(String realUserId) {
+        String currentToken = StpUtil.getTokenValue();
+        Object cryptoKey = StpUtil.getTokenSession().get("Key");
+        StpUtil.login(realUserId, new SaLoginParameter()
+                .setToken(currentToken) // 强制指定 Token
+                .setIsLastingCookie(true)
+                .setTimeout(60 * 60 * 24)
+        );
+        StpUtil.getTokenSession().set("Key", cryptoKey);
+        log.info("用户ID {} 已成功绑定到原有 Token {}", realUserId, currentToken);
+    }
+
+    /**
+     * 用户平台余额充值
+     */
+    @SaCheckLogin
+    @PostMapping("/amount/deposit")
+    public String deposit(@RequestBody AmountRequestDTO dto) throws Exception {
+        Long userId;
+        try {
+            userId = getFormalUserId();
+        } catch (Exception e) {
+            return ApiResponse.error("操作失败：需登录正式账号");
+        }
+        BigDecimal amount = new BigDecimal(dto.getAmount());
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return ApiResponse.error("充值金额必须大于0");
+        }
+
+        try {
+            // 调用统一方法：平台类型、入账类型、充值业务
+            billService.createBillAndUpdateBalance(
+                    userId,
+                    amount,
+                    BillType.PLATFORM,
+                    FundType.INCOME,
+                    TransactionType.DEPOSIT,
+                    dto.getRemark() == null ? "" : dto.getRemark(),
+                    null, // orderId 为空则内部自动生成
+                    null  // 平台内充值通常无链上 TxHash
+            );
+            return ApiResponse.success("充值成功");
+        } catch (BusinessException e) {
+            log.error("充值失败: {}", e.getMessage());
+            return ApiResponse.error("充值失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 用户查询账单列表（条件筛选，分页）
+     * @param query
+     * @return
+     * @throws Exception
+     */
+    @SaCheckLogin
+    @GetMapping("/bill/list")
+    public String getBillList(BillQueryDTO query) throws Exception {
+        Long userId;
+        try {
+            userId = getFormalUserId();
+        } catch (Exception e) {
+            return ApiResponse.error("操作失败：需登录正式账号");
+        }
+
+        log.info("用户 {} 查询账单列表，条件: {}", userId, query);
+
+        try {
+            // 2. 调用 Service 获取分页数据
+            IPage<UserBill> result = billService.getUserBillPage(userId, query);
+
+            // 3. 返回封装结果
+            return ApiResponse.success("获取成功", result);
+        } catch (java.time.format.DateTimeParseException e) {
+            return ApiResponse.error("日期格式错误，请使用 yyyy-MM-dd 格式");
+        } catch (Exception e) {
+            log.error("查询账单失败", e);
+            return ApiResponse.error("查询失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 用户平台余额扣款
+     */
+    @SaCheckLogin
+    @PostMapping("/amount/deduct")
+    public String deduct(@RequestBody AmountRequestDTO dto) throws Exception {
+        Long userId;
+        try {
+            userId = getFormalUserId();
+        } catch (Exception e) {
+            return ApiResponse.error("操作失败：需登录正式账号");
+        }
+        BigDecimal amount = new BigDecimal(dto.getAmount()) ;
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return ApiResponse.error("扣款金额必须大于0");
+        }
+
+        try {
+            // 调用统一方法：平台类型、出账类型、购买/消费业务
+            billService.createBillAndUpdateBalance(
+                    userId,
+                    amount,
+                    BillType.PLATFORM,
+                    FundType.EXPENSE,
+                    TransactionType.PURCHASE,
+                    dto.getRemark() == null ? "" : dto.getRemark(),
+                    null,
+                    null
+            );
+            return ApiResponse.success("扣款成功");
+        } catch (BusinessException e) {
+            log.error("扣款失败: {}", e.getMessage());
+            return ApiResponse.error("操作失败: " + e.getMessage());
+        }
+    }
+
+
+    /**
+     * 获取当前登录的正式用户ID
+     * @return 成功则返回Long类型的UserId，如果是临时会话或未登录则抛出异常
+     */
+    private Long getFormalUserId() {
+        StpUtil.checkLogin();
+        String loginId = StpUtil.getLoginIdAsString();
+        if (!StrUtil.isNumeric(loginId)) {
+            log.warn("检测到临时会话访问受限接口: {}", loginId);
+            throw new BusinessException("请先完成登录或注册");
+        }
+        return Long.parseLong(loginId);
+    }
+
+
+}

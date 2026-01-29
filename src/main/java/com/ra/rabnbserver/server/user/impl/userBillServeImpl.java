@@ -2,8 +2,11 @@ package com.ra.rabnbserver.server.user.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.ra.rabnbserver.dto.BillQueryDTO;
 import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;
 import com.ra.rabnbserver.enums.TransactionType;
@@ -20,7 +23,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 
 @Service
 @Slf4j
@@ -39,7 +45,7 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
      * @param txType 交易类型
      * @param remark 备注
      * @param orderId 订单id
-     * @param txId
+     * @param txId   交易哈希
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -119,5 +125,46 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
 
         log.info("账单记录成功: 类型={}, 用户={}, 变动前={}, 变动后={}",
                 billType, userId, balanceBefore, balanceAfter);
+    }
+
+    @Override
+    public IPage<UserBill> getUserBillPage(Long userId, BillQueryDTO query) {
+        LambdaQueryWrapper<UserBill> wrapper = new LambdaQueryWrapper<>();
+
+        // 1. 锁定当前用户
+        wrapper.eq(UserBill::getUserId, userId);
+
+        // 2. 账单类型和交易类型筛选
+        if (query.getBillType() != null) {
+            wrapper.eq(UserBill::getBillType, query.getBillType());
+        }
+        if (query.getTransactionType() != null) {
+            wrapper.eq(UserBill::getTransactionType, query.getTransactionType());
+        }
+        if (query.getFundType() != null) {
+            wrapper.eq(UserBill::getFundType, query.getFundType());
+        }
+
+        // 3. 日期字符串转换与筛选
+        // 假设传入格式为 "yyyy-MM-dd"
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+        if (StringUtils.isNotBlank(query.getStartDate())) {
+            // 转换为当天的 00:00:00
+            LocalDateTime start = LocalDate.parse(query.getStartDate(), formatter).atStartOfDay();
+            wrapper.ge(UserBill::getTransactionTime, start);
+        }
+
+        if (StringUtils.isNotBlank(query.getEndDate())) {
+            // 转换为当天的 23:59:59
+            LocalDateTime end = LocalDate.parse(query.getEndDate(), formatter).atTime(LocalTime.MAX);
+            wrapper.le(UserBill::getTransactionTime, end);
+        }
+
+        // 4. 按时间倒序排序
+        wrapper.orderByDesc(UserBill::getId);
+
+        // 5. 执行分页查询
+        return this.page(new Page<>(query.getPage(), query.getSize()), wrapper);
     }
 }

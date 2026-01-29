@@ -7,7 +7,7 @@ import lombok.Getter;
 
 @Getter
 @AllArgsConstructor
-public enum BillType {
+public enum BillType  implements BaseEnum{
     PLATFORM("PLATFORM", "平台资金流水"),
     ON_CHAIN("ON_CHAIN", "链上资金流水");
 

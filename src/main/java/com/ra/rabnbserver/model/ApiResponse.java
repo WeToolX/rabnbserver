@@ -64,7 +64,7 @@ public class ApiResponse<T> {
         try {
             return OBJECT_MAPPER.writeValueAsString(response);
         } catch (JsonProcessingException e) {
-            log.info(e.getMessage());
+            log.error("响应序列化失败:{}",e.getMessage());
             return "{\"code\":500,\"message\":\"响应序列化失败\",\"data\":null}";
         }
     }

@@ -3,7 +3,7 @@ package com.ra.rabnbserver.enums;
 /**
  * 索引类型枚举
  */
-public enum IndexType {
+public enum IndexType{
     /**
      * 普通索引
      */

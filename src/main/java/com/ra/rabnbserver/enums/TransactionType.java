@@ -7,7 +7,7 @@ import lombok.Getter;
 
 @Getter
 @AllArgsConstructor
-public enum TransactionType {
+public enum TransactionType implements BaseEnum{
     PURCHASE("PURCHASE", "购买"),
     SELL("SELL", "卖出"),
     DEPOSIT("DEPOSIT", "充值"),

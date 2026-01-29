@@ -7,7 +7,7 @@ import lombok.Getter;
 
 @Getter
 @AllArgsConstructor
-public enum FundType {
+public enum FundType  implements BaseEnum{
     INCOME("INCOME", "入账"),
     EXPENSE("EXPENSE", "出账");
 
