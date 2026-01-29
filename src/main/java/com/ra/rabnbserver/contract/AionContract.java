@@ -7,12 +7,18 @@ import com.ra.rabnbserver.contract.support.ContractBase;
 import org.springframework.stereotype.Service;
 import org.web3j.abi.TypeReference;
 import org.web3j.abi.datatypes.Bool;
+import org.web3j.abi.datatypes.DynamicArray;
 import org.web3j.abi.datatypes.Function;
 import org.web3j.abi.datatypes.Type;
+import org.web3j.abi.datatypes.StaticStruct;
 import org.web3j.abi.datatypes.generated.Uint256;
+import org.web3j.abi.datatypes.generated.Bytes32;
+import org.web3j.abi.datatypes.generated.Uint128;
+import org.web3j.abi.datatypes.generated.Uint64;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
 import org.web3j.tx.TransactionManager;
+import org.web3j.utils.Numeric;
 
 import java.math.BigInteger;
 import java.util.List;
@@ -272,6 +278,175 @@ public class AionContract extends ContractBase {
      */
     public BigInteger balanceOfSelf() throws Exception {
         return balanceOf(getAddress());
+    }
+
+    /**
+     * 查询锁仓列表
+     *
+     * @param user 用户地址
+     * @return 锁仓记录列表
+     *         返回类型：List<LockRecord>
+     *         JSON 序列化示例：
+     *         [
+     *           { "amount": 1000000, "unlockTime": 1700000000, "claimed": false }
+     *         ]
+     *         含义：用户锁仓记录列表，可能为空或为 null（RPC 未返回）
+     */
+    public List<LockRecord> locksOf(String user) throws Exception {
+        Function function = new Function(
+                "locksOf",
+                List.of(address(user)),
+                List.of(new TypeReference<DynamicArray<LockRecord>>() {})
+        );
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        @SuppressWarnings("unchecked")
+        DynamicArray<LockRecord> array = (DynamicArray<LockRecord>) outputs.get(0);
+        return array.getValue();
+    }
+
+    /**
+     * 查询合约拥有者
+     *
+     * @return 拥有者地址
+     *         返回类型：String
+     *         JSON 序列化示例："0x..."
+     *         含义：拥有者地址，可能为 null（RPC 未返回）
+     */
+    public String owner() throws Exception {
+        Function function = new Function(
+                "owner",
+                List.of(),
+                List.of(new TypeReference<org.web3j.abi.datatypes.Address>() {})
+        );
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return outputs.get(0).getValue().toString();
+    }
+
+    /**
+     * 查询最大供应量（CAP）
+     *
+     * @return 最大供应量
+     *         返回类型：BigInteger
+     *         JSON 序列化示例：210000000000000000000000000
+     *         含义：最大供应量（链上原始数量），可能为 null（RPC 未返回）
+     */
+    public BigInteger cap() throws Exception {
+        Function function = buildViewFunction("CAP", List.of(new TypeReference<Uint256>() {}));
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (BigInteger) outputs.get(0).getValue();
+    }
+
+    /**
+     * 查询 ADMIN_ROLE
+     *
+     * @return ADMIN_ROLE
+     *         返回类型：Bytes32
+     *         JSON 序列化示例："0x..."
+     *         含义：管理员角色标识，可能为 null（RPC 未返回）
+     */
+    public String adminRole() throws Exception {
+        Function function = new Function(
+                "ADMIN_ROLE",
+                List.of(),
+                List.of(new TypeReference<Bytes32>() {})
+        );
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        byte[] value = (byte[]) outputs.get(0).getValue();
+        return Numeric.toHexString(value);
+    }
+
+    /**
+     * 查询指定地址是否拥有角色
+     *
+     * @param role 角色
+     * @param account 地址
+     * @return 是否拥有
+     *         返回类型：Boolean
+     *         JSON 序列化示例：true / false
+     *         含义：是否拥有角色，可能为 null（RPC 未返回）
+     */
+    public Boolean hasRole(String role, String account) throws Exception {
+        if (role == null || role.isBlank()) {
+            return null;
+        }
+        Function function = new Function(
+                "hasRole",
+                List.of(toBytes32(role), address(account)),
+                List.of(new TypeReference<org.web3j.abi.datatypes.Bool>() {})
+        );
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (Boolean) outputs.get(0).getValue();
+    }
+
+    /**
+     * 将 Hex 角色转换为 Bytes32
+     *
+     * @param hex 角色 hex
+     * @return Bytes32
+     */
+    private Bytes32 toBytes32(String hex) {
+        byte[] raw = Numeric.hexStringToByteArray(hex);
+        byte[] fixed = new byte[32];
+        if (raw.length >= 32) {
+            System.arraycopy(raw, raw.length - 32, fixed, 0, 32);
+        } else {
+            System.arraycopy(raw, 0, fixed, 32 - raw.length, raw.length);
+        }
+        return new Bytes32(fixed);
+    }
+
+    /**
+     * 锁仓记录结构
+     */
+    public static class LockRecord extends StaticStruct {
+        /**
+         * 锁仓数量
+         */
+        private final Uint128 amount;
+
+        /**
+         * 解锁时间戳
+         */
+        private final Uint64 unlockTime;
+
+        /**
+         * 是否已领取
+         */
+        private final Bool claimed;
+
+        public LockRecord(Uint128 amount, Uint64 unlockTime, Bool claimed) {
+            super(amount, unlockTime, claimed);
+            this.amount = amount;
+            this.unlockTime = unlockTime;
+            this.claimed = claimed;
+        }
+
+        public Uint128 getAmount() {
+            return amount;
+        }
+
+        public Uint64 getUnlockTime() {
+            return unlockTime;
+        }
+
+        public Bool getClaimed() {
+            return claimed;
+        }
     }
 
     /**

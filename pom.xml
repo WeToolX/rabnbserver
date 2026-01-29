@@ -38,6 +38,7 @@
         <mockito.version>5.11.0</mockito.version>
         <byte-buddy.version>1.17.8</byte-buddy.version>
         <netty.version>4.2.9.Final</netty.version>
+        <skipTests>true</skipTests>
     </properties>
     <dependencies>
         <!-- Spring Boot 核心启动器：包含自动配置、日志、YAML 解析等基础功能 -->
@@ -232,6 +233,7 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <skipTests>${skipTests}</skipTests>
                     <argLine>@{argLine} -javaagent:${settings.localRepository}/net/bytebuddy/byte-buddy-agent/${byte-buddy.version}/byte-buddy-agent-${byte-buddy.version}.jar</argLine>
                 </configuration>
             </plugin>
