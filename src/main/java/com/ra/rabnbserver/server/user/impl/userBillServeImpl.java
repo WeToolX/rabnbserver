@@ -331,9 +331,9 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                         null
                 );
 
-                // C. 执行链上 Mint 铸造
-                log.info("开始链上铸造: 批次={}, 用户={}, 数量={}", currentBatch.getBatchNo(), user.getUserWalletAddress(), quantity);
-                TransactionReceipt receipt = cardNftContract.mint(
+                // C. 执行链上分发（distribute）
+                log.info("开始链上分发: 批次={}, 用户={}, 数量={}", currentBatch.getBatchNo(), user.getUserWalletAddress(), quantity);
+                TransactionReceipt receipt = cardNftContract.distribute(
                         user.getUserWalletAddress(),
                         BigInteger.valueOf(quantity)
                 );

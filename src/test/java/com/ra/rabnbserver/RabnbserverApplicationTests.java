@@ -454,81 +454,131 @@ class RabnbserverApplicationTests {
     // ===================== CardNftContract（只读）=====================
 
     /**
-     * 方法作用：查询 CardNFT 是否暂停
+     * 方法作用：查询卡牌 ID
      */
     @Test
-    void testCardNftPaused() throws Exception {
-        log.info("CardNFT paused: {}", cardNftContract.paused());
+    void testCardNftCardId() throws Exception {
+        log.info("CardNFT CARD_ID: {}", cardNftContract.cardId());
     }
 
     /**
-     * 方法作用：查询 CardNFT 总铸造量
+     * 方法作用：查询最大供应量
+     */
+    @Test
+    void testCardNftMaxSupply() throws Exception {
+        log.info("CardNFT MAX_SUPPLY: {}", cardNftContract.maxSupply());
+    }
+
+    /**
+     * 方法作用：查询名称
+     */
+    @Test
+    void testCardNftName() throws Exception {
+        log.info("CardNFT name: {}", cardNftContract.name());
+    }
+
+    /**
+     * 方法作用：查询符号
+     */
+    @Test
+    void testCardNftSymbol() throws Exception {
+        log.info("CardNFT symbol: {}", cardNftContract.symbol());
+    }
+
+    /**
+     * 方法作用：查询用户余额
+     */
+    @Test
+    void testCardNftBalanceOf() throws Exception {
+        String user = "0xa068802D54d2Aca1AD8cE6F2300eee02e3B50113";
+        log.info("CardNFT balanceOf({}): {}", user, cardNftContract.balanceOf(user));
+    }
+
+    /**
+     * 方法作用：查询用户累计销毁数量
+     */
+    @Test
+    void testCardNftBurnedAmount() throws Exception {
+        String user = "0xa068802D54d2Aca1AD8cE6F2300eee02e3B50113";
+        log.info("CardNFT burnedAmount({}): {}", user, cardNftContract.burnedAmount(user));
+    }
+
+    /**
+     * 方法作用：查询历史已分发数量
      */
     @Test
     void testCardNftTotalMinted() throws Exception {
         log.info("CardNFT totalMinted: {}", cardNftContract.totalMinted());
     }
 
+    /**
+     * 方法作用：查询当前仍存在数量
+     */
+    @Test
+    void testCardNftTotalSupply() throws Exception {
+        log.info("CardNFT totalSupply: {}", cardNftContract.totalSupply());
+    }
+
+    /**
+     * 方法作用：查询剩余未分发数量
+     */
+    @Test
+    void testCardNftRemainingMintable() throws Exception {
+        log.info("CardNFT remainingMintable: {}", cardNftContract.remainingMintable());
+    }
+
+    /**
+     * 方法作用：查询是否已授权管理员
+     */
+    @Test
+    void testCardNftIsApprovedForAll() throws Exception {
+        String user = requireTodoString("CardNFT isApprovedForAll user", "TODO:填写地址");
+        String admin = requireTodoString("CardNFT isApprovedForAll admin", "TODO:填写地址");
+        log.info("CardNFT isApprovedForAll({}, {}): {}", user, admin, cardNftContract.isApprovedForAll(user, admin));
+    }
+
     // ===================== CardNftContract（写操作）=====================
 
     /**
-     * 方法作用：单次发卡
+     * 方法作用：分发 NFT
      */
     @Test
-    void testCardNftMint() throws Exception {
-        String to = requireTodoString("CardNFT mint 地址", "TODO:填写地址");
-        BigInteger amount = requireTodoRaw("CardNFT mint 数量", null);
-        var receipt = cardNftContract.mint(to, amount);
-        log.info("mint 结果: {}", receipt);
+    void testCardNftDistribute() throws Exception {
+        String to = "0xa068802D54d2Aca1AD8cE6F2300eee02e3B50113";
+        BigInteger amount = BigInteger.TEN;
+        var receipt = cardNftContract.distribute(to, amount);
+        log.info("distribute 结果: {}", receipt);
     }
 
     /**
-     * 方法作用：批量发卡
+     * 方法作用：销毁用户卡牌
      */
     @Test
-    void testCardNftMintBatch() throws Exception {
-        List<String> toList = requireTodoList("CardNFT mintBatch 地址列表", List.of("TODO"));
-        List<BigInteger> amountList = List.of(requireTodoRaw("CardNFT mintBatch 数量列表", null));
-        var receipt = cardNftContract.mintBatch(toList, amountList);
-        log.info("mintBatch 结果: {}", receipt);
+    void testCardNftBurnUser() throws Exception {
+        String user = "0xa068802D54d2Aca1AD8cE6F2300eee02e3B50113";
+        BigInteger amount = BigInteger.TWO;
+        var receipt = cardNftContract.burnUser(user, amount);
+        log.info("burn 结果: {}", receipt);
     }
 
     /**
-     * 方法作用：管理员销毁卡牌
-     */
-    @Test
-    void testCardNftAdminBurn() throws Exception {
-        String from = requireTodoString("CardNFT adminBurn 地址", "TODO:填写地址");
-        BigInteger amount = requireTodoRaw("CardNFT adminBurn 数量", null);
-        var receipt = cardNftContract.adminBurn(from, amount);
-        log.info("adminBurn 结果: {}", receipt);
-    }
-
-    /**
-     * 方法作用：设置 CardNFT 管理员
+     * 方法作用：设置管理员
      */
     @Test
     void testCardNftSetAdmin() throws Exception {
-        String newAdmin = requireTodoString("CardNFT setAdmin 地址", "TODO:填写地址");
-        var receipt = cardNftContract.setAdmin(newAdmin);
+        String admin = requireTodoString("CardNFT setAdmin 地址", "TODO:填写地址");
+        boolean enabled = true; // TODO: true/false
+        var receipt = cardNftContract.setAdmin(admin, enabled);
         log.info("setAdmin 结果: {}", receipt);
     }
 
     /**
-     * 方法作用：暂停 CardNFT 合约
+     * 方法作用：设置 URI
      */
     @Test
-    void testCardNftPause() throws Exception {
-        var receipt = cardNftContract.pause();
-        log.info("pause 结果: {}", receipt);
-    }
-
-    /**
-     * 方法作用：解除 CardNFT 暂停
-     */
-    @Test
-    void testCardNftUnpause() throws Exception {
-        var receipt = cardNftContract.unpause();
-        log.info("unpause 结果: {}", receipt);
+    void testCardNftSetUri() throws Exception {
+        String uri = requireTodoString("CardNFT setURI", "TODO:填写URI");
+        var receipt = cardNftContract.setUri(uri);
+        log.info("setURI 结果: {}", receipt);
     }
 }

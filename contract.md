@@ -193,139 +193,367 @@ ABI:
 [{"inputs":[{"internalType":"address","name":"usdt_","type":"address"},{"internalType":"address","name":"treasury_","type":"address"},{"internalType":"address","name":"executor_","type":"address"},{"internalType":"address","name":"admin_","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[{"internalType":"address","name":"token","type":"address"}],"name":"SafeERC20FailedOperation","type":"error"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"oldAdmin","type":"address"},{"indexed":true,"internalType":"address","name":"newAdmin","type":"address"}],"name":"AdminUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"orderId","type":"bytes32"},{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":true,"internalType":"address","name":"treasury","type":"address"}],"name":"Deposit","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"oldExecutor","type":"address"},{"indexed":true,"internalType":"address","name":"newExecutor","type":"address"}],"name":"ExecutorUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"account","type":"address"}],"name":"Paused","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"oldTreasury","type":"address"},{"indexed":true,"internalType":"address","name":"newTreasury","type":"address"}],"name":"TreasuryUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"account","type":"address"}],"name":"Unpaused","type":"event"},{"inputs":[],"name":"MIN_AMOUNT","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"USDT","outputs":[{"internalType":"contract IERC20","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"admin","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"orderId","type":"bytes32"},{"internalType":"address","name":"user","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"deposit","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"name":"executed","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"executor","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"pause","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"paused","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"newAdmin","type":"address"}],"name":"setAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newExecutor","type":"address"}],"name":"setExecutor","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newTreasury","type":"address"}],"name":"setTreasury","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"treasury","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"unpause","outputs":[],"stateMutability":"nonpayable","type":"function"}]
 
 ## NFT卡牌合约
---合约地址:0x198Ae8DAd81C6C74a171B48715e3bB20DDeB8fb7
+--合约地址:0xaBbDDC8ac523325e6Cd53dE1BaBF0C63B729010a
+
+### 指标定义（最新）
+| 指标 | 含义 |
+| --- | --- |
+| totalMinted | 历史已分发数量（永久） |
+| totalSupply | 当前仍存在数量 |
+| burnedAmount(addr) | 该地址历史销毁 |
+| remainingMintable() | 剩余未分发 |
+| MAX_SUPPLY | 历史硬上限 |
+
+> 说明：当前仅同步 ABI 指标名称。如需同步最新合约代码，请提供最新合约源码或完整 ABI。
 合约代码:
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
+import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Burnable.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /**
-* @title CardNFT
-* @notice ERC-1155 卡牌合约（单一ID，30000张）
-  */
-  contract CardNFT is ERC1155, Pausable, ReentrancyGuard {
+* 单卡牌 ERC1155（授权销毁 + 已销毁数量统计）
+* - tokenId 固定为 1
+* - 总量上限 10000
+* - 管理员可分发
+* - 用户可授权管理员销毁
+* - 记录每个地址累计销毁数量
+    */
+    contract SingleCard1155 is ERC1155, ERC1155Supply, ERC1155Burnable, AccessControl {
+    uint256 public constant CARD_ID = 1;
+    uint256 public constant MAX_SUPPLY = 10_000;
 
-  /* ========== 常量 ========== */
+bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
-  uint256 public constant TOKEN_ID = 1;
-  uint256 public constant MAX_SUPPLY = 30000;
+string public name;
+string public symbol;
 
-  /* ========== 管理员 ========== */
+/// @notice 每个地址历史累计销毁的 CARD_ID 数量
+mapping(address => uint256) public burnedAmount;
 
-  address public admin;
+constructor(
+string memory uri_,
+string memory name_,
+string memory symbol_,
+address initialAdmin
+) ERC1155(uri_) {
+name = name_;
+symbol = symbol_;
 
-  /* ========== 状态 ========== */
+     _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
 
-  uint256 public totalMinted;
+     if (initialAdmin != address(0)) {
+         _grantRole(ADMIN_ROLE, initialAdmin);
+     }
+}
 
-  /* ========== 事件 ========== */
+/* ================= 管理员 ================= */
 
-  event AdminUpdated(address indexed oldAdmin, address indexed newAdmin);
-  event CardMinted(address indexed to, uint256 amount);
-  event CardBurned(address indexed from, uint256 amount);
+function setAdmin(address admin, bool enabled)
+external
+onlyRole(DEFAULT_ADMIN_ROLE)
+{
+if (enabled) _grantRole(ADMIN_ROLE, admin);
+else _revokeRole(ADMIN_ROLE, admin);
+}
 
-  /* ========== 构造函数 ========== */
+function setURI(string memory newuri)
+external
+onlyRole(DEFAULT_ADMIN_ROLE)
+{
+_setURI(newuri);
+}
 
-  /**
-    * @param uri_   ERC-1155 metadata URI（固定，指向 1.json）
-    * @param admin_ 管理员地址（测试网可用当前钱包，主网建议多签）
-      */
-      constructor(string memory uri_, address admin_) ERC1155(uri_) {
-      require(admin_ != address(0), "admin=0");
-      admin = admin_;
-      }
+/* ================= 分发 / 铸造 ================= */
 
-  /* ========== 修饰器 ========== */
+function distribute(address to, uint256 amount)
+external
+onlyRole(ADMIN_ROLE)
+{
+require(
+totalSupply(CARD_ID) + amount <= MAX_SUPPLY,
+"exceed max supply"
+);
+_mint(to, CARD_ID, amount, "");
+}
 
-  modifier onlyAdmin() {
-  require(msg.sender == admin, "not admin");
-  _;
-  }
+/* ================= OZ v5 关键 override ================= */
 
-  /* ========== 管理功能 ========== */
+function _update(
+address from,
+address to,
+uint256[] memory ids,
+uint256[] memory values
+) internal override(ERC1155, ERC1155Supply) {
+super._update(from, to, ids, values);
 
-  function setAdmin(address newAdmin) external onlyAdmin {
-  require(newAdmin != address(0), "admin=0");
-  address old = admin;
-  admin = newAdmin;
-  emit AdminUpdated(old, newAdmin);
-  }
+     // 统计销毁数量（只统计 CARD_ID）
+     if (to == address(0) && from != address(0)) {
+         for (uint256 i = 0; i < ids.length; i++) {
+             if (ids[i] == CARD_ID) {
+                 burnedAmount[from] += values[i];
+             }
+         }
+     }
+}
 
-  function pause() external onlyAdmin {
-  _pause();
-  }
+function supportsInterface(bytes4 interfaceId)
+public
+view
+override(ERC1155, AccessControl)
+returns (bool)
+{
+return super.supportsInterface(interfaceId);
+}
+}
 
-  function unpause() external onlyAdmin {
-  _unpause();
-  }
 
-  /* ========== 分发（铸造） ========== */
+合约ABI:[
+{
+"type": "constructor",
+"inputs": [
+{ "internalType": "string", "name": "uri_", "type": "string" },
+{ "internalType": "string", "name": "name_", "type": "string" },
+{ "internalType": "string", "name": "symbol_", "type": "string" },
+{ "internalType": "address", "name": "initialAdmin", "type": "address" }
+],
+"stateMutability": "nonpayable"
+},
 
-  /// @notice 给单个用户发卡
-  function mint(address to, uint256 amount)
-  external
-  onlyAdmin
-  whenNotPaused
-  nonReentrant
-  {
-  require(to != address(0), "to=0");
-  require(amount > 0, "amount=0");
-  require(totalMinted + amount <= MAX_SUPPLY, "exceed max supply");
+/* ========= 常量 ========= */
 
-       totalMinted += amount;
-       _mint(to, TOKEN_ID, amount, "");
+{
+"type": "function",
+"name": "CARD_ID",
+"stateMutability": "view",
+"inputs": [],
+"outputs": [{ "type": "uint256" }]
+},
+{
+"type": "function",
+"name": "MAX_SUPPLY",
+"stateMutability": "view",
+"inputs": [],
+"outputs": [{ "type": "uint256" }]
+},
 
-       emit CardMinted(to, amount);
-  }
+/* ========= NFT 基本信息 ========= */
 
-  /// @notice 批量发卡
-  function mintBatch(address[] calldata to, uint256[] calldata amounts)
-  external
-  onlyAdmin
-  whenNotPaused
-  nonReentrant
-  {
-  require(to.length == amounts.length, "length mismatch");
+{
+"type": "function",
+"name": "name",
+"stateMutability": "view",
+"inputs": [],
+"outputs": [{ "type": "string" }]
+},
+{
+"type": "function",
+"name": "symbol",
+"stateMutability": "view",
+"inputs": [],
+"outputs": [{ "type": "string" }]
+},
 
-       uint256 sum;
-       for (uint256 i = 0; i < amounts.length; i++) {
-           require(to[i] != address(0), "to=0");
-           require(amounts[i] > 0, "amount=0");
-           sum += amounts[i];
-       }
+/* ========= ERC1155 ========= */
 
-       require(totalMinted + sum <= MAX_SUPPLY, "exceed max supply");
+{
+"type": "function",
+"name": "balanceOf",
+"stateMutability": "view",
+"inputs": [
+{ "type": "address", "name": "account" },
+{ "type": "uint256", "name": "id" }
+],
+"outputs": [{ "type": "uint256" }]
+},
+{
+"type": "function",
+"name": "balanceOfBatch",
+"stateMutability": "view",
+"inputs": [
+{ "type": "address[]", "name": "accounts" },
+{ "type": "uint256[]", "name": "ids" }
+],
+"outputs": [{ "type": "uint256[]" }]
+},
+{
+"type": "function",
+"name": "safeTransferFrom",
+"stateMutability": "nonpayable",
+"inputs": [
+{ "type": "address", "name": "from" },
+{ "type": "address", "name": "to" },
+{ "type": "uint256", "name": "id" },
+{ "type": "uint256", "name": "amount" },
+{ "type": "bytes", "name": "data" }
+],
+"outputs": []
+},
+{
+"type": "function",
+"name": "setApprovalForAll",
+"stateMutability": "nonpayable",
+"inputs": [
+{ "type": "address", "name": "operator" },
+{ "type": "bool", "name": "approved" }
+],
+"outputs": []
+},
+{
+"type": "function",
+"name": "isApprovedForAll",
+"stateMutability": "view",
+"inputs": [
+{ "type": "address", "name": "account" },
+{ "type": "address", "name": "operator" }
+],
+"outputs": [{ "type": "bool" }]
+},
 
-       totalMinted += sum;
+/* ========= Burnable ========= */
 
-       for (uint256 i = 0; i < to.length; i++) {
-           _mint(to[i], TOKEN_ID, amounts[i], "");
-           emit CardMinted(to[i], amounts[i]);
-       }
-  }
+{
+"type": "function",
+"name": "burn",
+"stateMutability": "nonpayable",
+"inputs": [
+{ "type": "address", "name": "from" },
+{ "type": "uint256", "name": "id" },
+{ "type": "uint256", "name": "amount" }
+],
+"outputs": []
+},
 
-  /* ========== 销毁 ========== */
+/* ========= Supply ========= */
 
-  /// @notice 管理员销毁指定用户的卡牌
-  function adminBurn(address from, uint256 amount)
-  external
-  onlyAdmin
-  whenNotPaused
-  nonReentrant
-  {
-  require(from != address(0), "from=0");
-  require(amount > 0, "amount=0");
+{
+"type": "function",
+"name": "totalMinted",
+"stateMutability": "view",
+"inputs": [],
+"outputs": [{ "type": "uint256" }]
+},
+{
+"type": "function",
+"name": "totalSupply",
+"stateMutability": "view",
+"inputs": [],
+"outputs": [{ "type": "uint256" }]
+},
+{
+"type": "function",
+"name": "remainingMintable",
+"stateMutability": "view",
+"inputs": [],
+"outputs": [{ "type": "uint256" }]
+},
 
-       _burn(from, TOKEN_ID, amount);
-       totalMinted -= amount;
+/* ========= 自定义业务 ========= */
 
-       emit CardBurned(from, amount);
-  }
-  }
-合约ABI:[{"inputs":[{"internalType":"string","name":"uri_","type":"string"},{"internalType":"address","name":"admin_","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[{"internalType":"address","name":"sender","type":"address"},{"internalType":"uint256","name":"balance","type":"uint256"},{"internalType":"uint256","name":"needed","type":"uint256"},{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"ERC1155InsufficientBalance","type":"error"},{"inputs":[{"internalType":"address","name":"approver","type":"address"}],"name":"ERC1155InvalidApprover","type":"error"},{"inputs":[{"internalType":"uint256","name":"idsLength","type":"uint256"},{"internalType":"uint256","name":"valuesLength","type":"uint256"}],"name":"ERC1155InvalidArrayLength","type":"error"},{"inputs":[{"internalType":"address","name":"operator","type":"address"}],"name":"ERC1155InvalidOperator","type":"error"},{"inputs":[{"internalType":"address","name":"receiver","type":"address"}],"name":"ERC1155InvalidReceiver","type":"error"},{"inputs":[{"internalType":"address","name":"sender","type":"address"}],"name":"ERC1155InvalidSender","type":"error"},{"inputs":[{"internalType":"address","name":"operator","type":"address"},{"internalType":"address","name":"owner","type":"address"}],"name":"ERC1155MissingApprovalForAll","type":"error"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"oldAdmin","type":"address"},{"indexed":true,"internalType":"address","name":"newAdmin","type":"address"}],"name":"AdminUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":false,"internalType":"bool","name":"approved","type":"bool"}],"name":"ApprovalForAll","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"CardBurned","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"CardMinted","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"account","type":"address"}],"name":"Paused","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256[]","name":"ids","type":"uint256[]"},{"indexed":false,"internalType":"uint256[]","name":"values","type":"uint256[]"}],"name":"TransferBatch","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"id","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"TransferSingle","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"string","name":"value","type":"string"},{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"}],"name":"URI","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"account","type":"address"}],"name":"Unpaused","type":"event"},{"inputs":[],"name":"MAX_SUPPLY","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"TOKEN_ID","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"admin","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"adminBurn","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"account","type":"address"},{"internalType":"uint256","name":"id","type":"uint256"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address[]","name":"accounts","type":"address[]"},{"internalType":"uint256[]","name":"ids","type":"uint256[]"}],"name":"balanceOfBatch","outputs":[{"internalType":"uint256[]","name":"","type":"uint256[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"account","type":"address"},{"internalType":"address","name":"operator","type":"address"}],"name":"isApprovedForAll","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"mint","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address[]","name":"to","type":"address[]"},{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"name":"mintBatch","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"pause","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"paused","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256[]","name":"ids","type":"uint256[]"},{"internalType":"uint256[]","name":"values","type":"uint256[]"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"safeBatchTransferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"uint256","name":"value","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"safeTransferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newAdmin","type":"address"}],"name":"setAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"operator","type":"address"},{"internalType":"bool","name":"approved","type":"bool"}],"name":"setApprovalForAll","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes4","name":"interfaceId","type":"bytes4"}],"name":"supportsInterface","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalMinted","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"unpause","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"uri","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"}]
+{
+"type": "function",
+"name": "distribute",
+"stateMutability": "nonpayable",
+"inputs": [
+{ "type": "address", "name": "to" },
+{ "type": "uint256", "name": "amount" }
+],
+"outputs": []
+},
+{
+"type": "function",
+"name": "burnedAmount",
+"stateMutability": "view",
+"inputs": [{ "type": "address", "name": "account" }],
+"outputs": [{ "type": "uint256" }]
+},
+
+/* ========= URI ========= */
+
+{
+"type": "function",
+"name": "uri",
+"stateMutability": "view",
+"inputs": [{ "type": "uint256", "name": "id" }],
+"outputs": [{ "type": "string" }]
+},
+{
+"type": "function",
+"name": "setURI",
+"stateMutability": "nonpayable",
+"inputs": [{ "type": "string", "name": "newuri" }],
+"outputs": []
+},
+
+/* ========= AccessControl ========= */
+
+{
+"type": "function",
+"name": "setAdmin",
+"stateMutability": "nonpayable",
+"inputs": [
+{ "type": "address", "name": "admin" },
+{ "type": "bool", "name": "enabled" }
+],
+"outputs": []
+},
+{
+"type": "function",
+"name": "hasRole",
+"stateMutability": "view",
+"inputs": [
+{ "type": "bytes32", "name": "role" },
+{ "type": "address", "name": "account" }
+],
+"outputs": [{ "type": "bool" }]
+},
+{
+"type": "function",
+"name": "getRoleAdmin",
+"stateMutability": "view",
+"inputs": [{ "type": "bytes32", "name": "role" }],
+"outputs": [{ "type": "bytes32" }]
+},
+
+/* ========= supports ========= */
+
+{
+"type": "function",
+"name": "supportsInterface",
+"stateMutability": "view",
+"inputs": [{ "type": "bytes4", "name": "interfaceId" }],
+"outputs": [{ "type": "bool" }]
+},
+
+/* ========= Events ========= */
+
+{
+"type": "event",
+"name": "TransferSingle",
+"anonymous": false,
+"inputs": [
+{ "indexed": true, "type": "address", "name": "operator" },
+{ "indexed": true, "type": "address", "name": "from" },
+{ "indexed": true, "type": "address", "name": "to" },
+{ "indexed": false, "type": "uint256", "name": "id" },
+{ "indexed": false, "type": "uint256", "name": "value" }
+]
+},
+{
+"type": "event",
+"name": "ApprovalForAll",
+"anonymous": false,
+"inputs": [
+{ "indexed": true, "type": "address", "name": "account" },
+{ "indexed": true, "type": "address", "name": "operator" },
+{ "indexed": false, "type": "bool", "name": "approved" }
+]
+}
+]
+
 
 ## AiRword Aion (AION) (项目代币) 合约:
 合约地址:0x4D49D3118450D8aA32d046fFb0dE163De220BBDc
@@ -695,4 +923,3 @@ ReentrancyGuard
 }
 合约ABI:
   [{"inputs":[{"internalType":"address","name":"owner_","type":"address"},{"internalType":"address","name":"admin_","type":"address"},{"internalType":"address","name":"market_","type":"address"},{"internalType":"address","name":"eco_","type":"address"},{"internalType":"address","name":"community_","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[],"name": "AccessControlBadConfirmation","type":"error"},{"inputs":[{"internalType":"address","name":"account","type":"address"},{"internalType":"bytes32","name":"neededRole","type":"bytes32"}],"name":"AccessControlUnauthorizedAccount","type":"error"},{"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"allowance","type":"uint256"},{"internalTyp e":"uint256","name":"needed","type":"uint256"}],"name":"ERC20InsufficientAllowance","type":"error"},{"inputs":[{"internalType":"address","name":"sender","type":"address"},{"internalType":"uint256","name":"balance","type":"uint256"},{"internalType":"uint256","name":"needed","type":"uint256"}],"name":"ERC20InsufficientBalance","type":"error"},{"inputs":[{"internalType":"address","name":"a pprover","type":"address"}],"name":"ERC20InvalidApprover","type":"error"},{"inputs":[{"internalType":"address","name":"receiver","type":"address"}],"name":"ERC20InvalidReceiver","type":"error"},{"inputs":[{"internalType":"address","name":"sender","type":"address"}],"name":"ERC20InvalidSender","type":"error"},{"inputs":[{"internalType":"address","name":"spender","type":"address"}],"name":"ERC20InvalidSpender","type":"error"},{"inputs":[{"internalType":"address","name":"owner","type":"address"}],"name":"OwnableInvalidOwner","type":"error"},{"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"OwnableUnauthorizedAccount","type":"error"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true e,"internalType":"address","name":"spender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Approval","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"claimedAmount","type":"uint256"}],"name":"ClaimLocks","type":"event"},{"a nonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"paidAmount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"burnedAmount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"toCommunityAmount","type":"uint256"}],"name":"ExchangePaid","type":"event"},{"anonymous s":false,"inputs":[{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"totalAmount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"lockedAmount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"burnedAmount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"unlockTime","type":"uint256"},{"indexed":false,"internalType":"enum AiRwordAionLock.LockPlan","name":"plan","type":"uint8"}],"name":"FaucetMint","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"inter nalType":"address","name":"account","type":"address"}],"name":"Paused","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"role","type":"bytes32"},{"indexed":true,"internalType":"bytes32","name":"previousAdminRole","type":"bytes32"},{"indexed":true,"internalType":"bytes32","name":"newAdminRole","type":"bytes32"}],"name":"RoleAdminChanged ","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"role","type":"bytes32"},{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":true,"internalType":"address","name":"sender","type":"address"}],"name":"RoleGranted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","n名称："角色"，类型："bytes32"},{"已索引：true，内部类型："地址"，名称："帐户"，类型："地址"},{"已索引：true，内部类型："地址"，名称："发件人"，类型："地址"}]，名称："角色已撤销"，类型："事件"},{"匿名：false，输入：[{"已索引：true，内部类型："地址"，名称："发件人"，类型："地址"},{"已索引：true，内部类型："地址"，名称："收件人"，类型：""address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Transfer","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"account","type":"address"}],"name":"Unpaused","type":"event"},{"inputs":[],"name":"ADMIN_ROLE","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability ":"view","type":"function"},{"inputs":[],"name":"CAP","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"DEFAULT_ADMIN_ROLE","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"owner","type":"ad dress"},{"internalType":"address","name":"spender","type":"address"}],"name":"allowance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"approve","outputs":[{"internalType":"b ool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"value","type":"uint256"}],"name":"burn","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"burnBps","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"account","type":"address"},{"internalType":"uint256","name":"value","type":"uint256 "}],"name":"burnFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"claimMatured","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"claimableAmount","outputs":[{"internalType":"uint256","name" :"sum","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"community","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"communityBps","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMu tability":"view","type":"function"},{"inputs":[],"name":"decimals","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"enum AiRwordAionLock.LockPlan","name":"plan","type":"uint8"}],"name":"faucetMint","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"fixedPriceAmount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"fixedPriceEnabled","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"}],"name":"getRoleAdmin","outputs":[{"internalType ":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"},{"internalType":"address","name":"account","type":"address"}],"name":"grantRole","outputs":[],"stateMutability":"nonpayable","type":"f函数"},{"输入":[{"内部类型":"bytes32","名称":"角色","类型":"bytes32"},{"内部类型":"地址","名称":"帐户","类型":"地址"}],"名称":"拥有角色","输出":[{"内部类型":"布尔","名称":"","类型":"布尔"}],"状态可变性":"视图","类型":"函数"},{"输入":[{"内部类型":"address","name":"user","type":"address"}],"name":"locksOf","outputs":[{"components":[{"internalType":"uint128","name":"amount","type":"uint128"},{"internalType":"uint64","name":"unlockTime","type":"uint64"},{"internalType":"bool","name":"claimed","type":"bool"}],"internalType":"struct AiRwordAionLock.LockRecord[]","name":"","type":"tuple[]"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"pause","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"paused","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"payAmount","outputs":[],"stateMutability":"nonpayable","type":"functi on"},{"inputs":[],"name":"payFixed","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"},{"internalType":"address","name":"callerConfirmation","type":"address"}],"name":"renounceRole","outputs":[],"stateMutability":"nonpayable","type":"function"} ty":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"admin","type":"address"}],"name":"revokeAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"},{"internalType":"address","name":"account","type":"address"}],"name":"revokeRole","outputs":[],"stateMutability":"nonpayable","type": "function"},{"inputs":[{"internalType":"address","name":"newAdmin","type":"address"}],"name":"setAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newCommunity","type":"address"}],"name":"setCommunity","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bool","name":"fixedEnabled","type":"bool"},{"internalType":"uint256","name":"fixedAmount","type":"uint256"},{"internalType":"uint256","name":"burnBps_","type":"uint256"},{"internalType":"uint256","name":"communityBps_","type":"uint256"}],"name":"setExchangeParams","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes4","name":"interfaceId","type":"bytes4"}],"name":"suppor tsInterface","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","ty pe":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"transfer","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","typ e":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"transferFrom","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"unpause","outputs":[],"stateMutability":"nonpayable","type":"function"}]
-
