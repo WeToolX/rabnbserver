@@ -24,7 +24,7 @@ import static com.ra.rabnbserver.contract.support.ContractTypeUtils.uint8;
 /**
  * AION 合约管理员调用接口
  */
-@Slf4j(topic = "com.ra.rabnbserver.service.contract")
+
 @Service
 public class AionContract extends ContractBase {
 
@@ -221,6 +221,57 @@ public class AionContract extends ContractBase {
             return null;
         }
         return (BigInteger) outputs.get(0).getValue();
+    }
+
+    /**
+     * 查询总供应量
+     *
+     * @return 总供应量
+     *         返回类型：BigInteger
+     *         JSON 序列化示例：210000000000000000000000000
+     *         含义：总供应量（链上原始数量），可能为 null（RPC 未返回）
+     */
+    public BigInteger totalSupply() throws Exception {
+        Function function = buildViewFunction("totalSupply", List.of(new TypeReference<Uint256>() {}));
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (BigInteger) outputs.get(0).getValue();
+    }
+
+    /**
+     * 查询指定地址余额
+     *
+     * @param account 地址
+     * @return 余额
+     *         返回类型：BigInteger
+     *         JSON 序列化示例：1000000
+     *         含义：余额（链上原始数量），可能为 null（RPC 未返回）
+     */
+    public BigInteger balanceOf(String account) throws Exception {
+        Function function = new Function(
+                "balanceOf",
+                List.of(address(account)),
+                List.of(new TypeReference<Uint256>() {})
+        );
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (BigInteger) outputs.get(0).getValue();
+    }
+
+    /**
+     * 查询本合约地址余额（balanceOf(address(this))）
+     *
+     * @return 余额
+     *         返回类型：BigInteger
+     *         JSON 序列化示例：1000000
+     *         含义：余额（链上原始数量），可能为 null（RPC 未返回）
+     */
+    public BigInteger balanceOfSelf() throws Exception {
+        return balanceOf(getAddress());
     }
 
     /**

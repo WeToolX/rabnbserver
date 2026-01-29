@@ -19,7 +19,10 @@ rabnbserver
 │  │  │     │  ├── AionContract.java                # AION 管理员合约调用
 │  │  │     │  ├── CardNftContract.java             # 卡牌合约管理员调用
 │  │  │     │  ├── PaymentUsdtContract.java         # USDT 收款合约管理员调用
+│  │  │     │  ├── service
+│  │  │     │  │  └── AionService.java              # AION 业务查询（可流通量/兑换记录）
 │  │  │     │  └── support
+│  │  │     │     ├── AmountConvertUtils.java       # 金额转换工具（最小单位 -> 人类可读）
 │  │  │     │     ├── ContractBase.java             # 合约调用基座
 │  │  │     │     ├── ContractTypeUtils.java        # ABI 参数类型转换
 │  │  │     │     ├── BlockchainProperties.java     # 链配置

@@ -25,7 +25,6 @@ import static com.ra.rabnbserver.contract.support.ContractTypeUtils.uint256;
 /**
  * PaymentUSDT 合约管理员调用接口
  */
-@Slf4j(topic = "com.ra.rabnbserver.service.contract")
 @Service
 public class PaymentUsdtContract extends ContractBase {
 
