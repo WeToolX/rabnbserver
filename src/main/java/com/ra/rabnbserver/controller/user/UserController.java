@@ -33,7 +33,7 @@ import java.util.Map;
 /**
  * 用户接口（初始化、登录）
  */
-@Slf4j(topic = "com.ra.rabnbserver.controller.user")
+@Slf4j
 @RestController
 @RequestMapping("/api/user")
 public class UserController {
@@ -208,8 +208,8 @@ public class UserController {
      * @throws Exception
      */
     @SaCheckLogin
-    @GetMapping("/bill/list")
-    public String getBillList(BillQueryDTO query) throws Exception {
+    @PostMapping("/bill/list")
+    public String getBillList(@RequestBody BillQueryDTO query) throws Exception {
         Long userId;
         try {
             userId = getFormalUserId();
@@ -222,11 +222,10 @@ public class UserController {
         try {
             // 2. 调用 Service 获取分页数据
             IPage<UserBill> result = billService.getUserBillPage(userId, query);
-
             // 3. 返回封装结果
             return ApiResponse.success("获取成功", result);
         } catch (java.time.format.DateTimeParseException e) {
-            return ApiResponse.error("日期格式错误，请使用 yyyy-MM-dd 格式");
+            return ApiResponse.error("日期格式错误，请使用 yyyy-MM-dd 或者 yyyy-MM-dd 00:00:00 格式");
         } catch (Exception e) {
             log.error("查询账单失败", e);
             return ApiResponse.error("查询失败: " + e.getMessage());
@@ -284,6 +283,11 @@ public class UserController {
         }
         return Long.parseLong(loginId);
     }
+
+    /**
+     * 用户NFT资产购买
+     */
+
 
 
 }

@@ -1,14 +1,17 @@
 package com.ra.rabnbserver.server.user.impl;
 
+import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.ra.rabnbserver.contract.PaymentUsdtContract;
 import com.ra.rabnbserver.dto.BillQueryDTO;
 import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;
+import com.ra.rabnbserver.enums.TransactionStatus;
 import com.ra.rabnbserver.enums.TransactionType;
 import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.mapper.UserBillMapper;
@@ -21,8 +24,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.web3j.protocol.core.methods.response.TransactionReceipt;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -34,6 +40,9 @@ import java.time.format.DateTimeFormatter;
 public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> implements userBillServe {
 
     private final UserMapper userMapper;
+
+    // 1. 注入事务模板
+    private final TransactionTemplate transactionTemplate;
 
 
     /**
@@ -54,8 +63,7 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                                            String remark, String orderId, String txId) {
 
 
-        // 1. 默认值处理
-        // 如果 orderId 为空，生成一个带前缀的唯一订单号（例如：BILL_17823...）
+        //默认值处理
         if (StringUtils.isBlank(orderId)) {
             orderId = "BILL_" + IdWorker.getIdStr();
         }
@@ -114,6 +122,7 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         newBill.setBalanceAfter(balanceAfter);
         newBill.setRemark(remark);
         newBill.setTransactionTime(LocalDateTime.now());
+        newBill.setStatus(TransactionStatus.SUCCESS);
         this.save(newBill);
 
         // 7. 同步更新用户表的余额字段（仅针对 PLATFORM 类型）
@@ -145,26 +154,106 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             wrapper.eq(UserBill::getFundType, query.getFundType());
         }
 
-        // 3. 日期字符串转换与筛选
-        // 假设传入格式为 "yyyy-MM-dd"
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
         if (StringUtils.isNotBlank(query.getStartDate())) {
-            // 转换为当天的 00:00:00
-            LocalDateTime start = LocalDate.parse(query.getStartDate(), formatter).atStartOfDay();
+            LocalDateTime start = DateUtil.parse(query.getStartDate()).toLocalDateTime()
+                    .with(LocalTime.MIN);
             wrapper.ge(UserBill::getTransactionTime, start);
         }
 
         if (StringUtils.isNotBlank(query.getEndDate())) {
-            // 转换为当天的 23:59:59
-            LocalDateTime end = LocalDate.parse(query.getEndDate(), formatter).atTime(LocalTime.MAX);
+            LocalDateTime end = DateUtil.parse(query.getEndDate()).toLocalDateTime()
+                    .with(LocalTime.MAX);
             wrapper.le(UserBill::getTransactionTime, end);
         }
-
         // 4. 按时间倒序排序
         wrapper.orderByDesc(UserBill::getId);
-
         // 5. 执行分页查询
         return this.page(new Page<>(query.getPage(), query.getSize()), wrapper);
+    }
+
+    private final PaymentUsdtContract paymentUsdtContract;
+
+
+    /**
+     * 充值接口链上扣款用户资金方法
+     * @param userId
+     * @param amount
+     */
+    public void rechargeFromChain(Long userId, BigDecimal amount) {
+        User user = userMapper.selectById(userId);
+        if (user == null || StringUtils.isBlank(user.getUserWalletAddress())) {
+            throw new BusinessException("用户不存在或未绑定钱包");
+        }
+        String walletAddress = user.getUserWalletAddress();
+
+        BigInteger chainAmount = amount.multiply(BigDecimal.valueOf(1_000_000L)).toBigInteger();//
+        String orderIdHex = "0x" + IdWorker.get32UUID(); // 生成32位唯一订单十六进制串
+
+        try {
+            BigInteger allowance = paymentUsdtContract.allowanceToPaymentUsdt(walletAddress);
+            if (allowance.compareTo(chainAmount) < 0) {
+                throw new BusinessException("用户授权额度不足，请先在钱包授权");
+            }
+            BigInteger balance = paymentUsdtContract.balanceOf(walletAddress);
+            if (balance.compareTo(chainAmount) < 0) {
+                throw new BusinessException("用户链上USDT余额不足");
+            }
+
+            log.info("开始执行链上扣款: 用户={}, 金额={}, 订单={}", walletAddress, amount, orderIdHex);
+            TransactionReceipt receipt = paymentUsdtContract.deposit(orderIdHex, walletAddress, chainAmount);
+
+            if (receipt != null && "0x1".equals(receipt.getStatus())) {
+                transactionTemplate.execute(status -> {
+                    this.createBillAndUpdateBalance(
+                            userId,
+                            amount,
+                            BillType.PLATFORM,
+                            FundType.INCOME,
+                            TransactionType.DEPOSIT,
+                            "USDT充值成功",
+                            orderIdHex,
+                            receipt.getTransactionHash()
+                    );
+                    return null;
+                });
+
+                log.info("链上充值成功入账: 用户={}, TxHash={}", userId, receipt.getTransactionHash());
+            } else {
+                // 失败：记录异常账单（不更新用户余额）
+                saveExceptionBill(user, amount, orderIdHex, receipt != null ? receipt.getTransactionHash() : null, "合约执行失败");
+                throw new BusinessException("链上交易执行失败，请检查区块状态");
+            }
+
+        } catch (Exception e) {
+            log.error("链上充值异常: ", e);
+            // 如果是业务异常直接抛出
+            if (e instanceof BusinessException) throw (BusinessException) e;
+
+            // 其他未知异常（如网络超时），记录一条状态为失败的账单
+            saveExceptionBill(user, amount, orderIdHex, null, "系统处理异常: " + e.getMessage());
+            throw new BusinessException("充值请求异常: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 辅助方法：记录失败/异常账单
+     */
+    private void saveExceptionBill(User user, BigDecimal amount, String orderId, String txHash, String errorMsg) {
+        UserBill failBill = new UserBill();
+        failBill.setUserId(user.getId());
+        failBill.setUserWalletAddress(user.getUserWalletAddress());
+        failBill.setTransactionOrderId(orderId);
+        failBill.setTxId(txHash);
+        failBill.setBillType(BillType.ERROR_ORDER);
+        failBill.setFundType(FundType.INCOME);
+        failBill.setTransactionType(TransactionType.DEPOSIT);
+        failBill.setAmount(amount);
+        failBill.setBalanceBefore(user.getBalance());
+        failBill.setBalanceAfter(user.getBalance());
+        failBill.setRemark("账单异常: " + errorMsg);
+        failBill.setTransactionTime(LocalDateTime.now());
+        failBill.setStatus(TransactionStatus.FAILED); // 状态设为失败/异常
+        this.save(failBill);
     }
 }

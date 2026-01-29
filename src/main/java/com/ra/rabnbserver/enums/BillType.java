@@ -9,7 +9,8 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum BillType  implements BaseEnum{
     PLATFORM("PLATFORM", "平台资金流水"),
-    ON_CHAIN("ON_CHAIN", "链上资金流水");
+    ON_CHAIN("ON_CHAIN", "链上资金流水"),
+    ERROR_ORDER("ERROR_ORDER","异常账单");
 
     @EnumValue // 标记数据库存储的值
     @JsonValue  // 标记前端收到的值
