@@ -76,6 +76,7 @@ rabnbserver
 - 合约地址校验：contract.address.* 启动时校验 0x 地址格式并打印配置
 - 生产配置：prod profile 关闭 springdoc 的 api-docs 与 swagger-ui
 - 合约返回说明：交易方法返回 TransactionReceipt，并在方法注释中给出 JSON 字段示例与含义
+- 测试策略：Maven 默认跳过测试（skipTests=true），如需执行请用 -DskipTests=false；IDE 手动运行不受影响
 
 ### Reference Documentation
 

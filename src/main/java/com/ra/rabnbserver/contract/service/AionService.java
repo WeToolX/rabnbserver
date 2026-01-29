@@ -58,12 +58,16 @@ public class AionService {
      *         含义：可流通量（链上原始数量），可能为 null（RPC 未返回）
      */
     public BigInteger queryCirculatingSupply() throws Exception {
+        // 1. totalSupply
         BigInteger totalSupply = aionContract.totalSupply();
-        BigInteger selfBalance = aionContract.balanceOfSelf();
-        if (totalSupply == null || selfBalance == null) {
+        // 2. 锁仓量 = 合约自身余额
+        String contractAddr = aionContract.getAddress();
+        BigInteger locked = aionContract.balanceOf(contractAddr);
+        // 3. 可流通量
+        if (totalSupply == null || locked == null) {
             return null;
         }
-        return totalSupply.subtract(selfBalance);
+        return totalSupply.subtract(locked);
     }
 
     /**
