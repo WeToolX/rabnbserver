@@ -171,7 +171,7 @@ public class UserController {
         try {
             userId = getFormalUserId();
         } catch (BusinessException e) {
-            return ApiResponse.error("操作失败：需登录正式账号");
+            return ApiResponse.error(402,"操作失败：需登录正式账号");
         }
         BigDecimal amount;
         try {
@@ -213,7 +213,7 @@ public class UserController {
         try {
             userId = getFormalUserId();
         } catch (BusinessException e) {
-            return ApiResponse.error("操作失败：需登录正式账号");
+            return ApiResponse.error(402,"操作失败：需登录正式账号");
         }
 
         log.info("用户 {} 查询账单列表，条件: {}", userId, query);
@@ -242,7 +242,7 @@ public class UserController {
         try {
             userId = getFormalUserId();
         } catch (BusinessException e) {
-            return ApiResponse.error("操作失败：需登录正式账号");
+            return ApiResponse.error(402,"操作失败：需登录正式账号");
         }
         BigDecimal amount = new BigDecimal(dto.getAmount()) ;
 
@@ -296,7 +296,7 @@ public class UserController {
         try {
             userId = getFormalUserId();
         } catch (BusinessException e) {
-            return ApiResponse.error("操作失败：需登录正式账号");
+            return ApiResponse.error(402,"操作失败：需登录正式账号");
         }
 
         // 1. 获取并解析参数

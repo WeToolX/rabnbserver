@@ -117,7 +117,7 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
 
         // 5. 余额合法性校验（通常平台账单和链上账单都不允许余额小于0）
         if (balanceAfter.compareTo(BigDecimal.ZERO) < 0) {
-            throw new BusinessException(billType.getDesc() + "账户余额不足");
+            throw new BusinessException("账户余额不足");
         }
 
         // 6. 插入新账单
