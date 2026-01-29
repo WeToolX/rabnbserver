@@ -19,11 +19,29 @@ public final class AmountConvertUtils {
         /**
          * USDT
          */
-        USDT,
+        USDT(6),
         /**
          * AION
          */
-        AION
+        AION(18);
+
+        /**
+         * 小数精度位数
+         */
+        private final int decimals;
+
+        Currency(int decimals) {
+            this.decimals = decimals;
+        }
+
+        /**
+         * 获取小数精度
+         *
+         * @return 小数精度
+         */
+        public int getDecimals() {
+            return decimals;
+        }
     }
 
     /**
@@ -31,7 +49,7 @@ public final class AmountConvertUtils {
      *
      * @param currency 币种（USDT/AION）
      * @param rawAmount 未格式化的原始数额（链上最小单位）
-     * @param decimals 小数精度位数
+     * @param decimals 人类可读小数位数（用于截断显示）
      * @return 人类可读金额（BigDecimal，已去掉末尾 0，截断不四舍五入）
      */
     public static BigDecimal toHumanAmount(Currency currency, BigInteger rawAmount, int decimals) {
@@ -44,8 +62,33 @@ public final class AmountConvertUtils {
         if (decimals < 0) {
             throw new IllegalArgumentException("小数精度不能小于 0");
         }
-        BigDecimal divisor = BigDecimal.TEN.pow(decimals);
-        BigDecimal value = new BigDecimal(rawAmount).divide(divisor, decimals, RoundingMode.DOWN);
-        return value.stripTrailingZeros();
+        int currencyDecimals = currency.getDecimals();
+        if (decimals > currencyDecimals) {
+            throw new IllegalArgumentException("小数精度不能大于币种默认精度");
+        }
+        BigDecimal divisor = BigDecimal.TEN.pow(currencyDecimals);
+        BigDecimal value = new BigDecimal(rawAmount).divide(divisor, currencyDecimals, RoundingMode.DOWN);
+        BigDecimal truncated = value.setScale(decimals, RoundingMode.DOWN);
+        return truncated.stripTrailingZeros();
+    }
+
+    /**
+     * 将人类可读金额转换为链上最小单位
+     *
+     * @param currency 币种（USDT/AION）
+     * @param humanAmount 人类可读金额
+     * @return 链上最小单位金额（BigInteger，截断不四舍五入）
+     */
+    public static BigInteger toRawAmount(Currency currency, BigDecimal humanAmount) {
+        if (currency == null) {
+            throw new IllegalArgumentException("币种不能为空");
+        }
+        if (humanAmount == null) {
+            throw new IllegalArgumentException("人类可读金额不能为空");
+        }
+        int decimals = currency.getDecimals();
+        BigDecimal scaled = humanAmount.setScale(decimals, RoundingMode.DOWN);
+        BigDecimal raw = scaled.movePointRight(decimals);
+        return raw.toBigInteger();
     }
 }
