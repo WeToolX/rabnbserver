@@ -8,10 +8,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ra.rabnbserver.crypto.CryptoConstants;
 import com.ra.rabnbserver.crypto.CryptoUtils;
-import com.ra.rabnbserver.dto.AmountRequestDTO;
-import com.ra.rabnbserver.dto.BillQueryDTO;
-import com.ra.rabnbserver.dto.LoginDataDTO;
-import com.ra.rabnbserver.dto.RegisterDataDTO;
+import com.ra.rabnbserver.dto.*;
 import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;
 import com.ra.rabnbserver.enums.TransactionType;
@@ -173,31 +170,30 @@ public class UserController {
         Long userId;
         try {
             userId = getFormalUserId();
-        } catch (Exception e) {
+        } catch (BusinessException e) {
             return ApiResponse.error("操作失败：需登录正式账号");
         }
-        BigDecimal amount = new BigDecimal(dto.getAmount());
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(dto.getAmount());
+        } catch (Exception e) {
+            return ApiResponse.error("金额格式错误");
+        }
 
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             return ApiResponse.error("充值金额必须大于0");
         }
 
+        log.info("用户 {} 尝试通过链上充值: {}", userId, amount);
+
         try {
-            // 调用统一方法：平台类型、入账类型、充值业务
-            billService.createBillAndUpdateBalance(
-                    userId,
-                    amount,
-                    BillType.PLATFORM,
-                    FundType.INCOME,
-                    TransactionType.DEPOSIT,
-                    dto.getRemark() == null ? "" : dto.getRemark(),
-                    null, // orderId 为空则内部自动生成
-                    null  // 平台内充值通常无链上 TxHash
-            );
-            return ApiResponse.success("充值成功");
+            billService.rechargeFromChain(userId, amount);
+            return ApiResponse.success("充值处理成功");
         } catch (BusinessException e) {
-            log.error("充值失败: {}", e.getMessage());
-            return ApiResponse.error("充值失败: " + e.getMessage());
+            return ApiResponse.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("充值接口未知异常", e);
+            return ApiResponse.error("服务器繁忙，请稍后再试");
         }
     }
 
@@ -213,7 +209,7 @@ public class UserController {
         Long userId;
         try {
             userId = getFormalUserId();
-        } catch (Exception e) {
+        } catch (BusinessException e) {
             return ApiResponse.error("操作失败：需登录正式账号");
         }
 
@@ -223,6 +219,7 @@ public class UserController {
             // 2. 调用 Service 获取分页数据
             IPage<UserBill> result = billService.getUserBillPage(userId, query);
             // 3. 返回封装结果
+            log.info("获取成功:{}", result);
             return ApiResponse.success("获取成功", result);
         } catch (java.time.format.DateTimeParseException e) {
             return ApiResponse.error("日期格式错误，请使用 yyyy-MM-dd 或者 yyyy-MM-dd 00:00:00 格式");
@@ -241,7 +238,7 @@ public class UserController {
         Long userId;
         try {
             userId = getFormalUserId();
-        } catch (Exception e) {
+        } catch (BusinessException e) {
             return ApiResponse.error("操作失败：需登录正式账号");
         }
         BigDecimal amount = new BigDecimal(dto.getAmount()) ;
@@ -259,6 +256,7 @@ public class UserController {
                     FundType.EXPENSE,
                     TransactionType.PURCHASE,
                     dto.getRemark() == null ? "" : dto.getRemark(),
+                    null,
                     null,
                     null
             );
@@ -285,8 +283,46 @@ public class UserController {
     }
 
     /**
-     * 用户NFT资产购买
+     * 购买 NFT 卡牌资产
+     * 请求体需要包含数量 quantity
      */
+    @SaCheckLogin
+    @PostMapping("/nft/purchase")
+    public String purchaseNft(@RequestBody NFTPurchaseDTO nftPurchaseDTO) throws Exception {
+        Long userId;
+        try {
+            userId = getFormalUserId();
+        } catch (BusinessException e) {
+            return ApiResponse.error("操作失败：需登录正式账号");
+        }
+
+        // 1. 获取并解析参数
+        Object quantityObj = nftPurchaseDTO.getNumber();
+        if (quantityObj == null) {
+            return ApiResponse.error("请输入购买数量");
+        }
+
+        int quantity;
+        try {
+            quantity = Integer.parseInt(quantityObj.toString());
+        } catch (NumberFormatException e) {
+            return ApiResponse.error("数量格式不正确");
+        }
+
+        log.info("用户 {} 请求购买 {} 张 NFT 卡牌", userId, quantity);
+
+        try {
+            // 2. 调用服务层逻辑
+            billService.purchaseNftCard(userId, quantity);
+            return ApiResponse.success("购买成功，卡牌已发放到您的钱包");
+        } catch (BusinessException e) {
+            log.warn("购买 NFT 失败: {}", e.getMessage());
+            return ApiResponse.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("购买 NFT 接口异常", e);
+            return ApiResponse.error("购买服务暂时不可用");
+        }
+    }
 
 
 
