@@ -19,8 +19,10 @@ import com.ra.rabnbserver.enums.TransactionType;
 import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.mapper.UserBillMapper;
 import com.ra.rabnbserver.mapper.UserMapper;
+import com.ra.rabnbserver.pojo.ETFCard;
 import com.ra.rabnbserver.pojo.User;
 import com.ra.rabnbserver.pojo.UserBill;
+import com.ra.rabnbserver.server.card.EtfCardServe;
 import com.ra.rabnbserver.server.user.userBillServe;
 import io.micrometer.common.util.StringUtils;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +46,8 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
 
     // 1. 注入事务模板
     private final TransactionTemplate transactionTemplate;
+
+    private final EtfCardServe etfCardServe;
 
 
     /**
@@ -207,6 +211,7 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             log.info("开始执行链上扣款: 用户={}, 金额={}, 订单={}", walletAddress, amount, orderIdHex);
             TransactionReceipt receipt = paymentUsdtContract.deposit(orderIdHex, walletAddress, chainAmount);
 
+            String receiptJson = (receipt == null) ? null : JSON.toJSONString(receipt);
 
 
             if (receipt != null && "0x1".equals(receipt.getStatus())) {
@@ -220,7 +225,7 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                             "USDT充值成功",
                             orderIdHex,
                             receipt.getTransactionHash(),
-                            receipt.toString()
+                            receiptJson
                     );
                     return null;
                 });
@@ -273,69 +278,91 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
 
     @Override
     public void purchaseNftCard(Long userId, int quantity) {
-        // 参数校验
+        // 1. 基本参数校验
         if (quantity <= 0) {
             throw new BusinessException("购买数量必须大于0");
         }
+
         User user = userMapper.selectById(userId);
         if (user == null || StringUtils.isBlank(user.getUserWalletAddress())) {
             throw new BusinessException("用户不存在或未绑定钱包");
         }
-        // 计算总价
-        BigDecimal totalCost = NFT_UNIT_PRICE.multiply(new BigDecimal(quantity));
-        // 预生成订单号，用于后续更新
+
+        // 2. 获取当前激活且启用的批次 (不再硬编码单价)
+        ETFCard currentBatch = etfCardServe.getActiveAndEnabledBatch();
+        if (currentBatch == null) {
+            throw new BusinessException("购买失败：当前没有可售卖的卡牌批次");
+        }
+
+        // 3. 校验库存初步判断 (减少不必要的数据库锁竞争)
+        if (currentBatch.getInventory() < quantity) {
+            throw new BusinessException("库存不足，当前ETF仅剩: " + currentBatch.getInventory());
+        }
+
+        // 4. 计算总价
+        BigDecimal totalCost = currentBatch.getUnitPrice().multiply(new BigDecimal(quantity));
         String orderId = "BILL_" + IdWorker.getIdStr();
 
-        // 执行编程式事务
+        // 5. 执行编程式事务
         transactionTemplate.execute(status -> {
             try {
-                // 执行统一扣款逻辑 (此时 txId 和 res 为空)
-                // 该方法内部会锁定用户、计算余额并插入一条 status 为 SUCCESS 的流水
+                // A. 【乐观锁扣减库存】
+                // 核心：在 SQL 层面增加 inventory >= quantity 的判断，利用数据库行锁保证并发安全
+                boolean inventoryUpdated = etfCardServe.update(new LambdaUpdateWrapper<ETFCard>()
+                        .eq(ETFCard::getId, currentBatch.getId())
+                        .ge(ETFCard::getInventory, quantity) // 关键：乐观锁条件，确保库存够扣
+                        .setSql("inventory = inventory - " + quantity)
+                        .setSql("sold_count = sold_count + " + quantity));
+
+                if (!inventoryUpdated) {
+                    // 如果返回 false，说明在该事务执行期间，库存已被其他线程抢先扣减
+                    throw new BusinessException("抢购失败：库存已被抢光或不足");
+                }
+                // B. 执行平台余额扣款
                 this.createBillAndUpdateBalance(
                         userId,
                         totalCost,
                         BillType.PLATFORM,
                         FundType.EXPENSE,
                         TransactionType.PURCHASE,
-                        "购买NFT卡牌 x" + quantity,
+                        "购买NFT卡牌(" + currentBatch.getBatchNo() + ") x" + quantity,
                         orderId,
-                        null, // txId 暂空
-                        null  // res 暂空
+                        null,
+                        null
                 );
-                // 调用链上 Mint 方法
-                log.info("开始链上铸造 NFT: 用户={}, 数量={}, 订单={}", user.getUserWalletAddress(), quantity, orderId);
+
+                // C. 执行链上 Mint 铸造
+                log.info("开始链上铸造: 批次={}, 用户={}, 数量={}", currentBatch.getBatchNo(), user.getUserWalletAddress(), quantity);
                 TransactionReceipt receipt = cardNftContract.mint(
                         user.getUserWalletAddress(),
                         BigInteger.valueOf(quantity)
                 );
 
-                // 检查合约执行状态
+                // D. 检查合约执行状态并补全账单
                 if (receipt != null && "0x1".equals(receipt.getStatus())) {
                     String receiptJson = JSON.toJSONString(receipt);
                     String txHash = receipt.getTransactionHash();
-                    // 更新刚才创建的账单记录，补全 txId 和 chainResponse
-                    boolean updateResult = this.update(new LambdaUpdateWrapper<UserBill>()
+                    boolean billUpdated = this.update(new LambdaUpdateWrapper<UserBill>()
                             .eq(UserBill::getTransactionOrderId, orderId)
                             .set(UserBill::getTxId, txHash)
                             .set(UserBill::getChainResponse, receiptJson));
-                    if (!updateResult) {
-                        log.error("补全账单信息失败: orderId={}", orderId);
-                        throw new BusinessException("账单系统同步异常");
+                    if (!billUpdated) {
+                        throw new BusinessException("账单同步失败");
                     }
-                    log.info("NFT 购买成功并已补全账单: txHash={}", txHash);
+                    log.info("购买成功: 订单={}, txHash={}", orderId, txHash);
                     return true;
                 } else {
-                    // 回执显示失败，抛出异常触发回滚（撤销扣款）
-                    log.error("合约 Mint 失败或回执为空: {}", receipt);
-                    throw new BusinessException("链上铸造失败，资金已自动退回");
+                    log.error("合约执行失败: {}", receipt);
+                    throw new BusinessException("链上铸造失败，资金已退回");
                 }
+
             } catch (BusinessException e) {
-                status.setRollbackOnly(); // 显式标记回滚
+                status.setRollbackOnly(); // 触发事务回滚：库存会加回去，余额扣款会撤销
                 throw e;
             } catch (Exception e) {
-                log.error("购买过程发生未知异常，执行事务回滚: ", e);
-                status.setRollbackOnly();// 显式标记回滚
-                throw new BusinessException("购买服务异常: " + e.getMessage());
+                log.error("购买过程发生异常: ", e);
+                status.setRollbackOnly();
+                throw new BusinessException("系统处理异常: " + e.getMessage());
             }
         });
     }
