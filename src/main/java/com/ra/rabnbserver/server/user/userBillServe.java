@@ -2,6 +2,8 @@ package com.ra.rabnbserver.server.user;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.ra.rabnbserver.VO.AdminBillStatisticsVO;
+import com.ra.rabnbserver.dto.AdminBillQueryDTO;
 import com.ra.rabnbserver.dto.BillQueryDTO;
 import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;
@@ -22,4 +24,8 @@ public interface userBillServe extends IService<UserBill> {
     void rechargeFromChain(Long userId, BigDecimal amount);
 
     void purchaseNftCard(Long userId, int quantity);
+
+    IPage<UserBill> getAdminBillPage(AdminBillQueryDTO query);
+
+    AdminBillStatisticsVO getPlatformStatistics();
 }

@@ -8,9 +8,11 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.ra.rabnbserver.VO.AdminBillStatisticsVO;
 import com.ra.rabnbserver.contract.CardNftContract;
 import com.ra.rabnbserver.contract.PaymentUsdtContract;
 import com.ra.rabnbserver.contract.support.AmountConvertUtils;
+import com.ra.rabnbserver.dto.AdminBillQueryDTO;
 import com.ra.rabnbserver.dto.BillQueryDTO;
 import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;
@@ -32,10 +34,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @Slf4j
@@ -306,9 +313,18 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             throw new BusinessException("购买失败：当前没有可售卖的卡牌批次");
         }
 
-        // 3. 校验库存初步判断 (减少不必要的数据库锁竞争)
-        if (currentBatch.getInventory() < quantity) {
-            throw new BusinessException("库存不足，当前ETF仅剩: " + currentBatch.getInventory());
+        // 3. 校验库存：从合约方法 remainingMintable 获取实时数据
+        BigInteger remaining;
+        try {
+            remaining = cardNftContract.remainingMintable();
+            log.info("当前链上剩余可分发数量: {}", remaining);
+        } catch (Exception e) {
+            log.error("调用合约获取剩余库存失败", e);
+            throw new BusinessException("获取链上库存失败，请稍后再试");
+        }
+
+        if (remaining.compareTo(BigInteger.valueOf(quantity)) < 0) {
+            throw new BusinessException("链上库存不足，当前仅剩: " + remaining);
         }
 
         // 4. 计算总价
@@ -377,5 +393,112 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                 throw new BusinessException("系统处理异常: " + e.getMessage());
             }
         });
+    }
+
+    @Override
+    public IPage<UserBill> getAdminBillPage(AdminBillQueryDTO query) {
+        LambdaQueryWrapper<UserBill> wrapper = new LambdaQueryWrapper<>();
+
+        // 1. 用户地址模糊查询
+        if (StringUtils.isNotBlank(query.getUserWalletAddress())) {
+            wrapper.like(UserBill::getUserWalletAddress, query.getUserWalletAddress());
+        }
+
+        // 2. 枚举类精确匹配
+        if (query.getBillType() != null) {
+            wrapper.eq(UserBill::getBillType, query.getBillType());
+        }
+        if (query.getFundType() != null) {
+            wrapper.eq(UserBill::getFundType, query.getFundType());
+        }
+        if (query.getTransactionType() != null) {
+            wrapper.eq(UserBill::getTransactionType, query.getTransactionType());
+        }
+        if (query.getStatus() != null) {
+            wrapper.eq(UserBill::getStatus, query.getStatus());
+        }
+
+        // 3. 时间范围查询 (Hutool 处理)
+        if (StringUtils.isNotBlank(query.getStartDate())) {
+            LocalDateTime start = DateUtil.parse(query.getStartDate()).toLocalDateTime().with(LocalTime.MIN);
+            wrapper.ge(UserBill::getTransactionTime, start);
+        }
+        if (StringUtils.isNotBlank(query.getEndDate())) {
+            LocalDateTime end = DateUtil.parse(query.getEndDate()).toLocalDateTime().with(LocalTime.MAX);
+            wrapper.le(UserBill::getTransactionTime, end);
+        }
+
+        // 4. 排序：按交易时间倒序，ID倒序
+        wrapper.orderByDesc(UserBill::getTransactionTime).orderByDesc(UserBill::getId);
+
+        // 5. 分页执行
+        Page<UserBill> pageParam = new Page<>(query.getPage(), query.getSize());
+        return this.page(pageParam, wrapper);
+    }
+
+    @Override
+    public AdminBillStatisticsVO getPlatformStatistics() {
+        AdminBillStatisticsVO vo = new AdminBillStatisticsVO();
+
+        // --- 1. 统计所有用户的余额总和 (User表) ---
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<User> userQuery = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        userQuery.select("SUM(balance) as sumBalance");
+        List<Map<String, Object>> userMaps = userMapper.selectMaps(userQuery);
+        if (!userMaps.isEmpty() && userMaps.get(0) != null && userMaps.get(0).get("sumBalance") != null) {
+            vo.setTotalUserBalance(new BigDecimal(userMaps.get(0).get("sumBalance").toString()));
+        }
+
+        // --- 2. 统计平台充值总额 (UserBill表) ---
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<UserBill> depositQuery = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        depositQuery.select("SUM(amount) as sumAmount")
+                .eq("bill_type", BillType.PLATFORM.getCode())
+                .eq("transaction_type", TransactionType.DEPOSIT.getCode())
+                .eq("status", TransactionStatus.SUCCESS.getCode());
+        List<java.util.Map<String, Object>> depositMaps = this.baseMapper.selectMaps(depositQuery);
+        if (!depositMaps.isEmpty() && depositMaps.get(0) != null && depositMaps.get(0).get("sumAmount") != null) {
+            vo.setTotalPlatformDeposit(new BigDecimal(depositMaps.get(0).get("sumAmount").toString()));
+        }
+
+        // --- 3. 统计NFT购买总金额 & 销售总数 (从UserBill备注解析) ---
+        // 查询所有成功的、平台类型的、购买业务的账单
+        LambdaQueryWrapper<UserBill> purchaseWrapper = new LambdaQueryWrapper<>();
+        purchaseWrapper.select(UserBill::getAmount, UserBill::getRemark)
+                .eq(UserBill::getBillType, BillType.PLATFORM)
+                .eq(UserBill::getTransactionType, TransactionType.PURCHASE)
+                .eq(UserBill::getStatus, TransactionStatus.SUCCESS);
+
+        List<UserBill> purchaseBills = this.list(purchaseWrapper);
+
+        BigDecimal purchaseTotalAmount = BigDecimal.ZERO;
+        int totalQuantity = 0;
+
+        // 预编译正则：匹配末尾的 x 数字，例如 "x1", "x10"
+        Pattern pattern = Pattern.compile("x(\\d+)$");
+
+        for (UserBill bill : purchaseBills) {
+            // A. 累加金额
+            if (bill.getAmount() != null) {
+                purchaseTotalAmount = purchaseTotalAmount.add(bill.getAmount());
+            }
+
+            // B. 正则解析备注中的数量
+            String remark = bill.getRemark();
+            if (StringUtils.isNotBlank(remark)) {
+                Matcher matcher = pattern.matcher(remark.trim());
+                if (matcher.find()) {
+                    try {
+                        String qStr = matcher.group(1); // 获取第一个括号捕获的内容
+                        totalQuantity += Integer.parseInt(qStr);
+                    } catch (NumberFormatException e) {
+                        log.warn("账单ID: {} 备注数量解析失败: {}", bill.getId(), remark);
+                    }
+                }
+            }
+        }
+
+        vo.setTotalNftPurchaseAmount(purchaseTotalAmount);
+        vo.setTotalNftSalesCount(totalQuantity);
+
+        return vo;
     }
 }
