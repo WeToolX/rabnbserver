@@ -65,7 +65,7 @@ blockchain:
 # 合约管理员私钥密文（Base64: iv:cipher）
 contract:
   admin:
-    private-key-enc: 9yEeE0BttNFnSK8vnUgUIQ==:w07Vb+WqdFjY2RXL7UZQ8zZgXa/XsQM/OopNV/EekDgkexLY79zZ3JbcL7p5DHV6
+    private-key-enc: lSS2qVjGBBn4gDHxk7Tf2A==:E7655itX9jc4rLs+uATtYaW1VaaEl9/xzEs5G2DEzaxp0uWK6zqEvMzhuwaJirzXvG4Dj+BRDlONXjYKyD3Gv/EmJUpckzs/8ohlU3RJ8gY=
   address:
     payment-usdt: '0x600F50058c8cEb5Ad9448c82eA3135d4C5539b12'
     card-nft: '0x295273340c59e0b875dcb172A328Dcef66eFb01e'

@@ -364,8 +364,8 @@ class RabnbserverApplicationTests {
      */
     @Test
     void testPaymentUsdtAllowance() throws Exception {
-        String owner = requireTodoString("PaymentUSDT allowance owner", "TODO:填写地址");
-        String spender = requireTodoString("PaymentUSDT allowance spender", "TODO:填写地址");
+        String owner = "0x75150a5dd1d992BEd89F49A15b6A70f43A5c8C64";
+        String spender = "0x600F50058c8CEb5aD9448C82Ea3135D4C5539B12";
         log.info("授权额度: {}", paymentUsdtContract.allowance(owner, spender));
     }
 
@@ -374,7 +374,7 @@ class RabnbserverApplicationTests {
      */
     @Test
     void testPaymentUsdtAllowanceToContract() throws Exception {
-        String owner = requireTodoString("PaymentUSDT allowanceToPaymentUsdt owner", "TODO:填写地址");
+        String owner = "0x75150a5dd1d992BEd89F49A15b6A70f43A5c8C64";
         log.info("授权额度(合约): {}", paymentUsdtContract.allowanceToPaymentUsdt(owner));
     }
 
