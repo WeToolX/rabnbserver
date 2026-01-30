@@ -50,12 +50,14 @@ sa-token:
   is-read-body: true
   is-read-cookie: true
 
-# 区块链配置（BSC Testnet）
+# 区块链配置（BSC Mainnet）
 blockchain:
-  rpc-url: https://data-seed-prebsc-1-s1.binance.org:8545
-  # 备用 RPC: https://data-seed-prebsc-2-s1.binance.org:8545
-  chain-id: 97
-  currency-symbol: tBNB
+  rpc-url: https://bsc-dataseed.binance.org
+  # 备用 RPC:
+  # https://bsc-dataseed1.defibit.io
+  # https://bsc-dataseed1.ninicoin.io
+  chain-id: 56
+  currency-symbol: BNB
   gas-limit-default: 1000000
   tx-poll-interval-ms: 2000
   tx-timeout-ms: 1200000
@@ -63,9 +65,9 @@ blockchain:
 # 合约管理员私钥密文（Base64: iv:cipher）
 contract:
   admin:
-    private-key-enc: 4r8x//lODh2x0o550QPYOw==:vfxYz+4+abVK6nk4VaduB9rNRx5vPUqYBN+Ykij9I3BRFLNYHkGQ+kEeuuTeBoJ1zEwLt63/Qegqystuc8M+sKolgyD2h298dm97Sl+sCa4=
+    private-key-enc: 9yEeE0BttNFnSK8vnUgUIQ==:w07Vb+WqdFjY2RXL7UZQ8zZgXa/XsQM/OopNV/EekDgkexLY79zZ3JbcL7p5DHV6
   address:
-    payment-usdt: '0xd8521BAD8d3be5111b593Bf14d3bA3A3252d4B3D'
+    payment-usdt: '0x600F50058c8cEb5Ad9448c82eA3135d4C5539b12'
     card-nft: '0x295273340c59e0b875dcb172A328Dcef66eFb01e'
     aion: '0x4D49D3118450D8aA32d046fFb0dE163De220BBDc'
 
