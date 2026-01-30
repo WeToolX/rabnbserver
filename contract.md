@@ -36,7 +36,7 @@ _mint(msg.sender, 1_000_000 * 10**6);
 [{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"allowance","type":"uint256"},{"internalType":"uint256","name":"needed","type":"uint256"}],"name":"ERC20InsufficientAllowance","type":"error"},{"inputs":[{"internalType":"address","name":"sender","type":"address"},{"internalType":"uint256","name":"balance","type":"uint256"},{"internalType":"uint256","name":"needed","type":"uint256"}],"name":"ERC20InsufficientBalance","type":"error"},{"inputs":[{"internalType":"address","name":"approver","type":"address"}],"name":"ERC20InvalidApprover","type":"error"},{"inputs":[{"internalType":"address","name":"receiver","type":"address"}],"name":"ERC20InvalidReceiver","type":"error"},{"inputs":[{"internalType":"address","name":"sender","type":"address"}],"name":"ERC20InvalidSender","type":"error"},{"inputs":[{"internalType":"address","name":"spender","type":"address"}],"name":"ERC20InvalidSpender","type":"error"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"spender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Approval","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Transfer","type":"event"},{"inputs":[{"internalType":"address","name":"owner","type":"address"},{"internalType":"address","name":"spender","type":"address"}],"name":"allowance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"approve","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"decimals","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"stateMutability":"pure","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"faucet","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"transfer","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"transferFrom","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"}]
 
 ## 支付合约
--- PaymentUSDT 合约地址: 0xd8521BAD8d3be5111b593Bf14d3bA3A3252d4B3D
+-- PaymentUSDT 合约地址: 0x600F50058c8cEb5Ad9448c82eA3135d4C5539b12
 合约代码:
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
@@ -48,40 +48,54 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
 * @title PaymentUSDT
-* @notice BSC 链 USDT 专用收款合约：
-*  - 用户先 approve 本合约
-*  - executor（后端热钱包）调用 deposit 拉款到 treasury
-*  - admin（多签）可改 treasury / executor，可暂停
+* @notice USDT payment contract on BSC
+*
+* Design:
+*  - Users must approve this contract first
+*  - The executor (backend or multisig) calls deposit to pull USDT
+*  - Funds are transferred directly to the treasury
+*  - Admin (recommended multisig) can update treasury / executor and pause
+*  - Owner (deployer) and admin can update the minimum payment amount
+*
+* Features:
+*  - Pull-based payment (no direct user transfer)
+*  - OrderId replay protection
+*  - Minimum payment enforcement
+*  - Emergency pause support
      */
      contract PaymentUSDT is Pausable, ReentrancyGuard {
      using SafeERC20 for IERC20;
 
-/* ========== 常量/不可变参数 ========== */
+/* ========== Immutable Parameters ========== */
 
-/// @notice USDT 最小单位：BSC 常用 USDT 为 6 位小数（1 USDT = 1_000_000）
-uint256 public constant MIN_AMOUNT = 1_000_000;
-
-/// @notice 固定 USDT 合约（部署时指定，immutable 降低被篡改风险与 gas）
+/// @notice USDT token contract address
 IERC20 public immutable USDT;
 
-/* ========== 角色/配置 ========== */
+/// @notice Contract owner (deployer, fallback governance)
+address public immutable owner;
 
-/// @notice 管理员（建议为多签地址）
+/* ========== Configurable Parameters ========== */
+
+/// @notice Minimum payment amount (USDT smallest unit, 6 decimals)
+uint256 public minAmount;
+
+/// @notice Admin address (recommended multisig)
 address public admin;
 
-/// @notice 后端执行者钱包（热钱包）
+/// @notice Executor address (backend or multisig Safe)
 address public executor;
 
-/// @notice 收款地址（可为冷钱包或多签）
+/// @notice Treasury address (cold wallet or multisig)
 address public treasury;
 
-/* ========== 订单防重 ========== */
+/* ========== Order Replay Protection ========== */
 
-/// @notice 防重复：orderId => 是否已执行
+/// @notice Records whether an orderId has been executed
 mapping(bytes32 => bool) public executed;
 
-/* ========== 事件 ========== */
+/* ========== Events ========== */
 
+/// @notice Emitted when a payment is successfully executed
 event Deposit(
 bytes32 indexed orderId,
 address indexed user,
@@ -89,44 +103,66 @@ uint256 amount,
 address indexed treasury
 );
 
+/// @notice Emitted when treasury address is updated
 event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
+
+/// @notice Emitted when executor address is updated
 event ExecutorUpdated(address indexed oldExecutor, address indexed newExecutor);
+
+/// @notice Emitted when admin address is updated
 event AdminUpdated(address indexed oldAdmin, address indexed newAdmin);
 
-/* ========== 构造函数 ========== */
+/// @notice Emitted when minimum amount is updated
+event MinAmountUpdated(uint256 oldAmount, uint256 newAmount, address indexed caller);
 
-/**
-    * @param usdt_     USDT 合约地址（BSC 主网常见为 0x55d398...，以你实际为准）
-    * @param treasury_ 收款地址
-    * @param executor_ 后端执行者地址
-    * @param admin_    管理员地址（多签）
-      */
-      constructor(address usdt_, address treasury_, address executor_, address admin_) {
-      require(usdt_ != address(0), "USDT=0");
-      require(treasury_ != address(0), "treasury=0");
-      require(executor_ != address(0), "executor=0");
-      require(admin_ != address(0), "admin=0");
+/* ========== Constructor ========== */
 
-      USDT = IERC20(usdt_);
-      treasury = treasury_;
-      executor = executor_;
-      admin = admin_;
-      }
+constructor(
+address usdt_,
+address treasury_,
+address executor_,
+address admin_
+) {
+require(usdt_ != address(0), "USDT=0");
+require(treasury_ != address(0), "treasury=0");
+require(executor_ != address(0), "executor=0");
+require(admin_ != address(0), "admin=0");
 
-/* ========== 修饰器 ========== */
+    USDT = IERC20(usdt_);
+    treasury = treasury_;
+    executor = executor_;
+    admin = admin_;
 
+    owner = msg.sender;        // Contract deployer
+    minAmount = 1_000_000;     // Default: 1 USDT (6 decimals)
+}
+
+/* ========== Modifiers ========== */
+
+/// @notice Restricts function access to admin only
 modifier onlyAdmin() {
 require(msg.sender == admin, "not admin");
 _;
 }
 
+/// @notice Restricts function access to executor only
 modifier onlyExecutor() {
 require(msg.sender == executor, "not executor");
 _;
 }
 
-/* ========== 管理功能（多签调用） ========== */
+/// @notice Restricts function access to owner or admin
+modifier onlyOwnerOrAdmin() {
+require(
+msg.sender == owner || msg.sender == admin,
+"not owner/admin"
+);
+_;
+}
 
+/* ========== Admin Functions ========== */
+
+/// @notice Update treasury address
 function setTreasury(address newTreasury) external onlyAdmin {
 require(newTreasury != address(0), "treasury=0");
 address old = treasury;
@@ -134,6 +170,7 @@ treasury = newTreasury;
 emit TreasuryUpdated(old, newTreasury);
 }
 
+/// @notice Update executor address
 function setExecutor(address newExecutor) external onlyAdmin {
 require(newExecutor != address(0), "executor=0");
 address old = executor;
@@ -141,35 +178,45 @@ executor = newExecutor;
 emit ExecutorUpdated(old, newExecutor);
 }
 
-/**
-    * @notice 如需更换多签，可更新 admin
-    * @dev 高权限操作，务必由多签发起
-      */
-      function setAdmin(address newAdmin) external onlyAdmin {
-      require(newAdmin != address(0), "admin=0");
-      address old = admin;
-      admin = newAdmin;
-      emit AdminUpdated(old, newAdmin);
-      }
+/// @notice Update admin address
+function setAdmin(address newAdmin) external onlyAdmin {
+require(newAdmin != address(0), "admin=0");
+address old = admin;
+admin = newAdmin;
+emit AdminUpdated(old, newAdmin);
+}
 
+/// @notice Update minimum payment amount (owner or admin)
+function setMinAmount(uint256 newAmount) external onlyOwnerOrAdmin {
+require(newAmount >= 1_000_000, "min < 1 USDT");
+uint256 old = minAmount;
+minAmount = newAmount;
+emit MinAmountUpdated(old, newAmount, msg.sender);
+}
+
+/// @notice Pause the contract (emergency)
 function pause() external onlyAdmin {
 _pause();
 }
 
+/// @notice Unpause the contract
 function unpause() external onlyAdmin {
 _unpause();
 }
 
-/* ========== 核心扣款逻辑 ========== */
+/* ========== Core Payment Logic ========== */
 
 /**
-    * @notice 扣款入口：仅 executor 可调用
-    * @dev 需要用户提前 approve 本合约足额 allowance
-    * @param orderId 订单唯一ID（bytes32）
-    * @param user    用户钱包地址
-    * @param amount  扣款数量（USDT 最小单位，>= 1_000_000）
+    * @notice Execute a USDT payment
+    * @param orderId Unique order identifier (anti-replay)
+    * @param user Address to pull USDT from
+    * @param amount USDT amount (6 decimals)
       */
-      function deposit(bytes32 orderId, address user, uint256 amount)
+      function deposit(
+      bytes32 orderId,
+      address user,
+      uint256 amount
+      )
       external
       whenNotPaused
       nonReentrant
@@ -177,20 +224,17 @@ _unpause();
       {
       require(!executed[orderId], "order executed");
       require(user != address(0), "user=0");
-      require(amount >= MIN_AMOUNT, "amount < 1 USDT");
+      require(amount >= minAmount, "amount < min");
 
-      // 先标记防重放，后做外部调用（安全习惯）
       executed[orderId] = true;
 
-      // SafeERC20 兼容非标准 ERC20：返回 false / 不返回值 等情况会被正确处理
       USDT.safeTransferFrom(user, treasury, amount);
 
       emit Deposit(orderId, user, amount, treasury);
       }
       }
-
 ABI:
-[{"inputs":[{"internalType":"address","name":"usdt_","type":"address"},{"internalType":"address","name":"treasury_","type":"address"},{"internalType":"address","name":"executor_","type":"address"},{"internalType":"address","name":"admin_","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[{"internalType":"address","name":"token","type":"address"}],"name":"SafeERC20FailedOperation","type":"error"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"oldAdmin","type":"address"},{"indexed":true,"internalType":"address","name":"newAdmin","type":"address"}],"name":"AdminUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"orderId","type":"bytes32"},{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":true,"internalType":"address","name":"treasury","type":"address"}],"name":"Deposit","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"oldExecutor","type":"address"},{"indexed":true,"internalType":"address","name":"newExecutor","type":"address"}],"name":"ExecutorUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"account","type":"address"}],"name":"Paused","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"oldTreasury","type":"address"},{"indexed":true,"internalType":"address","name":"newTreasury","type":"address"}],"name":"TreasuryUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"account","type":"address"}],"name":"Unpaused","type":"event"},{"inputs":[],"name":"MIN_AMOUNT","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"USDT","outputs":[{"internalType":"contract IERC20","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"admin","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"orderId","type":"bytes32"},{"internalType":"address","name":"user","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"deposit","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"name":"executed","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"executor","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"pause","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"paused","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"newAdmin","type":"address"}],"name":"setAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newExecutor","type":"address"}],"name":"setExecutor","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newTreasury","type":"address"}],"name":"setTreasury","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"treasury","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"unpause","outputs":[],"stateMutability":"nonpayable","type":"function"}]
+[{"inputs":[{"internalType":"address","name":"usdt_","type":"address"},{"internalType":"address","name":"treasury_","type":"address"},{"internalType":"address","name":"executor_","type":"address"},{"internalType":"address","name":"admin_","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[{"internalType":"address","name":"token","type":"address"}],"name":"SafeERC20FailedOperation","type":"error"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"oldAdmin","type":"address"},{"indexed":true,"internalType":"address","name":"newAdmin","type":"address"}],"name":"AdminUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"orderId","type":"bytes32"},{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":true,"internalType":"address","name":"treasury","type":"address"}],"name":"Deposit","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"oldExecutor","type":"address"},{"indexed":true,"internalType":"address","name":"newExecutor","type":"address"}],"name":"ExecutorUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"oldAmount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"newAmount","type":"uint256"},{"indexed":true,"internalType":"address","name":"caller","type":"address"}],"name":"MinAmountUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"account","type":"address"}],"name":"Paused","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"oldTreasury","type":"address"},{"indexed":true,"internalType":"address","name":"newTreasury","type":"address"}],"name":"TreasuryUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"account","type":"address"}],"name":"Unpaused","type":"event"},{"inputs":[],"name":"USDT","outputs":[{"internalType":"contract IERC20","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"admin","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"orderId","type":"bytes32"},{"internalType":"address","name":"user","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"deposit","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"name":"executed","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"executor","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"minAmount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"pause","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"paused","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"newAdmin","type":"address"}],"name":"setAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newExecutor","type":"address"}],"name":"setExecutor","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"newAmount","type":"uint256"}],"name":"setMinAmount","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newTreasury","type":"address"}],"name":"setTreasury","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"treasury","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"unpause","outputs":[],"stateMutability":"nonpayable","type":"function"}]
 
 ## NFT卡牌合约
 --合约地址:0xaBbDDC8ac523325e6Cd53dE1BaBF0C63B729010a

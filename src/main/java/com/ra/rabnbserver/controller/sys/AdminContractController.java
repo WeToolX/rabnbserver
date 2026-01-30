@@ -48,8 +48,11 @@ public class AdminContractController {
      */
     @PostMapping("/payment-usdt/min-amount")
     public String setMinAmount(@RequestParam BigInteger amount) throws Exception {
-        // 假设合约有 setMinAmount 方法
-        //var receipt = paymentUsdtContract.setMinAmount(amount); receipt.getTransactionHash()
-        return ApiResponse.success("暂无该设置");
+        if (amount == null || amount.signum() <= 0) {
+            return ApiResponse.error("最小扣款金额必须大于 0");
+        }
+        log.info("管理员设置最小扣款金额: {}", amount);
+        var receipt = paymentUsdtContract.setMinAmount(amount);
+        return ApiResponse.success("设置成功", receipt.getTransactionHash());
     }
 }

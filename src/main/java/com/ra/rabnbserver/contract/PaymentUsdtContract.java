@@ -344,12 +344,32 @@ public class PaymentUsdtContract extends ContractBase {
      *         含义：最小扣款金额（链上原始最小单位），可能为 null（RPC 未返回）
      */
     public BigInteger minAmount() throws Exception {
-        Function function = buildViewFunction("MIN_AMOUNT", List.of(new TypeReference<Uint256>() {}));
+        Function function = buildViewFunction("minAmount", List.of(new TypeReference<Uint256>() {}));
         List<Type> outputs = callFunction(getAddress(), function);
         if (outputs.isEmpty()) {
             return null;
         }
         return (BigInteger) outputs.get(0).getValue();
+    }
+
+    /**
+     * 设置最小扣款金额
+     *
+     * @param amount 最小扣款金额（链上原始最小单位）
+     * @return 交易回执
+     *         返回类型：TransactionReceipt（Java 对象）
+     *         status=0x1 成功，status=0x0 失败（回退）
+     */
+    public TransactionReceipt setMinAmount(BigInteger amount) throws Exception {
+        if (amount == null || amount.signum() <= 0) {
+            throw new IllegalArgumentException("最小扣款金额必须大于 0");
+        }
+        Function function = new Function(
+                "setMinAmount",
+                List.of(uint256(amount)),
+                List.of()
+        );
+        return sendTransaction(getAddress(), function);
     }
 
     /**

@@ -434,6 +434,16 @@ class RabnbserverApplicationTests {
     }
 
     /**
+     * 方法作用：设置最小扣款金额
+     */
+    @Test
+    void testPaymentUsdtSetMinAmount() throws Exception {
+        BigInteger amount = new BigInteger(requireTodoString("PaymentUSDT setMinAmount", "TODO:填写最小金额（最小单位）"));
+        var receipt = paymentUsdtContract.setMinAmount(amount);
+        log.info("setMinAmount 结果: {}", receipt);
+    }
+
+    /**
      * 方法作用：暂停合约
      */
     @Test
