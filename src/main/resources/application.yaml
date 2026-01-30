@@ -68,7 +68,7 @@ contract:
     private-key-enc: lSS2qVjGBBn4gDHxk7Tf2A==:E7655itX9jc4rLs+uATtYaW1VaaEl9/xzEs5G2DEzaxp0uWK6zqEvMzhuwaJirzXvG4Dj+BRDlONXjYKyD3Gv/EmJUpckzs/8ohlU3RJ8gY=
   address:
     payment-usdt: '0x600F50058c8cEb5Ad9448c82eA3135d4C5539b12'
-    card-nft: '0x295273340c59e0b875dcb172A328Dcef66eFb01e'
+    card-nft: '0x2fb88dDfA44168e3EF5a89903b1aF2CfaB236D4b'
     aion: '0x4D49D3118450D8aA32d046fFb0dE163De220BBDc'
 
 ---
