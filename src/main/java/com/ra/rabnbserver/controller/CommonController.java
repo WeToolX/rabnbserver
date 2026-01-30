@@ -38,7 +38,7 @@ public class CommonController {
 
     /**
      * 根据类型名称动态获取（适合按需加载）
-     * BillType，FundType，TransactionType
+     * BillType，FundType，TransactionType，TransactionStatus
      */
     @GetMapping("/enum")
     public String getEnumByType(@RequestParam String type) {

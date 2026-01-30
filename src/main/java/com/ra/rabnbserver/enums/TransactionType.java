@@ -1,9 +1,11 @@
 package com.ra.rabnbserver.enums;
 
 import com.baomidou.mybatisplus.annotation.EnumValue;
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import org.springframework.util.StringUtils;
 
 @Getter
 @AllArgsConstructor
@@ -21,6 +23,20 @@ public enum TransactionType implements BaseEnum{
     @JsonValue
     private final String code;
     private final String desc;
+
+
+    @JsonCreator
+    public static TransactionType fromValue(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        for (TransactionType type : TransactionType.values()) {
+            if (type.code.equalsIgnoreCase(value) || type.name().equalsIgnoreCase(value)) {
+                return type;
+            }
+        }
+        return null;
+    }
 
     public static String getDescByCode(String code) {
         for (TransactionType type : TransactionType.values()) {

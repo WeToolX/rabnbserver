@@ -343,7 +343,7 @@ class RabnbserverApplicationTests {
     @Test
     void testPaymentUsdtMeta() throws Exception {
         log.info("PaymentUSDT 地址: {}", paymentUsdtContract.getAddress());
-        log.info("USDT 地址: {}", paymentUsdtContract.usdtAddress());
+        log.info("USDT 合约地址: {}", paymentUsdtContract.usdtAddress());
         log.info("管理员地址: {}", paymentUsdtContract.adminAddress());
         log.info("执行者地址: {}", paymentUsdtContract.executorAddress());
         log.info("收款地址: {}", paymentUsdtContract.treasuryAddress());

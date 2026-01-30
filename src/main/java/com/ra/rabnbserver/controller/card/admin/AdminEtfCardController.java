@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 
 /**
- * 管理员接口 -- ETF 卡牌批次管理接口
+ * 管理员 -- ETF 卡牌批次管理接口
  */
 @Slf4j
 @RestController

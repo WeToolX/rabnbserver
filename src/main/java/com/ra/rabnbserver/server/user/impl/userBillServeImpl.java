@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ra.rabnbserver.VO.AdminBillStatisticsVO;
+import com.ra.rabnbserver.VO.PaymentUsdtMetaVO;
 import com.ra.rabnbserver.contract.CardNftContract;
 import com.ra.rabnbserver.contract.PaymentUsdtContract;
 import com.ra.rabnbserver.contract.support.AmountConvertUtils;
@@ -399,12 +400,10 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
     public IPage<UserBill> getAdminBillPage(AdminBillQueryDTO query) {
         LambdaQueryWrapper<UserBill> wrapper = new LambdaQueryWrapper<>();
 
-        // 1. 用户地址模糊查询
         if (StringUtils.isNotBlank(query.getUserWalletAddress())) {
             wrapper.like(UserBill::getUserWalletAddress, query.getUserWalletAddress());
         }
 
-        // 2. 枚举类精确匹配
         if (query.getBillType() != null) {
             wrapper.eq(UserBill::getBillType, query.getBillType());
         }
@@ -418,7 +417,6 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             wrapper.eq(UserBill::getStatus, query.getStatus());
         }
 
-        // 3. 时间范围查询 (Hutool 处理)
         if (StringUtils.isNotBlank(query.getStartDate())) {
             LocalDateTime start = DateUtil.parse(query.getStartDate()).toLocalDateTime().with(LocalTime.MIN);
             wrapper.ge(UserBill::getTransactionTime, start);
@@ -428,10 +426,8 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             wrapper.le(UserBill::getTransactionTime, end);
         }
 
-        // 4. 排序：按交易时间倒序，ID倒序
         wrapper.orderByDesc(UserBill::getTransactionTime).orderByDesc(UserBill::getId);
 
-        // 5. 分页执行
         Page<UserBill> pageParam = new Page<>(query.getPage(), query.getSize());
         return this.page(pageParam, wrapper);
     }
@@ -439,16 +435,12 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
     @Override
     public AdminBillStatisticsVO getPlatformStatistics() {
         AdminBillStatisticsVO vo = new AdminBillStatisticsVO();
-
-        // --- 1. 统计所有用户的余额总和 (User表) ---
         com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<User> userQuery = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
         userQuery.select("SUM(balance) as sumBalance");
         List<Map<String, Object>> userMaps = userMapper.selectMaps(userQuery);
         if (!userMaps.isEmpty() && userMaps.get(0) != null && userMaps.get(0).get("sumBalance") != null) {
             vo.setTotalUserBalance(new BigDecimal(userMaps.get(0).get("sumBalance").toString()));
         }
-
-        // --- 2. 统计平台充值总额 (UserBill表) ---
         com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<UserBill> depositQuery = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
         depositQuery.select("SUM(amount) as sumAmount")
                 .eq("bill_type", BillType.PLATFORM.getCode())
@@ -458,30 +450,19 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (!depositMaps.isEmpty() && depositMaps.get(0) != null && depositMaps.get(0).get("sumAmount") != null) {
             vo.setTotalPlatformDeposit(new BigDecimal(depositMaps.get(0).get("sumAmount").toString()));
         }
-
-        // --- 3. 统计NFT购买总金额 & 销售总数 (从UserBill备注解析) ---
-        // 查询所有成功的、平台类型的、购买业务的账单
         LambdaQueryWrapper<UserBill> purchaseWrapper = new LambdaQueryWrapper<>();
         purchaseWrapper.select(UserBill::getAmount, UserBill::getRemark)
                 .eq(UserBill::getBillType, BillType.PLATFORM)
                 .eq(UserBill::getTransactionType, TransactionType.PURCHASE)
                 .eq(UserBill::getStatus, TransactionStatus.SUCCESS);
-
         List<UserBill> purchaseBills = this.list(purchaseWrapper);
-
         BigDecimal purchaseTotalAmount = BigDecimal.ZERO;
         int totalQuantity = 0;
-
-        // 预编译正则：匹配末尾的 x 数字，例如 "x1", "x10"
         Pattern pattern = Pattern.compile("x(\\d+)$");
-
         for (UserBill bill : purchaseBills) {
-            // A. 累加金额
             if (bill.getAmount() != null) {
                 purchaseTotalAmount = purchaseTotalAmount.add(bill.getAmount());
             }
-
-            // B. 正则解析备注中的数量
             String remark = bill.getRemark();
             if (StringUtils.isNotBlank(remark)) {
                 Matcher matcher = pattern.matcher(remark.trim());
@@ -500,5 +481,54 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         vo.setTotalNftSalesCount(totalQuantity);
 
         return vo;
+    }
+
+
+    @Override
+    public PaymentUsdtMetaVO getPaymentUsdtMeta() throws Exception {
+        PaymentUsdtMetaVO vo = new PaymentUsdtMetaVO();
+        vo.setContractAddress(paymentUsdtContract.getAddress());
+        vo.setUsdtAddress(paymentUsdtContract.usdtAddress());
+        vo.setAdminAddress(paymentUsdtContract.adminAddress());
+        vo.setExecutorAddress(paymentUsdtContract.executorAddress());
+        vo.setTreasuryAddress(paymentUsdtContract.treasuryAddress());
+        // 获取最小扣款金额并转换精度
+        BigInteger minRaw = paymentUsdtContract.minAmount();
+        vo.setMinAmount(AmountConvertUtils.toHumanAmount(AmountConvertUtils.Currency.USDT, minRaw, 6));
+        return vo;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @Override
+    public void distributeNftByAdmin(Long userId, Integer amount) {
+        User user = userMapper.selectById(userId);
+        if (user == null || StringUtils.isBlank(user.getUserWalletAddress())) {
+            throw new BusinessException("用户不存在或未绑定钱包");
+        }
+        try {
+            // 1. 执行链上分发
+            log.info("管理员手动分发NFT: 用户={}, 数量={}", user.getUserWalletAddress(), amount);
+            TransactionReceipt receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(amount));
+
+            if (receipt != null && "0x1".equals(receipt.getStatus())) {
+                // 2. 记录账单（类型为奖励，不扣除余额，仅做记录）
+                this.createBillAndUpdateBalance(
+                        userId,
+                        BigDecimal.ZERO, // 管理员赠送，金额为0
+                        BillType.ON_CHAIN,
+                        FundType.INCOME,
+                        TransactionType.REWARD,
+                        "系统管理员手动分发NFT x" + amount,
+                        "DIST_" + IdWorker.getIdStr(),
+                        receipt.getTransactionHash(),
+                        JSON.toJSONString(receipt)
+                );
+            } else {
+                throw new BusinessException("链上分发失败");
+            }
+        } catch (Exception e) {
+            log.error("手动分发NFT异常", e);
+            throw new BusinessException("系统分发NTF失败: " + e.getMessage());
+        }
     }
 }

@@ -3,6 +3,7 @@ package com.ra.rabnbserver.server.user;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.ra.rabnbserver.VO.AdminBillStatisticsVO;
+import com.ra.rabnbserver.VO.PaymentUsdtMetaVO;
 import com.ra.rabnbserver.dto.AdminBillQueryDTO;
 import com.ra.rabnbserver.dto.BillQueryDTO;
 import com.ra.rabnbserver.enums.BillType;
@@ -28,4 +29,9 @@ public interface userBillServe extends IService<UserBill> {
     IPage<UserBill> getAdminBillPage(AdminBillQueryDTO query);
 
     AdminBillStatisticsVO getPlatformStatistics();
+
+    PaymentUsdtMetaVO getPaymentUsdtMeta() throws Exception;
+
+    @Transactional(rollbackFor = Exception.class)
+    void distributeNftByAdmin(Long userId, Integer amount);
 }

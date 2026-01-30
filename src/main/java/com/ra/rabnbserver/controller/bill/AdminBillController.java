@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 管理员接口 -- 账单管理
+ * 管理员 -- 账单管理
  */
 @Slf4j
 @RestController

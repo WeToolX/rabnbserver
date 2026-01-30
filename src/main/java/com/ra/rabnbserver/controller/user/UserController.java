@@ -28,7 +28,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 用户接口（初始化、登录）
+ * 用户端 - 用户接口（初始化、登录）
  */
 @Slf4j
 @RestController
@@ -287,7 +287,6 @@ public class UserController {
 
     /**
      * 购买 NFT 卡牌资产
-     * 请求体需要包含数量 quantity
      */
     @SaCheckLogin
     @PostMapping("/nft/purchase")
