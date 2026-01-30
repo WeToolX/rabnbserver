@@ -494,6 +494,7 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         vo.setTreasuryAddress(paymentUsdtContract.treasuryAddress());
         // 获取最小扣款金额并转换精度
         BigInteger minRaw = paymentUsdtContract.minAmount();
+        log.info("最小扣款金额 minRaw: {}", minRaw);
         vo.setMinAmount(AmountConvertUtils.toHumanAmount(AmountConvertUtils.Currency.USDT, minRaw, 18));
         return vo;
     }
