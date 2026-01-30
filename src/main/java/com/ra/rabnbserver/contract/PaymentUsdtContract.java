@@ -340,7 +340,7 @@ public class PaymentUsdtContract extends ContractBase {
      *
      * @return 最小金额
      *         返回类型：BigInteger
-     *         JSON 序列化示例：1000000
+     *         JSON 序列化示例：1000000000000000000
      *         含义：最小扣款金额（链上原始最小单位），可能为 null（RPC 未返回）
      */
     public BigInteger minAmount() throws Exception {

@@ -40,8 +40,8 @@ public class User extends BaseEntity {
      */
     @ColumnComment("账户余额(作为余额缓存，实际余额需要根据账本数据进行计算)")
     @TableField("balance")
-    @DefaultValue("0.000000")
-    @ColumnType("DECIMAL(36, 6)")
+    @DefaultValue("0.000000000000000000")
+    @ColumnType("DECIMAL(36, 18)")
     private BigDecimal balance;
 
 }

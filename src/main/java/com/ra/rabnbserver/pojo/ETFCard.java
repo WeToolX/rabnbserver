@@ -48,7 +48,7 @@ public class ETFCard extends BaseEntity {
 
     @ColumnComment("该批次单价(USDT)")
     @TableField("unit_price")
-    @ColumnType("DECIMAL(18, 6)")
+    @ColumnType("DECIMAL(36, 18)")
     private BigDecimal unitPrice;
 
     /**

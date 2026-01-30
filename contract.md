@@ -18,8 +18,8 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract TestUSDT is ERC20 {
 constructor() ERC20("Test USDT", "USDT") {
-// 初始给部署者 100 万 USDT（6 位小数）
-_mint(msg.sender, 1_000_000 * 10**6);
+// 初始给部署者 100 万 USDT（18 位小数）
+_mint(msg.sender, 1_000_000 * 10**18);
 }
 
     // 测试水龙头：随时给任何地址 mint
@@ -27,9 +27,9 @@ _mint(msg.sender, 1_000_000 * 10**6);
         _mint(to, amount);
     }
 
-    // 覆盖 decimals，模拟真实 USDT（6 位）
+    // 覆盖 decimals，模拟真实 USDT（18 位）
     function decimals() public pure override returns (uint8) {
-        return 6;
+        return 18;
     }
 }
 合约ABI:
@@ -76,7 +76,7 @@ address public immutable owner;
 
 /* ========== Configurable Parameters ========== */
 
-/// @notice Minimum payment amount (USDT smallest unit, 6 decimals)
+/// @notice Minimum payment amount (USDT smallest unit, 18 decimals)
 uint256 public minAmount;
 
 /// @notice Admin address (recommended multisig)
@@ -134,7 +134,7 @@ require(admin_ != address(0), "admin=0");
     admin = admin_;
 
     owner = msg.sender;        // Contract deployer
-    minAmount = 1_000_000;     // Default: 1 USDT (6 decimals)
+minAmount = 1_000_000_000_000_000_000;     // Default: 1 USDT (18 decimals)
 }
 
 /* ========== Modifiers ========== */
@@ -188,7 +188,7 @@ emit AdminUpdated(old, newAdmin);
 
 /// @notice Update minimum payment amount (owner or admin)
 function setMinAmount(uint256 newAmount) external onlyOwnerOrAdmin {
-require(newAmount >= 1_000_000, "min < 1 USDT");
+require(newAmount >= 1_000_000_000_000_000_000, "min < 1 USDT");
 uint256 old = minAmount;
 minAmount = newAmount;
 emit MinAmountUpdated(old, newAmount, msg.sender);
@@ -210,7 +210,7 @@ _unpause();
     * @notice Execute a USDT payment
     * @param orderId Unique order identifier (anti-replay)
     * @param user Address to pull USDT from
-    * @param amount USDT amount (6 decimals)
+* @param amount USDT amount (18 decimals)
       */
       function deposit(
       bytes32 orderId,

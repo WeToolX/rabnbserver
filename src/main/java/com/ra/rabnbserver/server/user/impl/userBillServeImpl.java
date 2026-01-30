@@ -214,7 +214,7 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         }
         String walletAddress = user.getUserWalletAddress();
 
-        //BigInteger chainAmount = amount.multiply(BigDecimal.valueOf(1_000_000L)).toBigInteger();//
+        //BigInteger chainAmount = amount.multiply(BigDecimal.valueOf(1_000_000_000_000_000_000L)).toBigInteger();//
         BigInteger  chainAmount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.USDT, amount);
         String orderIdHex = "0x" + IdWorker.get32UUID(); // 生成32位唯一订单十六进制串
 
@@ -494,7 +494,7 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         vo.setTreasuryAddress(paymentUsdtContract.treasuryAddress());
         // 获取最小扣款金额并转换精度
         BigInteger minRaw = paymentUsdtContract.minAmount();
-        vo.setMinAmount(AmountConvertUtils.toHumanAmount(AmountConvertUtils.Currency.USDT, minRaw, 6));
+        vo.setMinAmount(AmountConvertUtils.toHumanAmount(AmountConvertUtils.Currency.USDT, minRaw, 18));
         return vo;
     }
 
