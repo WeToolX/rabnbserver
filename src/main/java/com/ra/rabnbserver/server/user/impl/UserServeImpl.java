@@ -1,12 +1,16 @@
 package com.ra.rabnbserver.server.user.impl;
 
 import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.ra.rabnbserver.dto.RegisterDataDTO;
 import com.ra.rabnbserver.dto.UserQueryDTO;
+import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.mapper.UserMapper;
 import com.ra.rabnbserver.pojo.User;
 import com.ra.rabnbserver.server.user.UserServe;
@@ -16,6 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -29,12 +36,69 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
 
     @Transactional(rollbackFor = Exception.class)
     @Override
-    public User register(String walletAddress) {
+    public User register(RegisterDataDTO registerDataDTO) {
+        String inputInviteCode = registerDataDTO.getCode();
+        User parent = null;
+
+        // 1. 校验邀请码：如果是 888888 则为根用户，否则必须查到对应的 parent
+        if ("888888".equals(inputInviteCode)) {
+            log.info("根用户注册，钱包地址: {}", registerDataDTO.getUserWalletAddress());
+        } else {
+            parent = getByInviteCode(inputInviteCode);
+            if (parent == null) {
+                throw new BusinessException("请输入正确的邀请码");
+            }
+        }
+
+        // 2. 初始化新用户
         User user = new User();
-        user.setUserWalletAddress(walletAddress);
-        user.setUserName(walletAddress);
+        user.setUserWalletAddress(registerDataDTO.getUserWalletAddress());
+        user.setUserName(registerDataDTO.getUserWalletAddress());
         user.setBalance(BigDecimal.ZERO);
+        user.setInviteCode(generateUniqueInviteCode());
+        user.setDirectCount(0);
+        user.setTeamCount(0);
+
+        // 3. 设置层级关系
+        if (parent != null) {
+            // 有推荐人的情况
+            user.setParentInviteCode(parent.getInviteCode());
+            user.setParentId(parent.getId());
+            user.setLevel(parent.getLevel() + 1);
+            user.setPath(parent.getPath() + parent.getId() + ",");
+        } else {
+            // 根用户情况 (邀请码为 888888)
+            user.setParentInviteCode("0");
+            user.setParentId(0L);
+            user.setLevel(1);
+            user.setPath("0,");
+        }
+
         this.save(user);
+
+        // 4. 更新上级统计数据
+        if (parent != null) {
+            // (1) 更新直接上级：直推人数 +1
+            this.lambdaUpdate()
+                    .setSql("direct_count = direct_count + 1")
+                    .eq(User::getId, parent.getId())
+                    .update();
+
+            // (2) 更新所有祖先：团队总人数 +1
+            // 获取路径中所有的祖先ID (排除掉 0)
+            List<Long> ancestorIds = Arrays.stream(user.getPath().split(","))
+                    .filter(s -> StrUtil.isNotBlank(s) && !"0".equals(s))
+                    .map(Long::parseLong)
+                    .collect(Collectors.toList());
+
+            if (!ancestorIds.isEmpty()) {
+                // 使用一条 SQL 更新所有祖先的 team_count，避免循环查询/更新
+                this.update(new LambdaUpdateWrapper<User>()
+                        .setSql("team_count = team_count + 1")
+                        .in(User::getId, ancestorIds));
+            }
+        }
+
         return user;
     }
 
@@ -72,5 +136,32 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         }
         wrapper.orderByDesc(User::getCreateTime);
         return this.page(page, wrapper);
+    }
+
+    /**
+     * 生成唯一的 6 位随机邀请码
+     */
+    private String generateUniqueInviteCode() {
+        String code;
+        while (true) {
+            // 生成6位大写字母+数字混合字符串
+            code = RandomUtil.randomString("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 6);
+            // 校验数据库是否存在
+            long count = count(new LambdaQueryWrapper<User>().eq(User::getInviteCode, code));
+            if (count == 0) {
+                break;
+            }
+        }
+        return code;
+    }
+
+    /**
+     * 根据邀请码获取用户
+     */
+    private User getByInviteCode(String inviteCode) {
+        if (StrUtil.isBlank(inviteCode) || "0".equals(inviteCode)) {
+            return null;
+        }
+        return getOne(new LambdaQueryWrapper<User>().eq(User::getInviteCode, inviteCode));
     }
 }

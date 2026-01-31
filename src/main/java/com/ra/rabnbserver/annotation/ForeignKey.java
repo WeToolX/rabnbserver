@@ -8,7 +8,7 @@ import java.lang.annotation.*;
 
 /**
  * 数据库外键约束注解
- * // ▼▼▼ 定义外键 ▼▼▼
+ * // 定义外键
  * @ForeignKey(
  *     name = "fk_account_user_id",               // 约束名称
  *     columns = {"user_id"},                     // 当前表的列
@@ -21,7 +21,7 @@ import java.lang.annotation.*;
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
-@Repeatable(ForeignKeys.class) // ▼▼▼ 允许在同一个类上定义多个@ForeignKey注解 ▼▼▼
+@Repeatable(ForeignKeys.class) // 允许在同一个类上定义多个@ForeignKey注解
 public @interface ForeignKey {
 
     /**

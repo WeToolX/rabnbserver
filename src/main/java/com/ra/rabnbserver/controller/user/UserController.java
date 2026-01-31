@@ -4,7 +4,9 @@ import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.dev33.satoken.stp.parameter.SaLoginParameter;
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ra.rabnbserver.crypto.CryptoConstants;
 import com.ra.rabnbserver.crypto.CryptoUtils;
@@ -110,11 +112,14 @@ public class UserController {
         if (StrUtil.isBlank(walletAddress)) {
             return ApiResponse.error("钱包地址不能为空");
         }
+        if (StrUtil.isBlank(registerDataDTO.getCode())) {
+            return ApiResponse.error("邀请码不能为空");
+        }
         User existingUser = userService.getByWalletAddress(walletAddress);
         if (existingUser != null) {
             return ApiResponse.error("该地址已注册");
         }
-        User newUser = userService.register(walletAddress);
+        User newUser = userService.register(registerDataDTO);
         upgradeToUserSession(newUser.getId().toString());
         return ApiResponse.success("注册成功", newUser);
     }
@@ -131,11 +136,36 @@ public class UserController {
             if (user == null) {
                 return ApiResponse.error("用户不存在");
             }
-            log.info("获取用户信息成功: {}", user.getId());
+            log.info("获取用户信息成功: {}", user);
             return ApiResponse.success("获取成功", user);
         } catch (BusinessException e) {
             return ApiResponse.error(e.getMessage());
         }
+    }
+
+    /**
+     * 查询我的团队列表
+     * @param query (包..)
+     */
+    @SaCheckLogin
+    @PostMapping("/team/list")
+    public String getTeamList(@RequestBody TeamQueryDTO query) {
+        Long userId = getFormalUserId();
+        User currentUser = userService.getById(userId);
+        Page<User> page = new Page<>(query.getPage(), query.getSize());
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+        // 核心逻辑：查询 path 以 "我的Path + 我的ID," 开头的用户
+        String subPath = currentUser.getPath() + currentUser.getId() + ",";
+        wrapper.likeRight(User::getPath, subPath);
+        // 如果传了 targetLevel，则计算绝对层级
+        // 比如：我的 level 是 5，我想看我的第一层(targetLevel=1)，那就是查 level = 6 的人
+        if (query.getTargetLevel() != null && query.getTargetLevel() > 0) {
+            wrapper.eq(User::getLevel, currentUser.getLevel() + query.getTargetLevel());
+        }
+        wrapper.orderByDesc(User::getCreateTime);
+        IPage<User> result = userService.page(page, wrapper);
+        log.info("查询团队列表：{}",result.toString());
+        return ApiResponse.success("获取成功", result);
     }
 
     /**

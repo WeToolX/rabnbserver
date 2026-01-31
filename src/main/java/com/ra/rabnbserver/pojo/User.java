@@ -44,4 +44,59 @@ public class User extends BaseEntity {
     @ColumnType("DECIMAL(36, 18)")
     private BigDecimal balance;
 
+    /**
+     * 用户自己的邀请码
+     */
+    @TableField("invite_code")
+    @ColumnComment("用户自己的邀请码")
+    private String inviteCode;
+
+    /**
+     * 注册填入的邀请码（上级邀请码）
+     */
+    @TableField("parent_invite_code")
+    @ColumnComment("注册填入的邀请码（上级邀请码，后台添加的用户设置为0）")
+    @DefaultValue("0")
+    private String parentInviteCode;
+
+    /**
+     * 上级用户ID (建议增加此字段，方便数据库关联查询，提升性能)
+     */
+    @TableField("parent_id")
+    @ColumnComment("上级用户ID")
+    @DefaultValue("0")
+    private Long parentId;
+
+    /**
+     * 当前层级(根节点为1)
+     */
+    @TableField("level")
+    @ColumnComment("当前层级(根节点为1)")
+    @DefaultValue("1")
+    private Integer level;
+
+    /**
+     * 家族路径(0,id1,id2,...)
+     */
+    @TableField("path")
+    @ColumnComment("家族路径(0,id1,id2,...)")
+    @DefaultValue("0,")
+    private String path;
+
+    /**
+     * 直推人数(仅直接下级)
+     */
+    @TableField("direct_count")
+    @ColumnComment("直推人数(仅直接下级)")
+    @DefaultValue("0")
+    private Integer directCount;
+
+    /**
+     * 团队总人数(所有下级总和)
+     */
+    @TableField("team_count")
+    @ColumnComment("团队总人数(所有下级总和)")
+    @DefaultValue("0")
+    private Integer teamCount;
+
 }
