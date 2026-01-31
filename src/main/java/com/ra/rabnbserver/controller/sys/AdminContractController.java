@@ -5,7 +5,7 @@ import com.ra.rabnbserver.contract.PaymentUsdtContract;
 import com.ra.rabnbserver.contract.support.AmountConvertUtils;
 import com.ra.rabnbserver.dto.contract.TreasuryDTO;
 import com.ra.rabnbserver.model.ApiResponse;
-import com.ra.rabnbserver.server.user.userBillServe;
+import com.ra.rabnbserver.server.user.UserBillServe;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -22,7 +22,7 @@ import java.math.BigInteger;
 @RequestMapping("/api/admin/contract")
 public class AdminContractController {
 
-    private final userBillServe userBillService;
+    private final UserBillServe userBillService;
     private final PaymentUsdtContract paymentUsdtContract;
 
     /**

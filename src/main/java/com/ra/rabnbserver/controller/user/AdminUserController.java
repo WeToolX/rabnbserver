@@ -1,13 +1,11 @@
 package com.ra.rabnbserver.controller.user;
 
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ra.rabnbserver.contract.CardNftContract;
 import com.ra.rabnbserver.dto.DistributeNftDTO;
 import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.User;
-import com.ra.rabnbserver.pojo.UserBill;
-import com.ra.rabnbserver.server.user.userBillServe;
-import com.ra.rabnbserver.server.user.userServe;
+import com.ra.rabnbserver.server.user.UserBillServe;
+import com.ra.rabnbserver.server.user.UserServe;
 import com.ra.rabnbserver.dto.UserQueryDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,12 +22,12 @@ import java.math.BigInteger;
 public class AdminUserController {
 
     @Autowired
-    private userServe userService;
+    private UserServe userService;
 
     private final CardNftContract cardNftContract;
-    private final userBillServe userBillServer;
+    private final UserBillServe userBillServer;
 
-    public AdminUserController(CardNftContract cardNftContract, userBillServe userBillServer) {
+    public AdminUserController(CardNftContract cardNftContract, UserBillServe userBillServer) {
         this.cardNftContract = cardNftContract;
         this.userBillServer = userBillServer;
     }

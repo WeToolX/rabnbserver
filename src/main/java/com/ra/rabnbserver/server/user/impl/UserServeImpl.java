@@ -9,7 +9,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ra.rabnbserver.dto.UserQueryDTO;
 import com.ra.rabnbserver.mapper.UserMapper;
 import com.ra.rabnbserver.pojo.User;
-import com.ra.rabnbserver.server.user.userServe;
+import com.ra.rabnbserver.server.user.UserServe;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,7 +19,7 @@ import java.math.BigDecimal;
 
 @Service
 @Slf4j
-public class userServeImpl extends ServiceImpl<UserMapper, User> implements userServe {
+public class UserServeImpl extends ServiceImpl<UserMapper, User> implements UserServe {
 
     @Override
     public User getByWalletAddress(String address) {

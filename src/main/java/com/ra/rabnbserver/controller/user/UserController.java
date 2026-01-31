@@ -16,12 +16,12 @@ import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.User;
 import com.ra.rabnbserver.pojo.UserBill;
-import com.ra.rabnbserver.server.user.userServe;
+import com.ra.rabnbserver.server.user.UserServe;
 import com.ra.rabnbserver.utils.RandomIdGenerator;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
-import com.ra.rabnbserver.server.user.userBillServe;
+import com.ra.rabnbserver.server.user.UserBillServe;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -41,11 +41,11 @@ public class UserController {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private final userServe userService;
-    private final userBillServe billService;
+    private final UserServe userService;
+    private final UserBillServe billService;
 
 
-    public UserController(userServe userService, userBillServe billService) {
+    public UserController(UserServe userService, UserBillServe billService) {
         this.userService = userService;
         this.billService = billService;
     }

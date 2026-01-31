@@ -6,7 +6,7 @@ import com.ra.rabnbserver.dto.UserQueryDTO;
 import com.ra.rabnbserver.pojo.User;
 import org.springframework.transaction.annotation.Transactional;
 
-public interface userServe extends IService<User> {
+public interface UserServe extends IService<User> {
     User getByWalletAddress(String address);
 
     @Transactional(rollbackFor = Exception.class)

@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 
-public interface userBillServe extends IService<UserBill> {
+public interface UserBillServe extends IService<UserBill> {
     @Transactional(rollbackFor = Exception.class)
     void createBillAndUpdateBalance(Long userId, BigDecimal amount, BillType billType,
                                     FundType fundType, TransactionType txType,

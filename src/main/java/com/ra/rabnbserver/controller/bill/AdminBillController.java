@@ -5,7 +5,7 @@ import com.ra.rabnbserver.VO.AdminBillStatisticsVO;
 import com.ra.rabnbserver.dto.AdminBillQueryDTO;
 import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.UserBill;
-import com.ra.rabnbserver.server.user.userBillServe;
+import com.ra.rabnbserver.server.user.UserBillServe;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/admin/bill")
 public class AdminBillController {
 
-    private final userBillServe userBillService;
+    private final UserBillServe userBillService;
 
     /**
      * 分页查询账单列表

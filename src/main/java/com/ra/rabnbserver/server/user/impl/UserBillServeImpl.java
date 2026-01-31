@@ -26,7 +26,7 @@ import com.ra.rabnbserver.pojo.ETFCard;
 import com.ra.rabnbserver.pojo.User;
 import com.ra.rabnbserver.pojo.UserBill;
 import com.ra.rabnbserver.server.card.EtfCardServe;
-import com.ra.rabnbserver.server.user.userBillServe;
+import com.ra.rabnbserver.server.user.UserBillServe;
 import io.micrometer.common.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
 
+import java.math.RoundingMode;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -48,7 +49,7 @@ import java.util.Map;
 @Service
 @Slf4j
 @RequiredArgsConstructor
-public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> implements userBillServe {
+public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> implements UserBillServe {
 
     private final UserMapper userMapper;
 
@@ -99,28 +100,23 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         BigDecimal balanceBefore = BigDecimal.ZERO;
         UserBill lastBill = this.getOne(new LambdaQueryWrapper<UserBill>()
                 .eq(UserBill::getUserId, userId)
-                .eq(UserBill::getBillType, billType) // 这里改为动态匹配传入的 billType
+                .eq(UserBill::getBillType, billType)
                 .orderByDesc(UserBill::getId)
                 .last("LIMIT 1"));
-
         if (lastBill != null) {
             balanceBefore = lastBill.getBalanceAfter();
         }
-
         // 3. 计算金额变动
         BigDecimal changeAmount = amount;
         if (FundType.EXPENSE.equals(fundType)) {
             changeAmount = amount.negate();
         }
-
         // 4. 计算变动后的余额
         BigDecimal balanceAfter = balanceBefore.add(changeAmount);
-
         // 5. 余额合法性校验（通常平台账单和链上账单都不允许余额小于0）
         if (balanceAfter.compareTo(BigDecimal.ZERO) < 0) {
             throw new BusinessException("账户余额不足");
         }
-
         // 6. 插入新账单
         UserBill newBill = new UserBill();
         newBill.setUserId(userId);
@@ -153,11 +149,7 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
     @Override
     public IPage<UserBill> getUserBillPage(Long userId, BillQueryDTO query) {
         LambdaQueryWrapper<UserBill> wrapper = new LambdaQueryWrapper<>();
-
-        // 锁定当前用户（核心安全条件）
         wrapper.eq(UserBill::getUserId, userId);
-
-        // 动态筛选条件
         if (query.getBillType() != null) {
             wrapper.eq(UserBill::getBillType, query.getBillType());
         }
@@ -167,34 +159,23 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (query.getFundType() != null) {
             wrapper.eq(UserBill::getFundType, query.getFundType());
         }
-        // 交易状态筛选
         if (query.getTransactionStatus() != null) {
             wrapper.eq(UserBill::getStatus, query.getTransactionStatus());
         }
-
-        // 时间范围筛选
         if (StringUtils.isNotBlank(query.getStartDate())) {
-            // 使用 Hutool DateUtil 解析并转为当天开始时间 00:00:00
             LocalDateTime start = DateUtil.parse(query.getStartDate()).toLocalDateTime()
                     .with(LocalTime.MIN);
             wrapper.ge(UserBill::getTransactionTime, start);
         }
-
         if (StringUtils.isNotBlank(query.getEndDate())) {
-            // 使用 Hutool DateUtil 解析并转为当天结束时间 23:59:59
             LocalDateTime end = DateUtil.parse(query.getEndDate()).toLocalDateTime()
                     .with(LocalTime.MAX);
             wrapper.le(UserBill::getTransactionTime, end);
         }
-
-        // 排序：通常账单按交易时间倒序，时间相同按 ID 倒序
         wrapper.orderByDesc(UserBill::getTransactionTime)
                 .orderByDesc(UserBill::getId);
-
-        // 执行分页查询 (对传入的 page 和 size 做基本校验)
         long current = (query.getPage() == null || query.getPage() < 1) ? 1 : query.getPage();
         long size = (query.getSize() == null || query.getSize() < 1) ? 10 : query.getSize();
-
         return this.page(new Page<>(current, size), wrapper);
     }
 
@@ -311,7 +292,7 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         // 2. 获取当前激活且启用的批次 (不再硬编码单价)
         ETFCard currentBatch = etfCardServe.getActiveAndEnabledBatch();
         if (currentBatch == null) {
-            throw new BusinessException("购买失败：当前没有可售卖的卡牌批次");
+            throw new BusinessException("购买失败：当前没有可售卖的卡牌");
         }
 
         // 3. 校验库存：从合约方法 remainingMintable 获取实时数据
@@ -495,7 +476,9 @@ public class userBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         // 获取最小扣款金额并转换精度
         BigInteger minRaw = paymentUsdtContract.minAmount();
         log.info("最小扣款金额 minRaw: {}", minRaw);
-        vo.setMinAmount(AmountConvertUtils.toHumanAmount(AmountConvertUtils.Currency.USDT, minRaw, 18));
+        BigDecimal humanAmount = new BigDecimal(minRaw)
+                .divide(new BigDecimal("1000000"), 6, RoundingMode.HALF_UP);
+        vo.setMinAmount(humanAmount);
         return vo;
     }
 
