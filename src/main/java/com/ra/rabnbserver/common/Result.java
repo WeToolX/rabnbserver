@@ -59,7 +59,7 @@ public class Result<T> {
      * @return Result对象
      */
     public static Result error(String message) {
-        return new Result(400, message, null);
+        return new Result(401, message, null);
     }
 
     /**

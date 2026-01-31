@@ -38,13 +38,9 @@ public class UserController {
     private static final String INIT_ATTR_TOKEN = "initToken";
     private static final String INIT_ATTR_TS6 = "initTs6";
     private static final String INIT_ATTR_PLAIN = "initPlainJson";
-
     private final ObjectMapper objectMapper = new ObjectMapper();
-
     private final UserServe userService;
     private final UserBillServe billService;
-
-
     public UserController(UserServe userService, UserBillServe billService) {
         this.userService = userService;
         this.billService = billService;
@@ -130,14 +126,11 @@ public class UserController {
     @GetMapping("/info")
     public String getUserInfo() throws Exception {
         try {
-            // 获取正式用户ID（如果是临时ID这里会直接抛异常）
             Long userId = getFormalUserId();
-
             User user = userService.getById(userId);
             if (user == null) {
                 return ApiResponse.error("用户不存在");
             }
-
             log.info("获取用户信息成功: {}", user.getId());
             return ApiResponse.success("获取成功", user);
         } catch (BusinessException e) {
@@ -179,13 +172,10 @@ public class UserController {
         } catch (Exception e) {
             return ApiResponse.error("金额格式错误");
         }
-
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             return ApiResponse.error("充值金额必须大于0");
         }
-
         log.info("用户 {} 尝试通过链上充值: {}", userId, amount);
-
         try {
             billService.rechargeFromChain(userId, amount);
             return ApiResponse.success("充值处理成功");
@@ -215,13 +205,9 @@ public class UserController {
         } catch (BusinessException e) {
             return ApiResponse.error(402,"操作失败：需登录正式账号");
         }
-
         log.info("用户 {} 查询账单列表，条件: {}", userId, query);
-
         try {
-            // 2. 调用 Service 获取分页数据
             IPage<UserBill> result = billService.getUserBillPage(userId, query);
-            // 3. 返回封装结果
             log.info("获取成功:{}", result);
             return ApiResponse.success("获取成功", result);
         } catch (java.time.format.DateTimeParseException e) {
@@ -245,13 +231,10 @@ public class UserController {
             return ApiResponse.error(402,"操作失败：需登录正式账号");
         }
         BigDecimal amount = new BigDecimal(dto.getAmount()) ;
-
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             return ApiResponse.error("扣款金额必须大于0");
         }
-
         try {
-            // 调用统一方法：平台类型、出账类型、购买/消费业务
             billService.createBillAndUpdateBalance(
                     userId,
                     amount,

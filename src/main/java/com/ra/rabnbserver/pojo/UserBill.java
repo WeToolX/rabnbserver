@@ -28,20 +28,33 @@ import java.time.LocalDateTime;
 @TableName("user_bill")
 public class UserBill extends BaseEntity {
 
+    /**
+     * 用户ID
+     */
     @ColumnComment("用户ID")
     @TableField("user_id")
     private Long userId;
 
+    /**
+     * 用户钱包地址
+     */
     @ColumnComment("用户钱包地址")
     @TableField("user_wallet_address")
     @ColumnType("VARCHAR(255)")
     private String userWalletAddress;
 
+    /**
+     * 系统交易单号
+     */
     @ColumnComment("系统交易单号")
     @TableField("transaction_order_id")
     @ColumnType("VARCHAR(100)")
     private String transactionOrderId;
 
+
+    /**
+     * 区块链交易哈希(TxHash)
+     */
     @ColumnComment("区块链交易哈希(TxHash)")
     @TableField("tx_id")
     @ColumnType("VARCHAR(100)")
@@ -95,16 +108,27 @@ public class UserBill extends BaseEntity {
     @ColumnType("DECIMAL(36, 18)")
     private BigDecimal balanceAfter;
 
+
+    /**
+     * 交易备注
+     */
     @ColumnComment("交易备注")
     @TableField("remark")
     @ColumnType("TEXT")
     private String remark;
 
+    /**
+     * 交易时间
+     */
     @ColumnComment("交易时间")
     @TableField("transaction_time")
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime transactionTime;
 
+
+    /**
+     * 链上返回响应（原始JSON数据）
+     */
     @ColumnComment("链上返回响应（原始JSON数据）")
     @TableField("chain_response")
     @ColumnType("TEXT")

@@ -39,7 +39,6 @@ public class DatabaseInitService {
     }
 
     private List<Class<?>> scanEntityClasses(String basePackage) {
-        // ... 此方法无需改动 ...
         List<Class<?>> entityClasses = new ArrayList<>();
         ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false);
         scanner.addIncludeFilter(new AnnotationTypeFilter(TableName.class));
@@ -61,10 +60,8 @@ public class DatabaseInitService {
             // 使用 information_schema 进行精确查询，避免大小写和 schema 带来的问题
             // DATABASE() 函数会返回当前连接的数据库名，确保只在当前库中查找
             String sql = "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?";
-
             // 使用 jdbcTemplate 查询，更符合Spring的最佳实践
             Integer count = jdbcTemplate.queryForObject(sql, Integer.class, tableName);
-
             return count != null && count > 0;
         } catch (Exception e) {
             System.err.println("Error checking if table " + tableName + " exists: " + e.getMessage());
@@ -86,26 +83,20 @@ public class DatabaseInitService {
         try {
             StringBuilder createTableSQL = new StringBuilder("CREATE TABLE ");
             createTableSQL.append(tableName).append(" (");
-
-            // ▼▼▼ 修改点：使用 getAllFields 替代 getDeclaredFields ▼▼▼
             List<Field> fields = getAllFields(entityClass);
             List<String> definitions = new ArrayList<>();
             boolean hasPrimaryKey = false;
-
             for (Field field : fields) {
                 // 跳过静态字段或 Mybatis-Plus 的 a `serialVersionUID` 字段
                 if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) || "serialVersionUID".equals(field.getName())) {
                     continue;
                 }
-
                 TableId tableId = field.getAnnotation(TableId.class);
                 TableField tableField = field.getAnnotation(TableField.class);
-
                 String columnName = null;
                 String dataType = null;
                 String defaultValueSql = getDefaultValueSql(field);
-                String commentSql = getColumnCommentSql(field); // ▼▼▼ 新增：获取字段注释SQL ▼▼▼
-
+                String commentSql = getColumnCommentSql(field);
                 if (tableId != null) {
                     columnName = tableId.value().isEmpty() ? field.getName() : tableId.value();
                     dataType = getDataType(field);
@@ -117,56 +108,43 @@ public class DatabaseInitService {
                     definitions.add(columnName + " " + dataType + defaultValueSql + commentSql);
                 }
             }
-
             if (!hasPrimaryKey) {
                 definitions.add(0, "id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID'");
             }
-
-            // ▼▼▼ 新增：处理索引 ▼▼▼
             List<String> indexDefinitions = getIndexDefinitionsSQL(entityClass);
             definitions.addAll(indexDefinitions);
 
-            // ▼▼▼ 新增：处理外键 ▼▼▼
+            // 处理外键
             List<String> foreignKeyDefinitions = getForeignKeyDefinitionsSQL(entityClass);
             definitions.addAll(foreignKeyDefinitions);
-
             createTableSQL.append(String.join(", ", definitions)).append(")");
-
-            // ▼▼▼ 新增：处理表注释 ▼▼▼
+            // 处理表注释
             createTableSQL.append(getTableCommentSql(entityClass));
-
             createTableSQL.append(";");
-
             System.out.println("Executing SQL: " + createTableSQL);
             jdbcTemplate.execute(createTableSQL.toString());
             System.out.println("Created table " + tableName);
-
         } catch (Exception e) {
             System.err.println("Error creating table " + tableName + ": " + e.getMessage());
             e.printStackTrace();
         }
     }
-
-
-    // ▼▼▼ 【优化版】的 updateTable 方法 ▼▼▼
+    // updateTable
     private void updateTable(Class<?> entityClass, String tableName) throws SQLException {
         try {
-            // 1. 批量获取数据库中已存在的元数据
+            // 批量获取数据库中已存在的元数据
             Set<String> existingColumns = getExistingColumns(tableName);
             Set<String> existingIndexes = getExistingIndexNames(tableName);
             Set<String> existingForeignKeys = getExistingForeignKeyNames(tableName);
-
-            // 2. 检查并添加新列
+            // 检查并添加新列
             List<Field> fields = getAllFields(entityClass);
             for (Field field : fields) {
                 if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) || "serialVersionUID".equals(field.getName())) {
                     continue;
                 }
-
                 TableField tableField = field.getAnnotation(TableField.class);
                 if (tableField != null && tableField.exist()) {
                     String columnName = tableField.value().isEmpty() ? field.getName() : tableField.value();
-
                     // 在内存中检查，而不是查询数据库
                     if (!existingColumns.contains(columnName.toLowerCase())) { // 注意：数据库元数据可能返回全小写或大写，统一转小写比较保险
                         String dataType = getDataType(field);
@@ -185,7 +163,7 @@ public class DatabaseInitService {
                 }
             }
 
-            // 3. 检查并添加新索引
+            // 检查并添加新索引
             Index[] indexes = entityClass.getAnnotationsByType(Index.class);
             for (Index index : indexes) {
                 // 在内存中检查
@@ -201,7 +179,7 @@ public class DatabaseInitService {
                 }
             }
 
-            // 4. 检查并添加新外键
+            // 检查并添加新外键
             ForeignKey[] foreignKeys = entityClass.getAnnotationsByType(ForeignKey.class);
             for (ForeignKey fk : foreignKeys) {
                 // 在内存中检查
@@ -216,15 +194,13 @@ public class DatabaseInitService {
                     }
                 }
             }
-
         } catch (Exception e) {
             System.err.println("Error updating table " + tableName + ": " + e.getMessage());
             throw e;
         }
     }
 
-
-// ▼▼▼ 新增的辅助方法：用于批量获取元数据 ▼▼▼
+// 用于批量获取元数据 ▼▼▼
 
     /**
      * 批量获取一个表的所有列名
@@ -255,9 +231,7 @@ public class DatabaseInitService {
         List<String> fkList = jdbcTemplate.queryForList(sql, String.class, tableName);
         return fkList.stream().map(String::toLowerCase).collect(Collectors.toSet());
     }
-
     private boolean columnExists(String tableName, String columnName) throws SQLException {
-        // ... 此方法无需改动 ...
         try {
             DatabaseMetaData metaData = jdbcTemplate.getDataSource().getConnection().getMetaData();
             try (ResultSet rs = metaData.getColumns(null, null, tableName, columnName)) {
@@ -269,7 +243,7 @@ public class DatabaseInitService {
         }
     }
 
-    // ▼▼▼ 新增方法：检查索引是否存在 ▼▼▼
+    // 检查索引是否存在
     private boolean indexExists(String tableName, String indexName) {
         try {
             // 使用 information_schema 查询，更通用和准确
@@ -285,7 +259,6 @@ public class DatabaseInitService {
     }
 
     private String getDefaultValueSql(Field field) {
-        // ... 此方法无需改动 ...
         if (field.isAnnotationPresent(DefaultValue.class)) {
             DefaultValue defaultValueAnnotation = field.getAnnotation(DefaultValue.class);
             return " DEFAULT " + defaultValueAnnotation.value();
@@ -293,7 +266,7 @@ public class DatabaseInitService {
         return "";
     }
 
-    // ▼▼▼ 新增方法：从注解获取字段注释SQL ▼▼▼
+    // 从注解获取字段注释SQL
     private String getColumnCommentSql(Field field) {
         if (field.isAnnotationPresent(ColumnComment.class)) {
             return " COMMENT '" + field.getAnnotation(ColumnComment.class).value() + "'";
@@ -301,7 +274,7 @@ public class DatabaseInitService {
         return "";
     }
 
-    // ▼▼▼ 新增方法：从注解获取表注释SQL ▼▼▼
+    // 从注解获取表注释SQL
     private String getTableCommentSql(Class<?> entityClass) {
         if (entityClass.isAnnotationPresent(TableComment.class)) {
             return " COMMENT='" + entityClass.getAnnotation(TableComment.class).value() + "'";
@@ -309,7 +282,7 @@ public class DatabaseInitService {
         return "";
     }
 
-    // ▼▼▼ 新增方法：从注解获取所有索引定义SQL（用于CREATE TABLE）▼▼▼
+    // 从注解获取所有索引定义SQL（用于CREATE TABLE）
     private List<String> getIndexDefinitionsSQL(Class<?> entityClass) {
         List<String> definitions = new ArrayList<>();
         // getAnnotationsByType 可以直接获取所有重复的注解，无需关心容器注解
@@ -320,7 +293,7 @@ public class DatabaseInitService {
         return definitions;
     }
 
-    // ▼▼▼ 新增方法：构建单条索引定义的SQL字符串 ▼▼▼
+    // 构建单条索引定义的SQL字符串
     private String buildIndexDefinition(Index index) {
         StringBuilder sb = new StringBuilder();
         switch (index.type()) {
@@ -334,16 +307,13 @@ public class DatabaseInitService {
                 sb.append("KEY ");
                 break;
         }
-
         // 拼接索引名和字段
         sb.append("`").append(index.name()).append("`");
         sb.append(" (")
                 .append("`").append(String.join("`,`", index.columns())).append("`")
                 .append(")");
-
         // 添加索引方法 (例如 USING BTREE)
         sb.append(" USING BTREE");
-
         // 添加索引注释
         if (index.comment() != null && !index.comment().isEmpty()) {
             sb.append(" COMMENT '").append(index.comment()).append("'");
@@ -353,7 +323,6 @@ public class DatabaseInitService {
 
 
     private String getDataType(Field field) {
-        // ... 此方法无需改动 ...
         if (field.isAnnotationPresent(ColumnType.class)) {
             ColumnType columnType = field.getAnnotation(ColumnType.class);
             return columnType.value();
@@ -377,7 +346,7 @@ public class DatabaseInitService {
     }
 
 
-    // ▼▼▼ 新增辅助方法 ▼▼▼
+    // 辅助方法
 
     /**
      * 检查外键是否存在
@@ -406,7 +375,7 @@ public class DatabaseInitService {
     }
 
     /**
-     * ▼▼▼ 新增方法：递归获取一个类及其所有父类的所有字段 ▼▼▼
+     * 递归获取一个类及其所有父类的所有字段
      *
      * @param clazz 要获取字段的类
      * @return 包含所有字段的列表
@@ -433,14 +402,11 @@ public class DatabaseInitService {
             throw new IllegalArgumentException("The referenceEntity " + fk.referenceEntity().getSimpleName() + " must have a @TableName annotation.");
         }
         String referencedTableName = referencedTableNameAnn.value();
-
         String columnsSql = "`" + String.join("`,`", fk.columns()) + "`";
         String referencedColumnsSql = "`" + String.join("`,`", fk.referencedColumns()) + "`";
-
         // ON DELETE 和 ON UPDATE 的SQL片段
         String onDeleteSql = "ON DELETE " + fk.onDelete().name().replace('_', ' ');
         String onUpdateSql = "ON UPDATE " + fk.onUpdate().name().replace('_', ' ');
-
         return String.format("CONSTRAINT `%s` FOREIGN KEY (%s) REFERENCES `%s` (%s) %s %s",
                 fk.name(),
                 columnsSql,

@@ -21,31 +21,50 @@ import java.math.BigDecimal;
 @TableName("etf_card")
 public class ETFCard extends BaseEntity {
 
+
+    /**
+     * 批次名称
+     */
     @ColumnComment("批次名称")
     @TableField("batch_name")
     @ColumnType("VARCHAR(100)")
     private String batchName;
 
+    /**
+     * 批次编号
+     */
     @ColumnComment("批次编号")
     @TableField("batch_no")
     @ColumnType("VARCHAR(50)")
     private String batchNo;
 
+    /**
+     * 该批次发行总量
+     */
     @ColumnComment("该批次发行总量")
     @TableField("total_supply")
     @ColumnType("INT(11)")
     private Integer totalSupply;
 
+    /**
+     * 已售/已铸造数量
+     */
     @ColumnComment("已售/已铸造数量")
     @TableField("sold_count")
     @ColumnType("INT(11)")
     private Integer soldCount;
 
+    /**
+     * 当前库存（剩余可售数量）
+     */
     @ColumnComment("当前库存（剩余可售数量）")
     @TableField("inventory")
     @ColumnType("INT(11)")
     private Integer inventory;
 
+    /**
+     * 该批次单价(USDT)
+     */
     @ColumnComment("该批次单价(USDT)")
     @TableField("unit_price")
     @ColumnType("DECIMAL(36, 18)")
@@ -61,11 +80,17 @@ public class ETFCard extends BaseEntity {
     @ColumnType("TINYINT(1)")
     private Integer isCurrent;
 
+    /**
+     * 状态(0-停用, 1-启用)
+     */
     @ColumnComment("状态(0-停用, 1-启用)")
     @TableField("status")
     @ColumnType("TINYINT(1)")
     private Integer status;
 
+    /**
+     * 备注
+     */
     @ColumnComment("备注")
     @TableField("remark")
     @ColumnType("VARCHAR(255)")

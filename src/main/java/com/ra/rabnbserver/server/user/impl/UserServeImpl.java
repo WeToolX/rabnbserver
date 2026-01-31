@@ -41,7 +41,6 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
     @Transactional(rollbackFor = Exception.class)
     @Override
     public boolean addUser(User user) {
-        // 强制设置余额为 0，防止通过接口注入余额
         user.setBalance(BigDecimal.ZERO);
         return this.save(user);
     }
@@ -49,33 +48,29 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
     @Transactional(rollbackFor = Exception.class)
     @Override
     public boolean updateUser(User user) {
-        // 更新时，创建一个新对象只设置允许修改的字段，或者将 balance 设为 null
-        // MyBatis-Plus 默认 updateById 不会更新 null 字段
-        user.setBalance(null);
-        return this.updateById(user);
+        if (user.getId() == null) {
+            return false;
+        }
+        return this.lambdaUpdate()
+                .eq(User::getId, user.getId())
+                .set(user.getUserName() != null, User::getUserName, user.getUserName())
+                .set(user.getUserWalletAddress() != null, User::getUserWalletAddress, user.getUserWalletAddress())
+                .update();
     }
 
     @Override
     public IPage<User> selectUserPage(UserQueryDTO queryDTO) {
         Page<User> page = new Page<>(queryDTO.getPage(), queryDTO.getSize());
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-
-        // 模糊查询钱包地址
         wrapper.like(StringUtils.hasText(queryDTO.getUserWalletAddress()),
                 User::getUserWalletAddress, queryDTO.getUserWalletAddress());
-
-        // 2. 注册时间筛选（兼容多种格式）
         if (StrUtil.isNotBlank(queryDTO.getStartTime())) {
-            // DateUtil.parse 会尝试多种格式解析，并转为 LocalDateTime
             wrapper.ge(User::getCreateTime, DateUtil.parse(queryDTO.getStartTime()).toLocalDateTime());
         }
-
         if (StrUtil.isNotBlank(queryDTO.getEndTime())) {
-            // 解析结束时间
             wrapper.le(User::getCreateTime, DateUtil.parse(queryDTO.getEndTime()).toLocalDateTime());
         }
         wrapper.orderByDesc(User::getCreateTime);
-
         return this.page(page, wrapper);
     }
 }

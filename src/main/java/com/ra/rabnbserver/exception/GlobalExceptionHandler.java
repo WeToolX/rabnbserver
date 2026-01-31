@@ -31,7 +31,7 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 【必须添加】处理请求参数类型转换失败 (如: "?parentId=p" 无法转为 Long)
+     * 处理请求参数类型转换失败 (如: "?parentId=p" 无法转为 Long)
      * 这是解决当前报错的直接方案
      */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -40,19 +40,16 @@ public class GlobalExceptionHandler {
         String paramName = ex.getName(); // 获取参数名: parentId
         Class<?> requiredType = ex.getRequiredType(); // 获取目标类型: Long
         Object actualValue = ex.getValue(); // 获取实际值: "p"
-
         String message = String.format("参数 [%s] 的值 '%s' 不是有效的 %s 类型",
                 paramName,
                 actualValue,
                 requiredType != null ? requiredType.getSimpleName() : "未知");
-
         log.warn("请求参数类型错误: {}", message, ex); // 保留堆栈信息便于排查
-
-        return Result.error(400, message); // 返回友好的中文提示
+        return Result.error(401, message); // 返回友好的中文提示
     }
 
     /**
-     * 【推荐】统一处理参数校验异常 (JSR-303)
+     * 统一处理参数校验异常 (JSR-303)
      * 整合了对 @RequestBody, @RequestParam, @ModelAttribute 等参数校验失败的处理
      */
     @ExceptionHandler(BindException.class) // 只捕获父类即可
@@ -64,10 +61,10 @@ public class GlobalExceptionHandler {
              msg = fieldError.getField() + " " + fieldError.getDefaultMessage();
         }
         log.warn("参数校验或绑定异常: {}", msg, e);
-        return Result.error(400, msg);
+        return Result.error(401, msg);
     }
     /**
-     * 【新增】处理单个必需参数缺失的异常 (@RequestParam)
+     * 处理单个必需参数缺失的异常 (@RequestParam)
      */
     @ExceptionHandler(MissingServletRequestParameterException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
@@ -75,20 +72,20 @@ public class GlobalExceptionHandler {
         // 格式化为: "必需的请求参数 '参数名' 不存在"
         String msg = "必需的请求参数 '" + e.getParameterName() + "' 不存在";
         log.warn(msg);
-        return Result.error(400, msg);
+        return Result.error(401, msg);
     }
 
     // JSON解析失败
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public Result<?> handleHttpMessageNotReadableException(HttpMessageNotReadableException e) {
         log.warn("请求体JSON解析失败: { }, 错误信息={}", e.getMessage(), e);
-        return Result.error(400, "请求参数格式错误");
+        return Result.error(401, "请求参数格式错误");
     }
 
     @ExceptionHandler(NumberFormatException.class)
     public Result<?> handNumberFormatException(NumberFormatException e){
         log.warn("数据类型转换错误，请尝试刷新网页或修改错误的数据类型: {}, 错误信息={}", e.getMessage(), e);
-        return Result.error(400,"数据类型转换错误，请尝试刷新网页或修改错误的数据类型");
+        return Result.error(401,"数据类型转换错误，请尝试刷新网页或修改错误的数据类型");
     }
 
     @ExceptionHandler(NullPointerException.class)
@@ -137,8 +134,7 @@ public class GlobalExceptionHandler {
         }
         return Result.error(400, "请检查是否登录，错误原因："+message);
     }
-//
-//    // 可以添加自定义业务异常
+// 可以添加自定义业务异常
     @ExceptionHandler(BusinessException.class)
     public Result<?> handleBusinessException(BusinessException e) {
         log.warn("业务异常: {}", e.getMessage(), e);

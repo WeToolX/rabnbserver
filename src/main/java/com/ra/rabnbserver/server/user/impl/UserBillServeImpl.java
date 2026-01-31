@@ -52,11 +52,13 @@ import java.util.Map;
 public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> implements UserBillServe {
 
     private final UserMapper userMapper;
-
-    // 1. 注入事务模板
     private final TransactionTemplate transactionTemplate;
-
     private final EtfCardServe etfCardServe;
+    private final PaymentUsdtContract paymentUsdtContract;
+    private final CardNftContract cardNftContract;
+
+    private static final BigDecimal NFT_UNIT_PRICE = new BigDecimal("1");
+
 
 
     /**
@@ -75,18 +77,13 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
     public void createBillAndUpdateBalance(Long userId, BigDecimal amount, BillType billType,
                                            FundType fundType, TransactionType txType,
                                            String remark, String orderId, String txId,String res) {
-
-
-        //默认值处理
         if (StringUtils.isBlank(orderId)) {
             orderId = "BILL_" + IdWorker.getIdStr();
         }
-        // 如果 remark 为空，默认使用交易类型的描述
         if (StringUtils.isBlank(remark)) {
             remark = txType.getDesc();
         }
-
-        // 1. 悲观锁锁定用户，确保流水计算的串行化
+        // 悲观锁锁定用户，确保流水计算的串行化
         // 即便不更新用户余额，锁定用户也是为了防止该用户的多条流水（同类型）并发插入导致余额计算错乱
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getId, userId)
@@ -94,8 +91,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
-
-        // 2. 动态获取该用户【当前账单类型】的上一笔最后余额
+        // 动态获取该用户【当前账单类型】的上一笔最后余额
         // 逻辑：如果是平台账单查平台余额，如果是链上账单查链上余额
         BigDecimal balanceBefore = BigDecimal.ZERO;
         UserBill lastBill = this.getOne(new LambdaQueryWrapper<UserBill>()
@@ -106,18 +102,18 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (lastBill != null) {
             balanceBefore = lastBill.getBalanceAfter();
         }
-        // 3. 计算金额变动
+        // 计算金额变动
         BigDecimal changeAmount = amount;
         if (FundType.EXPENSE.equals(fundType)) {
             changeAmount = amount.negate();
         }
-        // 4. 计算变动后的余额
+        // 计算变动后的余额
         BigDecimal balanceAfter = balanceBefore.add(changeAmount);
-        // 5. 余额合法性校验（通常平台账单和链上账单都不允许余额小于0）
+        // 余额合法性校验（通常平台账单和链上账单都不允许余额小于0）
         if (balanceAfter.compareTo(BigDecimal.ZERO) < 0) {
             throw new BusinessException("账户余额不足");
         }
-        // 6. 插入新账单
+        // 插入新账单
         UserBill newBill = new UserBill();
         newBill.setUserId(userId);
         newBill.setUserWalletAddress(user.getUserWalletAddress());
@@ -134,14 +130,12 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         newBill.setStatus(TransactionStatus.SUCCESS);
         newBill.setChainResponse(res);
         this.save(newBill);
-
-        // 7. 同步更新用户表的余额字段（仅针对 PLATFORM 类型）
+        // 同步更新用户表的余额字段（仅针对 PLATFORM 类型）
         if (BillType.PLATFORM.equals(billType)) {
             userMapper.update(null, new LambdaUpdateWrapper<User>()
                     .eq(User::getId, userId)
                     .set(User::getBalance, balanceAfter));
         }
-
         log.info("账单记录成功: 类型={}, 用户={}, 变动前={}, 变动后={}",
                 billType, userId, balanceBefore, balanceAfter);
     }
@@ -179,7 +173,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         return this.page(new Page<>(current, size), wrapper);
     }
 
-    private final PaymentUsdtContract paymentUsdtContract;
+
 
 
     /**
@@ -194,7 +188,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             throw new BusinessException("用户不存在或未绑定钱包");
         }
         String walletAddress = user.getUserWalletAddress();
-
         //BigInteger chainAmount = amount.multiply(BigDecimal.valueOf(1_000_000_000_000_000_000L)).toBigInteger();//
         BigInteger  chainAmount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.USDT, amount);
         String orderIdHex = "0x" + IdWorker.get32UUID(); // 生成32位唯一订单十六进制串
@@ -208,13 +201,9 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             if (balance.compareTo(chainAmount) < 0) {
                 throw new BusinessException("用户链上USDT余额不足");
             }
-
             log.info("开始执行链上扣款: 用户={}, 金额={}, 订单={}", walletAddress, amount, orderIdHex);
             TransactionReceipt receipt = paymentUsdtContract.deposit(orderIdHex, walletAddress, chainAmount);
-
             String receiptJson = (receipt == null) ? null : JSON.toJSONString(receipt);
-
-
             if (receipt != null && "0x1".equals(receipt.getStatus())) {
                 transactionTemplate.execute(status -> {
                     this.createBillAndUpdateBalance(
@@ -230,19 +219,16 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                     );
                     return null;
                 });
-
                 log.info("链上充值成功入账: 用户={}, TxHash={}", userId, receipt.getTransactionHash());
             } else {
                 // 失败：记录异常账单（不更新用户余额）
                 saveExceptionBill(user, amount, orderIdHex, receipt != null ? receipt.getTransactionHash() : null, "合约执行失败");
                 throw new BusinessException("链上交易执行失败，请检查区块状态");
             }
-
         } catch (Exception e) {
             log.error("链上充值异常: ", e);
             // 如果是业务异常直接抛出
             if (e instanceof BusinessException) throw (BusinessException) e;
-
             // 其他未知异常（如网络超时），记录一条状态为失败的账单
             saveExceptionBill(user, amount, orderIdHex, null, "系统处理异常: " + e.getMessage());
             throw new BusinessException("充值请求异常: " + e.getMessage());
@@ -271,31 +257,24 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
     }
 
 
-    // 在 userBillServeImpl 中注入 CardNftContract
-    private final CardNftContract cardNftContract;
 
-    // 定义 NFT 单价（常量或从配置中读取）
-    private static final BigDecimal NFT_UNIT_PRICE = new BigDecimal("1");
 
     @Override
     public void purchaseNftCard(Long userId, int quantity) {
-        // 1. 基本参数校验
+        // 基本参数校验
         if (quantity <= 0) {
             throw new BusinessException("购买数量必须大于0");
         }
-
         User user = userMapper.selectById(userId);
         if (user == null || StringUtils.isBlank(user.getUserWalletAddress())) {
             throw new BusinessException("用户不存在或未绑定钱包");
         }
-
-        // 2. 获取当前激活且启用的批次 (不再硬编码单价)
+        // 获取当前激活且启用的批次 (不再硬编码单价)
         ETFCard currentBatch = etfCardServe.getActiveAndEnabledBatch();
         if (currentBatch == null) {
             throw new BusinessException("购买失败：当前没有可售卖的卡牌");
         }
-
-        // 3. 校验库存：从合约方法 remainingMintable 获取实时数据
+        // 校验库存：从合约方法 remainingMintable 获取实时数据
         BigInteger remaining;
         try {
             remaining = cardNftContract.remainingMintable();
@@ -304,19 +283,16 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             log.error("调用合约获取剩余库存失败", e);
             throw new BusinessException("获取链上库存失败，请稍后再试");
         }
-
         if (remaining.compareTo(BigInteger.valueOf(quantity)) < 0) {
             throw new BusinessException("链上库存不足，当前仅剩: " + remaining);
         }
-
-        // 4. 计算总价
+        // 计算总价
         BigDecimal totalCost = currentBatch.getUnitPrice().multiply(new BigDecimal(quantity));
         String orderId = "BILL_" + IdWorker.getIdStr();
-
-        // 5. 执行编程式事务
+        // 执行编程式事务
         transactionTemplate.execute(status -> {
             try {
-                // A. 【乐观锁扣减库存】
+                // 乐观锁扣减库存
                 // 核心：在 SQL 层面增加 inventory >= quantity 的判断，利用数据库行锁保证并发安全
                 boolean inventoryUpdated = etfCardServe.update(new LambdaUpdateWrapper<ETFCard>()
                         .eq(ETFCard::getId, currentBatch.getId())
@@ -328,7 +304,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                     // 如果返回 false，说明在该事务执行期间，库存已被其他线程抢先扣减
                     throw new BusinessException("抢购失败：库存已被抢光或不足");
                 }
-                // B. 执行平台余额扣款
+                // 执行平台余额扣款
                 this.createBillAndUpdateBalance(
                         userId,
                         totalCost,
@@ -340,15 +316,13 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                         null,
                         null
                 );
-
-                // C. 执行链上分发（distribute）
+                // 执行链上分发（distribute）
                 log.info("开始链上分发: 批次={}, 用户={}, 数量={}", currentBatch.getBatchNo(), user.getUserWalletAddress(), quantity);
                 TransactionReceipt receipt = cardNftContract.distribute(
                         user.getUserWalletAddress(),
                         BigInteger.valueOf(quantity)
                 );
-
-                // D. 检查合约执行状态并补全账单
+                // 检查合约执行状态并补全账单
                 if (receipt != null && "0x1".equals(receipt.getStatus())) {
                     String receiptJson = JSON.toJSONString(receipt);
                     String txHash = receipt.getTransactionHash();
@@ -365,7 +339,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                     log.error("合约执行失败: {}", receipt);
                     throw new BusinessException("链上铸造失败，资金已退回");
                 }
-
             } catch (BusinessException e) {
                 status.setRollbackOnly(); // 触发事务回滚：库存会加回去，余额扣款会撤销
                 throw e;
@@ -380,11 +353,9 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
     @Override
     public IPage<UserBill> getAdminBillPage(AdminBillQueryDTO query) {
         LambdaQueryWrapper<UserBill> wrapper = new LambdaQueryWrapper<>();
-
         if (StringUtils.isNotBlank(query.getUserWalletAddress())) {
             wrapper.like(UserBill::getUserWalletAddress, query.getUserWalletAddress());
         }
-
         if (query.getBillType() != null) {
             wrapper.eq(UserBill::getBillType, query.getBillType());
         }
@@ -397,7 +368,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (query.getStatus() != null) {
             wrapper.eq(UserBill::getStatus, query.getStatus());
         }
-
         if (StringUtils.isNotBlank(query.getStartDate())) {
             LocalDateTime start = DateUtil.parse(query.getStartDate()).toLocalDateTime().with(LocalTime.MIN);
             wrapper.ge(UserBill::getTransactionTime, start);
@@ -406,9 +376,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             LocalDateTime end = DateUtil.parse(query.getEndDate()).toLocalDateTime().with(LocalTime.MAX);
             wrapper.le(UserBill::getTransactionTime, end);
         }
-
         wrapper.orderByDesc(UserBill::getTransactionTime).orderByDesc(UserBill::getId);
-
         Page<UserBill> pageParam = new Page<>(query.getPage(), query.getSize());
         return this.page(pageParam, wrapper);
     }
@@ -457,10 +425,8 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                 }
             }
         }
-
         vo.setTotalNftPurchaseAmount(purchaseTotalAmount);
         vo.setTotalNftSalesCount(totalQuantity);
-
         return vo;
     }
 
@@ -490,15 +456,14 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             throw new BusinessException("用户不存在或未绑定钱包");
         }
         try {
-            // 1. 执行链上分发
+            // 执行链上分发
             log.info("管理员手动分发NFT: 用户={}, 数量={}", user.getUserWalletAddress(), amount);
             TransactionReceipt receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(amount));
-
             if (receipt != null && "0x1".equals(receipt.getStatus())) {
-                // 2. 记录账单（类型为奖励，不扣除余额，仅做记录）
+                // 记录账单（类型为奖励，不扣除余额，仅做记录）
                 this.createBillAndUpdateBalance(
                         userId,
-                        BigDecimal.ZERO, // 管理员赠送，金额为0
+                        BigDecimal.ZERO,
                         BillType.ON_CHAIN,
                         FundType.INCOME,
                         TransactionType.REWARD,
