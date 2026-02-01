@@ -1,6 +1,8 @@
 package com.ra.rabnbserver.controller.user;
 
+import cn.dev33.satoken.stp.StpUtil;
 import com.ra.rabnbserver.contract.CardNftContract;
+import com.ra.rabnbserver.dto.AdminUserLoginDTO;
 import com.ra.rabnbserver.dto.DistributeNftDTO;
 import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.User;
@@ -9,6 +11,7 @@ import com.ra.rabnbserver.server.user.UserServe;
 import com.ra.rabnbserver.dto.UserQueryDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigInteger;
@@ -30,6 +33,32 @@ public class AdminUserController {
     public AdminUserController(CardNftContract cardNftContract, UserBillServe userBillServer) {
         this.cardNftContract = cardNftContract;
         this.userBillServer = userBillServer;
+    }
+
+    @Value("${ADMIN.USERNAME}")
+    private String AdminUserName;
+    @Value("${ADMIN.PASSWORD}")
+    private String AdminPassword;
+
+
+
+    /**
+     * 管理用户登录
+     */
+    @PostMapping("/admin/login")
+    public String AdminLogin(@RequestBody AdminUserLoginDTO  adminUserLoginDTO) {
+        if (adminUserLoginDTO == null ||
+                adminUserLoginDTO.getUsername() == null ||
+                adminUserLoginDTO.getPassword() == null) {
+            return ApiResponse.error("用户名或密码不能为空");
+        }
+        if (AdminUserName.equals(adminUserLoginDTO.getUsername()) &&
+                AdminPassword.equals(adminUserLoginDTO.getPassword())) {
+            StpUtil.login("0");
+            return ApiResponse.success(StpUtil.getTokenInfo());
+        } else {
+            return ApiResponse.error("账号或密码错误");
+        }
     }
 
     /**
