@@ -1,20 +1,29 @@
 package com.ra.rabnbserver.controller.user;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ra.rabnbserver.contract.CardNftContract;
 import com.ra.rabnbserver.dto.AdminUserLoginDTO;
 import com.ra.rabnbserver.dto.DistributeNftDTO;
 import com.ra.rabnbserver.model.ApiResponse;
+import com.ra.rabnbserver.pojo.AdminPermission;
+import com.ra.rabnbserver.pojo.AdminRole;
+import com.ra.rabnbserver.pojo.AdminUser;
 import com.ra.rabnbserver.pojo.User;
+import com.ra.rabnbserver.server.admin.AdminPermissionService;
+import com.ra.rabnbserver.server.admin.AdminRoleService;
+import com.ra.rabnbserver.server.admin.AdminUserService;
 import com.ra.rabnbserver.server.user.UserBillServe;
 import com.ra.rabnbserver.server.user.UserServe;
 import com.ra.rabnbserver.dto.UserQueryDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigInteger;
+import java.util.Collections;
 
 /**
  * 管理员 - 用户管理
@@ -29,10 +38,16 @@ public class AdminUserController {
 
     private final CardNftContract cardNftContract;
     private final UserBillServe userBillServer;
+    private final AdminUserService adminUserService;
+    private final AdminRoleService adminRoleService;
+    private final AdminPermissionService adminPermissionService;
 
-    public AdminUserController(CardNftContract cardNftContract, UserBillServe userBillServer) {
+    public AdminUserController(CardNftContract cardNftContract, UserBillServe userBillServer, AdminUserService adminUserService, AdminRoleService adminRoleService, AdminPermissionService adminPermissionService) {
         this.cardNftContract = cardNftContract;
         this.userBillServer = userBillServer;
+        this.adminUserService = adminUserService;
+        this.adminRoleService = adminRoleService;
+        this.adminPermissionService = adminPermissionService;
     }
 
     @Value("${ADMIN.USERNAME}")
@@ -44,23 +59,54 @@ public class AdminUserController {
 
     /**
      * 管理用户登录
+     * 逻辑：若管理员表为空，则自动初始化超级管理员数据
      */
     @PostMapping("/admin/login")
-    public String AdminLogin(@RequestBody AdminUserLoginDTO  adminUserLoginDTO) {
-        if (adminUserLoginDTO == null ||
-                adminUserLoginDTO.getUsername() == null ||
-                adminUserLoginDTO.getPassword() == null) {
+    @Transactional(rollbackFor = Exception.class)
+    public String adminLogin(@RequestBody AdminUserLoginDTO adminUserLoginDTO) {
+        if (adminUserLoginDTO == null || adminUserLoginDTO.getUsername() == null || adminUserLoginDTO.getPassword() == null) {
             return ApiResponse.error("用户名或密码不能为空");
         }
-        if (AdminUserName.equals(adminUserLoginDTO.getUsername()) &&
-                AdminPassword.equals(adminUserLoginDTO.getPassword())) {
-            StpUtil.login("0");
+        if (adminUserService.count() == 0) {
+            log.info("检测到管理员表为空，正在初始化超级管理员数据...");
+            initSuperAdminSystem();
+        }
+        AdminUser admin = adminUserService.getOne(new LambdaQueryWrapper<AdminUser>()
+                .eq(AdminUser::getUsername, adminUserLoginDTO.getUsername()));
+        if (admin != null && admin.getPassword().equals(adminUserLoginDTO.getPassword())) {
+            if (admin.getStatus() == 0) {
+                return ApiResponse.error("该账号已被禁用");
+            }
+            StpUtil.login(admin.getId());
             return ApiResponse.success(StpUtil.getTokenInfo());
         } else {
             return ApiResponse.error("账号或密码错误");
         }
     }
 
+    /**
+     * 初始化 RBAC 数据私有方法
+     */
+    private void initSuperAdminSystem() {
+        AdminRole superRole = new AdminRole();
+        superRole.setRoleName("超级管理员");
+        superRole.setRoleKey("super_admin");
+        superRole.setParentId(0L);
+        adminRoleService.save(superRole);
+        AdminPermission allPerm = new AdminPermission();
+        allPerm.setName("所有权限");
+        allPerm.setPermKey("*"); // 标识拥有所有权限
+        adminPermissionService.save(allPerm);
+        adminRoleService.assignPermissions(superRole.getId(), Collections.singletonList(allPerm.getId()));
+        AdminUser superUser = new AdminUser();
+        superUser.setUsername(AdminUserName);
+        superUser.setPassword(AdminPassword);
+        superUser.setNickname("系统内置超管");
+        superUser.setRoleId(superRole.getId());
+        superUser.setStatus(1);
+        adminUserService.save(superUser);
+        log.info("超级管理员初始化成功: {}", AdminUserName);
+    }
     /**
      * 分页查询用户
      */
@@ -92,8 +138,8 @@ public class AdminUserController {
      */
     @GetMapping("/delete/{id}")
     public String delete(@PathVariable Long id) {
-        boolean removed = userService.removeById(id);
-        return removed ? ApiResponse.success() : ApiResponse.error("删除失败");
+        boolean removed = userService.deleteUserWithCascade(id);
+        return removed ? ApiResponse.success("删除成功，该用户的下级已重置为根用户") : ApiResponse.error("删除失败");
     }
 
 

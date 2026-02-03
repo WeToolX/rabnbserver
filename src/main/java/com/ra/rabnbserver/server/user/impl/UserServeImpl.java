@@ -15,6 +15,7 @@ import com.ra.rabnbserver.mapper.UserMapper;
 import com.ra.rabnbserver.pojo.User;
 import com.ra.rabnbserver.server.user.UserServe;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -34,14 +35,16 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
                 .eq(User::getUserWalletAddress, address));
     }
 
+    @Value("${ADMIN.DFCODE:eC4vW8}")
+    private String DFCODE;
+
     @Transactional(rollbackFor = Exception.class)
     @Override
     public User register(RegisterDataDTO registerDataDTO) {
         String inputInviteCode = registerDataDTO.getCode();
         User parent = null;
 
-        // 1. 校验邀请码：如果是 888888 则为根用户，否则必须查到对应的 parent
-        if ("888888".equals(inputInviteCode)) {
+        if (DFCODE.equals(inputInviteCode)) {
             log.info("根用户注册，钱包地址: {}", registerDataDTO.getUserWalletAddress());
         } else {
             parent = getByInviteCode(inputInviteCode);
@@ -50,7 +53,7 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
             }
         }
 
-        // 2. 初始化新用户
+        // 初始化新用户
         User user = new User();
         user.setUserWalletAddress(registerDataDTO.getUserWalletAddress());
         user.setUserName(registerDataDTO.getUserWalletAddress());
@@ -59,7 +62,7 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         user.setDirectCount(0);
         user.setTeamCount(0);
 
-        // 3. 设置层级关系
+        // 设置层级关系
         if (parent != null) {
             // 有推荐人的情况
             user.setParentInviteCode(parent.getInviteCode());
@@ -67,30 +70,24 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
             user.setLevel(parent.getLevel() + 1);
             user.setPath(parent.getPath() + parent.getId() + ",");
         } else {
-            // 根用户情况 (邀请码为 888888)
             user.setParentInviteCode("0");
             user.setParentId(0L);
             user.setLevel(1);
             user.setPath("0,");
         }
-
         this.save(user);
-
-        // 4. 更新上级统计数据
         if (parent != null) {
-            // (1) 更新直接上级：直推人数 +1
+            // 更新直接上级：直推人数 +1
             this.lambdaUpdate()
                     .setSql("direct_count = direct_count + 1")
                     .eq(User::getId, parent.getId())
                     .update();
-
-            // (2) 更新所有祖先：团队总人数 +1
+            // 更新所有祖先：团队总人数 +1
             // 获取路径中所有的祖先ID (排除掉 0)
             List<Long> ancestorIds = Arrays.stream(user.getPath().split(","))
                     .filter(s -> StrUtil.isNotBlank(s) && !"0".equals(s))
                     .map(Long::parseLong)
                     .collect(Collectors.toList());
-
             if (!ancestorIds.isEmpty()) {
                 // 使用一条 SQL 更新所有祖先的 team_count，避免循环查询/更新
                 this.update(new LambdaUpdateWrapper<User>()
@@ -98,7 +95,6 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
                         .in(User::getId, ancestorIds));
             }
         }
-
         return user;
     }
 
@@ -120,6 +116,57 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
                 .set(user.getUserName() != null, User::getUserName, user.getUserName())
                 .set(user.getUserWalletAddress() != null, User::getUserWalletAddress, user.getUserWalletAddress())
                 .update();
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @Override
+    public boolean deleteUserWithCascade(Long id) {
+        // 获取要删除的用户
+        User targetUser = this.getById(id);
+        if (targetUser == null) {
+            return false;
+        }
+
+        // 计算受影响的团队人数
+        // 受影响的人数 = 该用户本人(1) + 他的所有后代人数(teamCount)
+        int totalAffectCount = 1 + targetUser.getTeamCount();
+
+        // 更新该用户的所有上级（祖先）的 team_count
+        List<Long> ancestorIds = Arrays.stream(targetUser.getPath().split(","))
+                .filter(s -> StrUtil.isNotBlank(s) && !"0".equals(s))
+                .map(Long::parseLong)
+                .collect(Collectors.toList());
+
+        if (!ancestorIds.isEmpty()) {
+            this.update(new LambdaUpdateWrapper<User>()
+                    .setSql("team_count = team_count - " + totalAffectCount)
+                    .in(User::getId, ancestorIds));
+
+            // 如果有直接上级，减少直接上级的直推人数
+            if (targetUser.getParentId() != 0) {
+                this.lambdaUpdate()
+                        .setSql("direct_count = direct_count - 1")
+                        .eq(User::getId, targetUser.getParentId())
+                        .update();
+            }
+        }
+
+        // 将所有下级（后代）重置为根用户
+        // 逻辑：寻找 path 中包含 ",id," 的所有用户
+        String subPathMarker = "," + id + ",";
+        // 或者利用我们之前的逻辑：likeRight(targetUser.getPath() + targetUser.getId() + ",")
+        String childrenPathPrefix = targetUser.getPath() + targetUser.getId() + ",";
+
+        this.lambdaUpdate()
+                .set(User::getParentId, 0L)
+                .set(User::getParentInviteCode, "0")
+                .set(User::getLevel, 1)
+                .set(User::getPath, "0,")
+                .likeRight(User::getPath, childrenPathPrefix)
+                .update();
+
+        // 执行删除该用户
+        return this.removeById(id);
     }
 
     @Override
@@ -154,6 +201,8 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         }
         return code;
     }
+
+
 
     /**
      * 根据邀请码获取用户

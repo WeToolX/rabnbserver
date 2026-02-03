@@ -44,8 +44,9 @@ server:
 
 
 ADMIN:
-  USERNAME: admin
+  USERNAME: ADMIN
   PASSWORD: admin
+  DFCODE: eC4vW8
 # Sa-Token 配置
 sa-token:
   token-name: Account-token
