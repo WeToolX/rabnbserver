@@ -66,6 +66,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- 邮件发送：用于异常处理框架的人工通知 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
 
         <!-- MyBatis-Plus：强大的数据库 ORM 框架，简化 CRUD 操作 -->
         <dependency>

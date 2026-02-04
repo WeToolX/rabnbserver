@@ -52,6 +52,23 @@ rabnbserver
 │  │  │     ├── security
 │  │  │     │  └── TokenExtractor.java              # Sa-Token 请求头提取
 │  │  │     ├── PrivateKeyEncryptTool.java          # 私钥加密测试工具（控制台输入）
+│  │  │     ├── exception
+│  │  │     │  ├── BusinessException.java           # 业务异常
+│  │  │     │  ├── GlobalExceptionHandler.java      # 全局异常处理
+│  │  │     │  └── Abnormal
+│  │  │     │     ├── annotation
+│  │  │     │     │  └── AbnormalRetryConfig.java   # 异常重试注解
+│  │  │     │     └── core
+│  │  │     │        ├── AbnormalContext.java       # 异常重试上下文
+│  │  │     │        ├── AbnormalMailService.java   # 异常通知邮件
+│  │  │     │        ├── AbnormalRecord.java        # 异常记录模型
+│  │  │     │        ├── AbnormalRetryHandler.java  # 业务处理接口
+│  │  │     │        ├── AbnormalRetryManager.java  # 框架核心管理器
+│  │  │     │        ├── AbnormalRetryProperties.java # 框架配置
+│  │  │     │        ├── AbnormalRetryScheduler.java # 轮询调度
+│  │  │     │        └── AbstractAbnormalRetryService.java # 业务基类
+│  │  │     │     └── model
+│  │  │     │        └── AbnormalBaseEntity.java    # 异常字段基类
 │  │  │     └── utils
 │  │  │        └── RandomIdGenerator.java           # 随机 ID 生成
 │  │  └── resources
@@ -78,6 +95,7 @@ rabnbserver
 - 生产配置：prod profile 关闭 springdoc 的 api-docs 与 swagger-ui
 - 合约返回说明：交易方法返回 TransactionReceipt，并在方法注释中给出 JSON 字段示例与含义
 - 测试策略：Maven 默认跳过测试（skipTests=true），如需执行请用 -DskipTests=false；IDE 手动运行不受影响
+- 异常重试框架：扫描 @AbnormalRetryConfig，自动补齐异常字段并定时轮询，支持自动重试与人工通知
 
 ### Reference Documentation
 
