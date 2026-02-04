@@ -41,13 +41,25 @@ public class AdminUserServiceImpl extends ServiceImpl<AdminUserMapper, AdminUser
     public boolean updateAdmin(AdminUser adminUser) {
         if (adminUser.getId() == null) return false;
 
-        // 不允许在更新接口直接修改密码，建议单独提供修改密码接口
-        // 这里仅更新基本信息
+        // 1. 如果修改了用户名，需要查重
+        if (StrUtil.isNotBlank(adminUser.getUsername())) {
+            AdminUser exist = this.getOne(new LambdaQueryWrapper<AdminUser>()
+                    .eq(AdminUser::getUsername, adminUser.getUsername())
+                    .ne(AdminUser::getId, adminUser.getId())); // 排除自己
+            if (exist != null) {
+                throw new BusinessException("用户名已存在，请更换");
+            }
+        }
+
+        // 2. 执行更新
         return this.lambdaUpdate()
                 .eq(AdminUser::getId, adminUser.getId())
+                .set(StrUtil.isNotBlank(adminUser.getUsername()), AdminUser::getUsername, adminUser.getUsername())
                 .set(StrUtil.isNotBlank(adminUser.getNickname()), AdminUser::getNickname, adminUser.getNickname())
+                .set(StrUtil.isNotBlank(adminUser.getPassword()), AdminUser::getPassword, adminUser.getPassword()) // 允许修改密码
                 .set(adminUser.getRoleId() != null, AdminUser::getRoleId, adminUser.getRoleId())
                 .set(adminUser.getStatus() != null, AdminUser::getStatus, adminUser.getStatus())
                 .update();
     }
+
 }

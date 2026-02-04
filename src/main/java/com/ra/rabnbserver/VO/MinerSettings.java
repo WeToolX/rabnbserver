@@ -8,12 +8,8 @@ import java.util.Map;
 
 @Data
 public class MinerSettings {
-    // 收益发放时间 (HH:mm:ss)
-    private String profitTime = "01:00:00";
-    // 电费金额
-    private BigDecimal electricFee = new BigDecimal("10.00");
-    // 分销比例 {1: 0.1, 2: 0.05...}
-    private Map<Integer, BigDecimal> distributionRatios = new HashMap<>();
-    // 应用启动后延时重试开启时间
-    private Integer startupDelayMinutes = 3;
+    private String profitTime = "00:00:00"; // 每日收益执行时间
+    private BigDecimal electricFee = new BigDecimal("10.00"); // 电费
+    private BigDecimal accelerationFee = new BigDecimal("50.00"); // 加速包价格
+    private Map<Integer, BigDecimal> distributionRatios = new HashMap<>(); // 分销比例
 }

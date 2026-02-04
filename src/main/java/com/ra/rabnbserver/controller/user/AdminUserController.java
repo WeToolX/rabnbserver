@@ -134,6 +134,20 @@ public class AdminUserController {
     }
 
     /**
+     * 修改当前登录管理员自己的资料（用户名、密码、昵称）
+     */
+    @PostMapping("/profile/update")
+    public String updateMyProfile(@RequestBody AdminUser user) {
+        Long currentId = StpUtil.getLoginIdAsLong();
+        user.setId(currentId);
+        user.setRoleId(null);
+        user.setStatus(null);
+
+        boolean updated = adminUserService.updateAdmin(user);
+        return updated ? ApiResponse.success("修改成功，下次登录生效") : ApiResponse.error("修改失败");
+    }
+
+    /**
      * 删除用户
      */
     @GetMapping("/delete/{id}")
