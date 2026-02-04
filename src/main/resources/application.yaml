@@ -4,7 +4,7 @@ spring:
   jackson:
     # 设置全局日期格式
     date-format: yyyy-MM-dd HH:mm:ss
-    time-zone: GMT+8
+    time-zone: Asia/Shanghai
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://192.168.110.104:3306/BNB?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
@@ -23,6 +23,7 @@ spring:
         prepStmtCacheSize: 500
         prepStmtCacheSqlLimit: 2048
         useServerPrepStmts: true
+        serverTimezone: Asia/Shanghai
   data:
     redis:
       database: 4
@@ -39,6 +40,19 @@ spring:
   threads:
     virtual:
       enabled: true
+  mail:
+    host: 'smtp.sina.cn'
+    port: 465
+    username: 'hun422@sina.com'
+    password: 'f00eb3c619a07f36'
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: false
+          ssl:
+            enable: true
 server:
   port: 8080
 
@@ -76,6 +90,18 @@ contract:
     card-nft: '0x2fb88dDfA44168e3EF5a89903b1aF2CfaB236D4b'
     aion: '0x4D49D3118450D8aA32d046fFb0dE163De220BBDc'
 
+# 异常重试框架配置
+abnormal:
+  retry:
+    # 轮询间隔（秒）
+    scan-interval-seconds: 10
+    # 是否启用邮件通知
+    mail-enabled: true
+    # 发件人邮箱
+    mail-from: 'hun422@sina.com'
+    # 收件人邮箱列表
+    mail-to: [xxsxxas@gmail.com]
+
 ---
 spring:
   config:
@@ -87,4 +113,3 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
-
