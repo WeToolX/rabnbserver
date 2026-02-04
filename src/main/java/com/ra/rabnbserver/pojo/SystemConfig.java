@@ -38,4 +38,19 @@ public class SystemConfig extends BaseEntity {
     @ColumnComment("配置说明")
     @ColumnType("TEXT")
     private String description;
+
+    /**
+     * 配置名称/描述
+     */
+    @TableField("config_name")
+    @ColumnComment("配置名称")
+    private String configName;
+
+    /**
+     *  备注
+     */
+    @TableField("remark")
+    @ColumnComment("备注")
+    @ColumnType("TEXT")
+    private String remark;
 }

@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/miner")
+@RequestMapping("/api/user/miner")
 @RequiredArgsConstructor
 public class MinerController {
 
