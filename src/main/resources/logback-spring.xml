@@ -3,7 +3,7 @@
     <!-- 日志目录：运行目录下 logs -->
     <property name="LOG_PATH" value="logs"/>
     <!-- 日志格式：包含时间、线程、级别、标签（logger 名称）与正文 -->
-    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{60} - %msg%n"/>
+    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS, Asia/Shanghai} [%thread] %-5level %logger{60} - %msg%n"/>
 
     <!-- 控制台日志（仅非生产环境输出） -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
@@ -40,6 +40,8 @@
     <logger name="com.ra.rabnbserver.controller.user" level="INFO"/>
     <logger name="com.ra.rabnbserver.controller.admin" level="INFO"/>
     <logger name="com.ra.rabnbserver.service" level="INFO"/>
+    <!-- 异常重试框架调试日志 -->
+    <logger name="com.ra.rabnbserver.exception.Abnormal" level="DEBUG"/>
     <!-- 数据库日志（可按需要调整级别） -->
     <logger name="org.mybatis" level="INFO"/>
     <logger name="com.baomidou.mybatisplus" level="INFO"/>

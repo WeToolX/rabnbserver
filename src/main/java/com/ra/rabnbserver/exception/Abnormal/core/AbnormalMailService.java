@@ -54,6 +54,7 @@ public class AbnormalMailService {
         message.setTo(toList.toArray(new String[0]));
         message.setSubject(subject);
         message.setText(body);
+        log.debug("准备发送异常通知邮件，服务={}, 数据ID={}, 收件人数量={}", config.serviceName(), record.getId(), toList.size());
         javaMailSender.send(message);
         log.info("异常通知邮件发送成功，服务={}, 数据ID={}", config.serviceName(), record.getId());
     }

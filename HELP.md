@@ -12,9 +12,40 @@ rabnbserver
 │  │  │     ├── RabnbserverApplication.java         # 应用入口
 │  │  │     ├── advice
 │  │  │     │  └── ResponseEncryptAdvice.java       # 响应加密拦截
+│  │  │     ├── annotation                          # 表结构注解（字段/索引/注释）
+│  │  │     ├── common
+│  │  │     │  ├── BaseEntity.java                  # 通用基础实体
+│  │  │     │  └── Result.java                      # 通用返回结构
+│  │  │     ├── config
+│  │  │     │  ├── CorsConfig.java                  # 全局跨域配置
+│  │  │     │  ├── DatabaseInitConfig.java          # 初始化建表配置
+│  │  │     │  ├── MyMetaObjectHandler.java         # MyBatis-Plus 自动填充
+│  │  │     │  ├── MybatisPlusConfig.java           # MyBatis-Plus 配置
+│  │  │     │  ├── SaTokenConfig.java               # Sa-Token 鉴权配置
+│  │  │     │  ├── StpInterfaceImpl.java            # Sa-Token 权限实现
+│  │  │     │  ├── ThreadPoolTaskExecutorConfig.java # 线程池配置
+│  │  │     │  └── TimeZoneConfig.java              # 全局时区配置（Asia/Shanghai）
 │  │  │     ├── controller
+│  │  │     │  ├── AdminCommonController.java       # 后台通用接口
+│  │  │     │  ├── AdminRbacController.java         # 后台权限接口
 │  │  │     │  ├── AuthMockController.java          # 鉴权测试接口
-│  │  │     │  └── UserInitController.java          # 用户初始化接口
+│  │  │     │  ├── CommonController.java            # 公共接口
+│  │  │     │  ├── test
+│  │  │     │  │  └── TestController.java           # 异常框架测试接口
+│  │  │     │  ├── bill
+│  │  │     │  │  └── AdminBillController.java      # 后台账单接口
+│  │  │     │  ├── card
+│  │  │     │  │  ├── admin
+│  │  │     │  │  │  └── AdminEtfCardController.java # 后台卡牌管理
+│  │  │     │  │  └── user
+│  │  │     │  │     └── EtfCardController.java     # 卡牌购买/查询
+│  │  │     │  ├── sys
+│  │  │     │  │  ├── AdminContractController.java  # 合约管理接口
+│  │  │     │  │  └── SystemConfigController.java   # 系统配置接口
+│  │  │     │  └── user
+│  │  │     │     ├── AdminUserController.java      # 后台用户接口
+│  │  │     │     ├── MinerController.java          # 矿机业务接口
+│  │  │     │     └── UserController.java           # 用户接口（登录/充值等）
 │  │  │     ├── contract
 │  │  │     │  ├── AionContract.java                # AION 管理员合约调用
 │  │  │     │  ├── CardNftContract.java             # 卡牌合约管理员调用
@@ -30,11 +61,6 @@ rabnbserver
 │  │  │     │     ├── ContractAddressProperties.java# 合约地址配置
 │  │  │     │     ├── PrivateKeyCryptoService.java  # 私钥加解密
 │  │  │     │     └── Web3jConfig.java              # Web3j 配置
-│  │  │     ├── db
-│  │  │     │  └── DatabaseInitService.java         # 数据库初始化与表结构维护
-│  │  │     ├── config
-│  │  │     │  ├── CorsConfig.java                  # 全局跨域配置
-│  │  │     │  └── SaTokenConfig.java               # Sa-Token 鉴权配置
 │  │  │     ├── crypto
 │  │  │     │  ├── CryptoConstants.java             # 加解密常量
 │  │  │     │  ├── CryptoEnvelope.java              # 密文封装与解析
@@ -42,35 +68,46 @@ rabnbserver
 │  │  │     │  ├── MorseCodec.java                  # Base64 -> 自定义摩斯
 │  │  │     │  ├── RequestCryptoService.java        # 请求解密与验签
 │  │  │     │  └── ResponseCryptoService.java       # 响应加密与摩斯编码
-│  │  │     ├── filter
-│  │  │     │  ├── CachedBodyHttpServletRequest.java # 可重复读取请求体
-│  │  │     │  └── CryptoRequestFilter.java         # 请求体解密过滤器
-│  │  │     ├── dto
-│  │  │     │  └── AuthMockRequest.java             # 测试接口入参
-│  │  │     ├── model
-│  │  │     │  └── ApiResponse.java                 # 统一响应结构
-│  │  │     ├── security
-│  │  │     │  └── TokenExtractor.java              # Sa-Token 请求头提取
-│  │  │     ├── PrivateKeyEncryptTool.java          # 私钥加密测试工具（控制台输入）
+│  │  │     ├── db
+│  │  │     │  └── DatabaseInitService.java         # 数据库初始化与表结构维护
+│  │  │     ├── dto                                 # 请求 DTO（登录/账单/购买/配置等）
+│  │  │     ├── enums                               # 账单/订单/状态等枚举
 │  │  │     ├── exception
 │  │  │     │  ├── BusinessException.java           # 业务异常
 │  │  │     │  ├── GlobalExceptionHandler.java      # 全局异常处理
 │  │  │     │  └── Abnormal
 │  │  │     │     ├── annotation
 │  │  │     │     │  └── AbnormalRetryConfig.java   # 异常重试注解
-│  │  │     │     └── core
-│  │  │     │        ├── AbnormalContext.java       # 异常重试上下文
-│  │  │     │        ├── AbnormalMailService.java   # 异常通知邮件
-│  │  │     │        ├── AbnormalRecord.java        # 异常记录模型
-│  │  │     │        ├── AbnormalRetryHandler.java  # 业务处理接口
-│  │  │     │        ├── AbnormalRetryManager.java  # 框架核心管理器
-│  │  │     │        ├── AbnormalRetryProperties.java # 框架配置
-│  │  │     │        ├── AbnormalRetryScheduler.java # 轮询调度
-│  │  │     │        └── AbstractAbnormalRetryService.java # 业务基类
+│  │  │     │     ├── core
+│  │  │     │     │  ├── AbnormalContext.java       # 异常重试上下文
+│  │  │     │     │  ├── AbnormalMailService.java   # 异常通知邮件
+│  │  │     │     │  ├── AbnormalRecord.java        # 异常记录模型
+│  │  │     │     │  ├── AbnormalRetryHandler.java  # 业务处理接口
+│  │  │     │     │  ├── AbnormalRetryManager.java  # 框架核心管理器
+│  │  │     │     │  ├── AbnormalRetryProperties.java # 框架配置
+│  │  │     │     │  ├── AbnormalRetryScheduler.java # 轮询调度
+│  │  │     │     │  └── AbstractAbnormalRetryService.java # 业务基类
 │  │  │     │     └── model
 │  │  │     │        └── AbnormalBaseEntity.java    # 异常字段基类
-│  │  │     └── utils
-│  │  │        └── RandomIdGenerator.java           # 随机 ID 生成
+│  │  │     ├── filter
+│  │  │     │  ├── CachedBodyHttpServletRequest.java # 可重复读取请求体
+│  │  │     │  └── CryptoRequestFilter.java         # 请求体解密过滤器
+│  │  │     ├── mapper                              # MyBatis-Plus Mapper
+│  │  │     ├── model
+│  │  │     │  └── ApiResponse.java                 # 统一响应结构
+│  │  │     ├── pojo                                # 业务实体（用户/账单/卡牌/矿机等）
+│  │  │     ├── security
+│  │  │     │  └── TokenExtractor.java              # Sa-Token 请求头提取
+│  │  │     ├── server
+│  │  │     │  ├── admin                            # 后台用户/角色/权限服务
+│  │  │     │  ├── card                             # 卡牌业务服务
+│  │  │     │  ├── miner                            # 矿机业务服务
+│  │  │     │  ├── sys                              # 系统配置服务
+│  │  │     │  ├── test                             # 异常框架示例服务
+│  │  │     │  └── user                             # 用户/账单服务
+│  │  │     ├── utils
+│  │  │     │  └── RandomIdGenerator.java           # 随机 ID 生成
+│  │  │     └── VO                                  # 返回 VO
 │  │  └── resources
 │  │     ├── application.yaml                       # 应用配置
 │  │     └── logback-spring.xml                      # 日志配置（按大小+日期滚动）
@@ -95,7 +132,13 @@ rabnbserver
 - 生产配置：prod profile 关闭 springdoc 的 api-docs 与 swagger-ui
 - 合约返回说明：交易方法返回 TransactionReceipt，并在方法注释中给出 JSON 字段示例与含义
 - 测试策略：Maven 默认跳过测试（skipTests=true），如需执行请用 -DskipTests=false；IDE 手动运行不受影响
-- 异常重试框架：扫描 @AbnormalRetryConfig，自动补齐异常字段并定时轮询，支持自动重试与人工通知
+- USDT 精度：统一使用 18 位（AmountConvertUtils.Currency.USDT=18）
+- PaymentUSDT：minAmount 可配置（链上读取 minAmount()）
+- 异常重试框架：扫描 @AbnormalRetryConfig，自动补齐异常字段并定时轮询，行锁使用 FOR UPDATE SKIP LOCKED，支持自动重试/人工通知/err_manual_notify_count，超时或达上限会升级人工并持续通知直至人工处理成功（人工提醒间隔线性递增）
+- 邮件配置：application.yaml 中 spring.mail.* 与 abnormal.retry.* 控制通知
+- 时区统一：JVM/Jackson/JDBC/日志均使用 Asia/Shanghai
+- 调试日志：异常重试框架包（com.ra.rabnbserver.exception.Abnormal）默认 DEBUG 输出
+- 异常自愈：err_start_time 为空会自动补当前时间，业务状态成功但 err_status 未同步会自动修复为 2001
 
 ### Reference Documentation
 

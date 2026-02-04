@@ -4,7 +4,7 @@ spring:
   jackson:
     # 设置全局日期格式
     date-format: yyyy-MM-dd HH:mm:ss
-    time-zone: GMT+8
+    time-zone: Asia/Shanghai
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://192.168.110.104:3306/BNB
@@ -23,6 +23,7 @@ spring:
         prepStmtCacheSize: 500
         prepStmtCacheSqlLimit: 2048
         useServerPrepStmts: true
+        serverTimezone: Asia/Shanghai
   data:
     redis:
       database: 4
@@ -93,9 +94,9 @@ contract:
 abnormal:
   retry:
     # 轮询间隔（秒）
-    scan-interval-seconds: 300
+    scan-interval-seconds: 10
     # 是否启用邮件通知
-    mail-enabled: false
+    mail-enabled: true
     # 发件人邮箱
     mail-from: 'hun422@sina.com'
     # 收件人邮箱列表

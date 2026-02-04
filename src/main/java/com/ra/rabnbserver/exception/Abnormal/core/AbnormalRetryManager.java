@@ -38,6 +38,7 @@ public class AbnormalRetryManager {
             return;
         }
         Map<String, Object> beans = applicationContext.getBeansWithAnnotation(AbnormalRetryConfig.class);
+        log.debug("异常重试框架扫描 @AbnormalRetryConfig，数量={}", beans.size());
         if (beans.isEmpty()) {
             log.warn("未发现 @AbnormalRetryConfig 注解服务，异常重试框架未启动");
             return;
@@ -61,6 +62,16 @@ public class AbnormalRetryManager {
             tableContextMap.put(config.table(), context);
             classContextMap.put(targetClass, context);
             log.info("异常重试服务已注册：服务={}, 表={}", config.serviceName(), config.table());
+            log.debug("异常重试服务配置加载完成，服务={}, 表={}, 状态字段={}, 成功值={}, 失败值={}, 最小间隔={}, 超时={}, 最大重试={}, 人工提醒间隔={}",
+                    config.serviceName(),
+                    config.table(),
+                    config.statusField(),
+                    config.successValue(),
+                    config.failValue(),
+                    config.minIntervalSeconds(),
+                    config.timeoutSeconds(),
+                    config.maxRetryCount(),
+                    config.manualRemindIntervalSeconds());
         }
     }
 
@@ -86,13 +97,46 @@ public class AbnormalRetryManager {
             throw new BusinessException("异常框架未初始化或未注册服务");
         }
         AbnormalRetryConfig config = context.getConfig();
+        log.debug("异常校验开始，服务={}, 用户={}", config.serviceName(), userValue);
         String sql = "SELECT COUNT(1) FROM " + wrapTable(config.table())
                 + " WHERE (" + wrapColumn("err_status") + " = ? OR " + wrapColumn(config.statusField()) + " = ?)"
                 + " AND " + wrapColumn(config.userField()) + " = ?";
         Object failValue = parseValue(config.failValue());
         Integer count = jdbcTemplate.queryForObject(sql, Integer.class, 4000, failValue, userValue);
+        log.debug("异常校验完成，服务={}, 用户={}, 命中数={}", config.serviceName(), userValue, count);
         if (count != null && count > 0) {
             throw new BusinessException("当前操作存在异常，请过一会再试试或联系客服");
+        }
+    }
+
+    /**
+     * 自动修复异常表关键字段（补 err_start_time 与修复成功状态）
+     *
+     * @param context 上下文
+     */
+    public void healAbnormalData(AbnormalContext context) {
+        AbnormalRetryConfig config = context.getConfig();
+        Object successValue = parseValue(config.successValue());
+
+        // 1) err_status=4000/4001 且 err_start_time 为空时补当前时间
+        String fillStartTimeSql = "UPDATE " + wrapTable(config.table()) + " SET "
+                + wrapColumn("err_start_time") + " = NOW() "
+                + "WHERE " + wrapColumn("err_status") + " IN (4000, 4001)"
+                + " AND " + wrapColumn("err_start_time") + " IS NULL";
+        int filled = jdbcTemplate.update(fillStartTimeSql);
+        if (filled > 0) {
+            log.warn("异常数据开始时间为空，已自动补全，服务={}, 数量={}", config.serviceName(), filled);
+        }
+
+        // 2) 业务状态已成功但 err_status 未同步时自动修复
+        String fixSuccessSql = "UPDATE " + wrapTable(config.table()) + " SET "
+                + wrapColumn("err_status") + " = ? "
+                + "WHERE " + wrapColumn(config.statusField()) + " = ?"
+                + " AND (" + wrapColumn("err_status") + " IS NULL OR " + wrapColumn("err_status") + " NOT IN (2001, 2002))";
+        int fixed = jdbcTemplate.update(fixSuccessSql, 2001, successValue);
+        if (fixed > 0) {
+            log.warn("异常数据业务状态已成功但未同步 err_status，已自动修复，服务={}, 数量={}",
+                    config.serviceName(), fixed);
         }
     }
 
@@ -140,6 +184,7 @@ public class AbnormalRetryManager {
             throw new BusinessException("异常框架未初始化或未注册服务");
         }
         AbnormalRetryConfig config = context.getConfig();
+        log.debug("异常落库开始，服务={}, 数据ID={}, 用户={}", config.serviceName(), dataId, userValue);
         StringBuilder sql = new StringBuilder();
         sql.append("UPDATE ").append(wrapTable(config.table())).append(" SET ")
                 .append(wrapColumn("err_status")).append(" = ?, ")
@@ -179,22 +224,18 @@ public class AbnormalRetryManager {
         String sql = "SELECT * FROM " + wrapTable(config.table())
                 + " WHERE " + wrapColumn("err_status") + " = ?"
                 + " AND (" + wrapColumn("err_next_retry_time") + " IS NULL OR " + wrapColumn("err_next_retry_time") + " <= NOW())"
-                + " AND " + wrapColumn("err_start_time") + " IS NOT NULL"
-                + " AND TIMESTAMPDIFF(SECOND, " + wrapColumn("err_start_time") + ", NOW()) < ?"
-                + " AND COALESCE(" + wrapColumn("err_retry_count") + ", 0) < ?"
                 + " AND " + wrapColumn(config.statusField()) + " = ?";
         Object failValue = parseValue(config.failValue());
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 sql,
                 4000,
-                config.timeoutSeconds(),
-                config.maxRetryCount(),
                 failValue
         );
         List<AbnormalRecord> records = new ArrayList<>();
         for (Map<String, Object> row : rows) {
             records.add(AbnormalRecord.fromMap(row, config.idField(), config.userField(), config.statusField()));
         }
+        log.debug("自动重试扫描完成，服务={}, 命中数量={}", config.serviceName(), records.size());
         return records;
     }
 
@@ -207,24 +248,55 @@ public class AbnormalRetryManager {
     public List<AbnormalRecord> getAllAbnormalDataNoticeManually(AbnormalContext context) {
         AbnormalRetryConfig config = context.getConfig();
         String sql = "SELECT * FROM " + wrapTable(config.table())
-                + " WHERE " + wrapColumn("err_status") + " IN (4000, 4001)"
-                + " AND " + wrapColumn("err_start_time") + " IS NOT NULL"
-                + " AND TIMESTAMPDIFF(SECOND, " + wrapColumn("err_start_time") + ", NOW()) > ?"
-                + " AND COALESCE(" + wrapColumn("err_retry_count") + ", 0) >= ?"
+                + " WHERE " + wrapColumn("err_status") + " = 4001"
                 + " AND (" + wrapColumn("err_next_remind_staff_time") + " IS NULL OR " + wrapColumn("err_next_remind_staff_time") + " < NOW())"
                 + " AND " + wrapColumn(config.statusField()) + " = ?";
         Object failValue = parseValue(config.failValue());
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 sql,
-                config.timeoutSeconds(),
-                config.maxRetryCount(),
                 failValue
         );
         List<AbnormalRecord> records = new ArrayList<>();
         for (Map<String, Object> row : rows) {
             records.add(AbnormalRecord.fromMap(row, config.idField(), config.userField(), config.statusField()));
         }
+        log.debug("人工通知扫描完成，服务={}, 命中数量={}", config.serviceName(), records.size());
         return records;
+    }
+
+    /**
+     * 超时但未达到最大重试次数的数据，直接升级为人工处理
+     *
+     * @param context 上下文
+     * @return 升级数量
+     */
+    public int promoteTimeoutToManual(AbnormalContext context) {
+        AbnormalRetryConfig config = context.getConfig();
+        String sql = "UPDATE " + wrapTable(config.table()) + " SET "
+                + wrapColumn("err_status") + " = ?, "
+                + wrapColumn("err_retry_count") + " = ?, "
+                + wrapColumn("err_next_retry_time") + " = NULL, "
+                + wrapColumn("err_submit_manual_status") + " = NULL, "
+                + wrapColumn("err_next_remind_staff_time") + " = NULL "
+                + "WHERE " + wrapColumn("err_status") + " = ?"
+                + " AND TIMESTAMPDIFF(SECOND, " + wrapColumn("err_start_time") + ", NOW()) > ?"
+                + " AND COALESCE(" + wrapColumn("err_retry_count") + ", 0) < ?"
+                + " AND " + wrapColumn(config.statusField()) + " = ?";
+        Object failValue = parseValue(config.failValue());
+        int updated = jdbcTemplate.update(
+                sql,
+                4001,
+                config.maxRetryCount(),
+                4000,
+                config.timeoutSeconds(),
+                config.maxRetryCount(),
+                failValue
+        );
+        log.debug("超时升级人工执行完成，服务={}, 更新数量={}", config.serviceName(), updated);
+        if (updated > 0) {
+            log.info("异常超时升级人工完成，服务={}, 数量={}", config.serviceName(), updated);
+        }
+        return updated;
     }
 
     /**
@@ -241,6 +313,7 @@ public class AbnormalRetryManager {
                 + "WHERE " + wrapColumn(config.idField()) + " = ?";
         jdbcTemplate.update(sql, 2001, parseValue(config.successValue()), dataId);
         log.info("自动重试成功，服务={}, 数据ID={}", config.serviceName(), dataId);
+        log.debug("自动重试成功回写完成，服务={}, 数据ID={}", config.serviceName(), dataId);
     }
 
     /**
@@ -259,6 +332,8 @@ public class AbnormalRetryManager {
             timeout = duration > config.timeoutSeconds();
         }
         boolean overMax = retryCount >= config.maxRetryCount();
+        log.debug("自动重试失败判断，服务={}, 数据ID={}, 已重试={}, 超时={}, 达上限={}",
+                config.serviceName(), record.getId(), retryCount, timeout, overMax);
         if (timeout || overMax) {
             upgradeToManual(context, record);
             return;
@@ -295,17 +370,28 @@ public class AbnormalRetryManager {
             return;
         }
         LocalDateTime now = LocalDateTime.now();
+        log.debug("升级人工开始，服务={}, 数据ID={}, 当前状态={}, 已重试={}",
+                config.serviceName(), record.getId(), record.getErrStatus(), record.getErrRetryCount());
         if (record.getErrStatus() == null || record.getErrStatus() != 4001) {
             String sql = "UPDATE " + wrapTable(config.table()) + " SET "
-                    + wrapColumn("err_status") + " = ? "
+                    + wrapColumn("err_status") + " = ?, "
+                    + wrapColumn("err_retry_count") + " = ?, "
+                    + wrapColumn("err_next_retry_time") + " = NULL, "
+                    + wrapColumn("err_submit_manual_status") + " = NULL, "
+                    + wrapColumn("err_next_remind_staff_time") + " = NULL "
                     + "WHERE " + wrapColumn(config.idField()) + " = ?";
-            jdbcTemplate.update(sql, 4001, record.getId());
+            jdbcTemplate.update(sql, 4001, config.maxRetryCount(), record.getId());
+            record.setErrStatus(4001);
+            record.setErrRetryCount(config.maxRetryCount());
+            record.setErrNextRetryTime(null);
+            record.setErrNextRemindStaffTime(null);
         }
         if (record.getErrNextRemindStaffTime() != null && record.getErrNextRemindStaffTime().isAfter(now)) {
             log.info("人工通知未到提醒时间，服务={}, 数据ID={}, 下次提醒时间={}",
                     config.serviceName(), record.getId(), record.getErrNextRemindStaffTime());
             return;
         }
+        log.debug("升级人工完成，准备发送通知，服务={}, 数据ID={}", config.serviceName(), record.getId());
         notifyManual(context, record);
     }
 
@@ -318,6 +404,7 @@ public class AbnormalRetryManager {
     public void notifyManual(AbnormalContext context, AbnormalRecord record) {
         AbnormalRetryConfig config = context.getConfig();
         Map<String, Object> fullData = loadFullData(config, record.getId());
+        int currentCount = Optional.ofNullable(record.getErrManualNotifyCount()).orElse(0);
         boolean mailOk = false;
         try {
             mailService.sendErrToMail(config, record, fullData);
@@ -326,15 +413,35 @@ public class AbnormalRetryManager {
             log.error("发送异常通知失败，服务={}, 数据ID={}, 原因={}",
                     config.serviceName(), record.getId(), e.getMessage());
         }
-        LocalDateTime nextRemindTime = calcNextRemindTime(config, record);
-        String sql = "UPDATE " + wrapTable(config.table()) + " SET "
-                + wrapColumn("err_next_remind_staff_time") + " = ?, "
-                + wrapColumn("err_submit_manual_status") + " = ?, "
-                + wrapColumn("err_manual_notify_count") + " = COALESCE(" + wrapColumn("err_manual_notify_count") + ", 0) + 1 "
-                + "WHERE " + wrapColumn(config.idField()) + " = ?";
-        jdbcTemplate.update(sql, Timestamp.valueOf(nextRemindTime), mailOk ? 2000 : 4000, record.getId());
-        log.info("人工通知已记录，服务={}, 数据ID={}, 下次提醒时间={}",
-                config.serviceName(), record.getId(), nextRemindTime);
+        int intervalMultiplier = mailOk ? (currentCount + 1) : 1;
+        long nextSeconds = (long) config.manualRemindIntervalSeconds() * intervalMultiplier;
+        LocalDateTime nextRemindTime = LocalDateTime.now().plusSeconds(nextSeconds);
+        log.debug("人工通知间隔计算，服务={}, 数据ID={}, 当前通知次数={}, 本次成功={}, 下次间隔秒={}, 下次提醒时间={}",
+                config.serviceName(), record.getId(), currentCount, mailOk, nextSeconds, nextRemindTime);
+        if (mailOk) {
+            String sql = "UPDATE " + wrapTable(config.table()) + " SET "
+                    + wrapColumn("err_next_remind_staff_time") + " = ?, "
+                    + wrapColumn("err_submit_manual_status") + " = ?, "
+                    + wrapColumn("err_manual_notify_count") + " = ? "
+                    + "WHERE " + wrapColumn(config.idField()) + " = ?";
+            int updated = jdbcTemplate.update(sql, Timestamp.valueOf(nextRemindTime), 2000, currentCount + 1, record.getId());
+            log.info("人工通知发送成功，服务={}, 数据ID={}, 下次提醒时间={}",
+                    config.serviceName(), record.getId(), nextRemindTime);
+            log.debug("人工通知成功回写完成，服务={}, 数据ID={}, 下次提醒时间={}",
+                    config.serviceName(), record.getId(), nextRemindTime);
+            log.debug("人工通知回写行数，服务={}, 数据ID={}, 更新行数={}", config.serviceName(), record.getId(), updated);
+        } else {
+            String sql = "UPDATE " + wrapTable(config.table()) + " SET "
+                    + wrapColumn("err_next_remind_staff_time") + " = ?, "
+                    + wrapColumn("err_submit_manual_status") + " = ? "
+                    + "WHERE " + wrapColumn(config.idField()) + " = ?";
+            int updated = jdbcTemplate.update(sql, Timestamp.valueOf(nextRemindTime), 4000, record.getId());
+            log.warn("人工通知发送失败，将继续重试，服务={}, 数据ID={}, 下次提醒时间={}",
+                    config.serviceName(), record.getId(), nextRemindTime);
+            log.debug("人工通知失败回写完成，服务={}, 数据ID={}, 下次提醒时间={}",
+                    config.serviceName(), record.getId(), nextRemindTime);
+            log.debug("人工通知回写行数，服务={}, 数据ID={}, 更新行数={}", config.serviceName(), record.getId(), updated);
+        }
     }
 
     /**
@@ -342,14 +449,9 @@ public class AbnormalRetryManager {
      */
     private LocalDateTime calcNextRemindTime(AbnormalRetryConfig config, AbnormalRecord record) {
         LocalDateTime now = LocalDateTime.now();
-        if (record.getErrStartTime() == null) {
-            return now.plusSeconds(config.manualRemindIntervalSeconds());
-        }
-        long seconds = Duration.between(record.getErrStartTime(), now).getSeconds();
-        if (seconds <= 0) {
-            seconds = config.manualRemindIntervalSeconds();
-        }
-        return now.plusSeconds(seconds);
+        int notifyCount = Optional.ofNullable(record.getErrManualNotifyCount()).orElse(0);
+        long nextSeconds = (long) config.manualRemindIntervalSeconds() * (notifyCount + 1L);
+        return now.plusSeconds(nextSeconds);
     }
 
     /**
@@ -453,10 +555,12 @@ public class AbnormalRetryManager {
      */
     public AbnormalRecord lockRecordForUpdate(AbnormalContext context, Long dataId) {
         AbnormalRetryConfig config = context.getConfig();
+        log.debug("尝试行锁读取，服务={}, 数据ID={}", config.serviceName(), dataId);
         String sql = "SELECT * FROM " + wrapTable(config.table())
                 + " WHERE " + wrapColumn(config.idField()) + " = ? FOR UPDATE SKIP LOCKED";
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, dataId);
         if (rows.isEmpty()) {
+            log.debug("行锁读取未命中，服务={}, 数据ID={}", config.serviceName(), dataId);
             return null;
         }
         return AbnormalRecord.fromMap(rows.get(0), config.idField(), config.userField(), config.statusField());
@@ -471,29 +575,32 @@ public class AbnormalRetryManager {
      */
     public boolean isRetryEligible(AbnormalContext context, AbnormalRecord record) {
         if (record == null) {
+            log.debug("重试条件校验失败：记录为空");
             return false;
         }
         AbnormalRetryConfig config = context.getConfig();
         if (record.getErrStatus() == null || record.getErrStatus() != 4000) {
+            log.debug("重试条件校验失败：状态不匹配，服务={}, 数据ID={}, err_status={}",
+                    config.serviceName(), record.getId(), record.getErrStatus());
             return false;
         }
         LocalDateTime now = LocalDateTime.now();
         if (record.getErrNextRetryTime() != null && record.getErrNextRetryTime().isAfter(now)) {
+            log.debug("重试条件校验失败：未到重试时间，服务={}, 数据ID={}, 下次时间={}",
+                    config.serviceName(), record.getId(), record.getErrNextRetryTime());
             return false;
         }
         if (record.getErrStartTime() == null) {
-            return false;
-        }
-        long duration = Duration.between(record.getErrStartTime(), now).getSeconds();
-        if (duration >= config.timeoutSeconds()) {
-            return false;
-        }
-        int retryCount = Optional.ofNullable(record.getErrRetryCount()).orElse(0);
-        if (retryCount >= config.maxRetryCount()) {
+            log.debug("重试条件校验失败：开始时间为空，服务={}, 数据ID={}", config.serviceName(), record.getId());
             return false;
         }
         Object failValue = parseValue(config.failValue());
-        return valueEquals(record.getStatusValue(), failValue);
+        boolean ok = valueEquals(record.getStatusValue(), failValue);
+        if (!ok) {
+            log.debug("重试条件校验失败：业务状态不匹配，服务={}, 数据ID={}, 当前值={}, 失败值={}",
+                    config.serviceName(), record.getId(), record.getStatusValue(), failValue);
+        }
+        return ok;
     }
 
     /**
@@ -505,29 +612,65 @@ public class AbnormalRetryManager {
      */
     public boolean isManualNotifyEligible(AbnormalContext context, AbnormalRecord record) {
         if (record == null) {
+            log.debug("人工通知校验失败：记录为空");
             return false;
         }
         AbnormalRetryConfig config = context.getConfig();
-        if (record.getErrStatus() == null || (record.getErrStatus() != 4000 && record.getErrStatus() != 4001)) {
+        if (record.getErrStatus() == null || record.getErrStatus() != 4001) {
+            log.debug("人工通知校验失败：状态不匹配，服务={}, 数据ID={}, err_status={}",
+                    config.serviceName(), record.getId(), record.getErrStatus());
             return false;
         }
         LocalDateTime now = LocalDateTime.now();
         if (record.getErrStartTime() == null) {
-            return false;
-        }
-        long duration = Duration.between(record.getErrStartTime(), now).getSeconds();
-        if (duration <= config.timeoutSeconds()) {
-            return false;
-        }
-        int retryCount = Optional.ofNullable(record.getErrRetryCount()).orElse(0);
-        if (retryCount < config.maxRetryCount()) {
+            log.debug("人工通知校验失败：开始时间为空，服务={}, 数据ID={}", config.serviceName(), record.getId());
             return false;
         }
         if (record.getErrNextRemindStaffTime() != null && record.getErrNextRemindStaffTime().isAfter(now)) {
+            log.debug("人工通知校验失败：未到提醒时间，服务={}, 数据ID={}, 下次时间={}",
+                    config.serviceName(), record.getId(), record.getErrNextRemindStaffTime());
             return false;
         }
         Object failValue = parseValue(config.failValue());
-        return valueEquals(record.getStatusValue(), failValue);
+        boolean ok = valueEquals(record.getStatusValue(), failValue);
+        if (!ok) {
+            log.debug("人工通知校验失败：业务状态不匹配，服务={}, 数据ID={}, 当前值={}, 失败值={}",
+                    config.serviceName(), record.getId(), record.getStatusValue(), failValue);
+        }
+        return ok;
+    }
+
+    /**
+     * 是否需要直接升级为人工处理
+     *
+     * @param context 上下文
+     * @param record 异常记录
+     * @return true 需要升级
+     */
+    public boolean shouldUpgradeToManual(AbnormalContext context, AbnormalRecord record) {
+        if (record == null) {
+            return false;
+        }
+        if (record.getErrStatus() == null || record.getErrStatus() != 4000) {
+            return false;
+        }
+        AbnormalRetryConfig config = context.getConfig();
+        LocalDateTime now = LocalDateTime.now();
+        if (record.getErrStartTime() != null) {
+            long duration = Duration.between(record.getErrStartTime(), now).getSeconds();
+            if (duration > config.timeoutSeconds()) {
+                log.debug("满足升级人工条件：已超时，服务={}, 数据ID={}, 持续秒数={}",
+                        config.serviceName(), record.getId(), duration);
+                return true;
+            }
+        }
+        int retryCount = Optional.ofNullable(record.getErrRetryCount()).orElse(0);
+        if (retryCount >= config.maxRetryCount()) {
+            log.debug("满足升级人工条件：达到最大重试次数，服务={}, 数据ID={}, 已重试={}",
+                    config.serviceName(), record.getId(), retryCount);
+            return true;
+        }
+        return false;
     }
 
     private String wrapTable(String table) {
@@ -542,14 +685,21 @@ public class AbnormalRetryManager {
         if (value == null) {
             return null;
         }
-        if (value.matches("^-?\\d+$")) {
+        String trimmed = value.trim();
+        if ("true".equalsIgnoreCase(trimmed)) {
+            return Boolean.TRUE;
+        }
+        if ("false".equalsIgnoreCase(trimmed)) {
+            return Boolean.FALSE;
+        }
+        if (trimmed.matches("^-?\\d+$")) {
             try {
-                return Long.parseLong(value);
+                return Long.parseLong(trimmed);
             } catch (Exception e) {
-                return value;
+                return trimmed;
             }
         }
-        return value;
+        return trimmed;
     }
 
     private boolean valueEquals(Object left, Object right) {
@@ -559,6 +709,41 @@ public class AbnormalRetryManager {
         if (left == null || right == null) {
             return false;
         }
+        if (left instanceof Number && right instanceof Number) {
+            return ((Number) left).longValue() == ((Number) right).longValue();
+        }
+        Boolean leftBool = toBoolean(left);
+        Boolean rightBool = toBoolean(right);
+        if (leftBool != null || rightBool != null) {
+            return Objects.equals(leftBool, rightBool);
+        }
         return left.toString().equals(right.toString());
+    }
+
+    private Boolean toBoolean(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue() != 0;
+        }
+        String text = value.toString().trim();
+        if ("true".equalsIgnoreCase(text)) {
+            return Boolean.TRUE;
+        }
+        if ("false".equalsIgnoreCase(text)) {
+            return Boolean.FALSE;
+        }
+        if (text.matches("^-?\\d+$")) {
+            try {
+                return Long.parseLong(text) != 0L;
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return null;
     }
 }

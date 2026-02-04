@@ -39,11 +39,13 @@ public @interface AbnormalRetryConfig {
 
     /**
      * 业务成功值
+     * 支持类型：字符串/整数/长整型/布尔（由框架解析）
      */
     String successValue();
 
     /**
      * 业务失败值
+     * 支持类型：字符串/整数/长整型/布尔（由框架解析）
      */
     String failValue();
 

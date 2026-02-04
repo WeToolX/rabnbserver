@@ -22,7 +22,7 @@ public class AbnormalRetryProperties {
     /**
      * 是否启用邮件通知
      */
-    private boolean mailEnabled = false;
+    private boolean mailEnabled = true;
 
     /**
      * 发件人邮箱
