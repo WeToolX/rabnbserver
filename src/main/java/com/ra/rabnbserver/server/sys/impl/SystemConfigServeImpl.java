@@ -47,7 +47,8 @@ public class SystemConfigServeImpl extends ServiceImpl<SystemConfigMapper, Syste
     /**
      * 检查数据库是否为空，若为空则插入默认配置
      */
-    private void checkAndInitDefaults() {
+    @Override
+    public void checkAndInitDefaults() {
         // 先快速检查（非锁定），如果已有数据直接返回
         if (this.count() > 0) {
             return;

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ra.rabnbserver.pojo.SystemConfig;
 import com.ra.rabnbserver.server.sys.SystemConfigServe;
+import com.ra.rabnbserver.server.sys.impl.SystemConfigServeImpl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,6 +27,8 @@ public class SystemConfigController {
     public IPage<SystemConfig> getPage(@RequestParam(defaultValue = "1") int page,
                                        @RequestParam(defaultValue = "10") int size,
                                        String configKey, String configName) {
+
+        systemConfigServe.checkAndInitDefaults();
         Page<SystemConfig> pageParam = new Page<>(page, size);
         return systemConfigServe.page(pageParam, new LambdaQueryWrapper<SystemConfig>()
                 .like(StrUtil.isNotBlank(configKey), SystemConfig::getConfigKey, configKey)
@@ -38,6 +41,7 @@ public class SystemConfigController {
      */
     @GetMapping("/{id}")
     public SystemConfig getById(@PathVariable Long id) {
+        systemConfigServe.checkAndInitDefaults();
         return systemConfigServe.getById(id);
     }
 

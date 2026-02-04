@@ -30,6 +30,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -224,19 +225,73 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     }
 
 
+    /**
+     * 执行电费分润分销
+     * @param user   当前缴费的用户
+     * @param amount 缴纳的金额基数
+     * @param ratios 分润比例配置 Map<层级, 比例>
+     */
     private void executeDistribution(User user, BigDecimal amount, Map<Integer, BigDecimal> ratios) {
-        if (StrUtil.isBlank(user.getPath()) || "0,".equals(user.getPath())) return;
-        List<Long> parents = Arrays.asList(user.getPath().split(","))
-                .stream().filter(s -> !s.equals("0") && StrUtil.isNotBlank(s))
-                .map(Long::parseLong).collect(java.util.stream.Collectors.toList());
-        java.util.Collections.reverse(parents);
+        // 基础校验：如果没有上级路径或没有配置比例，直接返回
+        if (StrUtil.isBlank(user.getPath()) || "0,".equals(user.getPath()) || ratios == null || ratios.isEmpty()) {
+            return;
+        }
 
+        // 解析上级路径并反转
+        // 原始 path 示例: "0,1,5,10," -> 解析并反转后: [10, 5, 1] (10是直属1级上级)
+        List<Long> parents = Arrays.stream(user.getPath().split(","))
+                .filter(s -> StrUtil.isNotBlank(s) && !"0".equals(s))
+                .map(Long::parseLong)
+                .collect(Collectors.toList());
+        Collections.reverse(parents);
+        // 确定后台配置的最大分润层级（例如配置了 {1: 0.1, 3: 0.05}，maxConfigLevel 就是 3）
+        int maxConfigLevel = ratios.keySet().stream()
+                .max(Integer::compare)
+                .orElse(0);
+        // 开始向上追溯分润
         for (int i = 0; i < parents.size(); i++) {
-            int level = i + 1;
-            if (ratios.containsKey(level)) {
-                userBillServe.createBillAndUpdateBalance(parents.get(i), amount.multiply(ratios.get(level)),
-                        BillType.PLATFORM, FundType.INCOME, TransactionType.REWARD,
-                        "下级激活奖励(层级:" + level + ")", null, null, null);
+            // 当前代数（1代表直属，2代表上上的上级...）
+            int currentLevel = i + 1;
+            // 如果当前代数已经超过了后台设置的最大代数，直接结束循环
+            if (currentLevel > maxConfigLevel) {
+                log.debug("用户 {} 的分润已达到设置的最大层级 {}，停止向上追溯", user.getId(), maxConfigLevel);
+                break;
+            }
+            BigDecimal ratio = ratios.get(currentLevel);
+            // 检查配置是否存在
+            if (ratio != null) {
+                // 如果比例 > 1 (代表 > 100%，通常是后台误填了整数如 10) 或比例为负数
+                if (ratio.compareTo(BigDecimal.ONE) > 0 || ratio.compareTo(BigDecimal.ZERO) < 0) {
+                    log.error("【严重配置异常】分润中断！检测到非法的比例配置：层级={}, 比例={}。" +
+                            "预期应为 0 到 1 之间的小数（如 0.1 代表 10%）。" +
+                            "为了防止资金安全风险，已停止发放后续所有奖励！", currentLevel, ratio);
+                    // 发现配置错误，立即退出方法，不再给任何人发钱，保护系统账户
+                    return;
+                }
+                // 比例合法且大于 0 才执行发放
+                if (ratio.compareTo(BigDecimal.ZERO) > 0) {
+                    Long parentId = parents.get(i);
+                    BigDecimal rewardAmount = amount.multiply(ratio);
+                    try {
+                        // 执行账单创建和余额增加
+                        userBillServe.createBillAndUpdateBalance(
+                                parentId,
+                                rewardAmount,
+                                BillType.PLATFORM,
+                                FundType.INCOME,
+                                TransactionType.REWARD,
+                                String.format("下级激活奖励(来自用户ID:%d, 层级:%d)", user.getId(), currentLevel),
+                                null, null, null
+                        );
+                        log.info("奖励发放成功: 用户ID {} -> 上级ID {}(第{}层), 金额: {}",
+                                user.getId(), parentId, currentLevel, rewardAmount);
+                    } catch (Exception e) {
+                        log.error("发放层级奖励异常，上级ID: {}, 错误信息: {}", parentId, e.getMessage());
+                    }
+                }
+            } else {
+                // 如果该层级没有配置比例（层级跳跃），则打印日志并继续寻找更高层级
+                log.debug("第 {} 层未配置分润比例，自动跳过并查找下一层", currentLevel);
             }
         }
     }

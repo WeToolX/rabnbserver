@@ -443,7 +443,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         BigInteger minRaw = paymentUsdtContract.minAmount();
         log.info("最小扣款金额 minRaw: {}", minRaw);
         BigDecimal humanAmount = new BigDecimal(minRaw)
-                .divide(new BigDecimal("1000000"), 6, RoundingMode.HALF_UP);
+                .divide(new BigDecimal("1000000000000000000"), 6, RoundingMode.HALF_UP);
         vo.setMinAmount(humanAmount);
         return vo;
     }
