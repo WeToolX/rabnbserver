@@ -9,6 +9,8 @@ public interface SystemConfigServe extends IService<SystemConfig> {
 
     <T> T getConfigObject(String key, Class<T> clazz);
 
+    void checkAndInitDefaults();
+
     @Transactional(rollbackFor = Exception.class)
     void saveOrUpdateConfig(SystemConfig config);
 }
