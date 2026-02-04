@@ -59,6 +59,8 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
 
     private static final BigDecimal NFT_UNIT_PRICE = new BigDecimal("1");
 
+    private final UserBillRetryServeImpl billRetryServe;
+
 
 
     /**
@@ -184,170 +186,110 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
     @Override
     public void rechargeFromChain(Long userId, BigDecimal amount) {
         User user = userMapper.selectById(userId);
-        if (user == null || StringUtils.isBlank(user.getUserWalletAddress())) {
-            throw new BusinessException("用户不存在或未绑定钱包");
-        }
-        String walletAddress = user.getUserWalletAddress();
-        //BigInteger chainAmount = amount.multiply(BigDecimal.valueOf(1_000_000_000_000_000_000L)).toBigInteger();//
-        BigInteger  chainAmount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.USDT, amount);
-        String orderIdHex = "0x" + IdWorker.get32UUID(); // 生成32位唯一订单十六进制串
-
+        if (user == null) throw new BusinessException("用户不存在");
+        // 框架检查用户是否有未处理的严重异常
+        billRetryServe.checkUserErr(String.valueOf(userId));
+        String orderId = "RECH_" + IdWorker.getIdStr();
+        BigInteger rawAmount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.USDT, amount);
         try {
-            BigInteger allowance = paymentUsdtContract.allowanceToPaymentUsdt(walletAddress);
-            if (allowance.compareTo(chainAmount) < 0) {
-                throw new BusinessException("用户授权额度不足，请先在钱包授权");
-            }
-            BigInteger balance = paymentUsdtContract.balanceOf(walletAddress);
-            if (balance.compareTo(chainAmount) < 0) {
-                throw new BusinessException("用户链上USDT余额不足");
-            }
-            log.info("开始执行链上扣款: 用户={}, 金额={}, 订单={}", walletAddress, amount, orderIdHex);
-            TransactionReceipt receipt = paymentUsdtContract.deposit(orderIdHex, walletAddress, chainAmount);
-            String receiptJson = (receipt == null) ? null : JSON.toJSONString(receipt);
+            // 执行合约扣款
+            log.info("发起链上充值扣款: 用户={}, 金额={}", user.getUserWalletAddress(), amount);
+            TransactionReceipt receipt = paymentUsdtContract.deposit("0x" + IdWorker.get32UUID(), user.getUserWalletAddress(), rawAmount);
             if (receipt != null && "0x1".equals(receipt.getStatus())) {
+                // 合约执行成功 -> 创建成功账单 -> 标记框架成功
                 transactionTemplate.execute(status -> {
-                    this.createBillAndUpdateBalance(
-                            userId,
-                            amount,
-                            BillType.PLATFORM,
-                            FundType.INCOME,
-                            TransactionType.DEPOSIT,
-                            "USDT充值成功",
-                            orderIdHex,
-                            receipt.getTransactionHash(),
-                            receiptJson
-                    );
+                    createBillAndUpdateBalance(userId, amount, BillType.PLATFORM, FundType.INCOME,
+                            TransactionType.DEPOSIT, "链上充值成功", orderId, receipt.getTransactionHash(), JSON.toJSONString(receipt));
                     return null;
                 });
-                log.info("链上充值成功入账: 用户={}, TxHash={}", userId, receipt.getTransactionHash());
+                UserBill bill = this.getOne(new LambdaQueryWrapper<UserBill>().eq(UserBill::getTransactionOrderId, orderId));
+                if (bill != null) billRetryServe.ProcessingSuccessful(bill.getId());
+                log.info("充值成功入账，账单ID: {}", bill.getId());
             } else {
-                // 失败：记录异常账单（不更新用户余额）
-                saveExceptionBill(user, amount, orderIdHex, receipt != null ? receipt.getTransactionHash() : null, "合约执行失败");
-                throw new BusinessException("链上交易执行失败，请检查区块状态");
+                // 合约执行失败：创建失败账单 -> 标记异常框架
+                Long billId = saveInitFailBill(user, amount, orderId, receipt != null ? receipt.getTransactionHash() : null, "合约返回失败");
+                billRetryServe.markAbnormal(billId);
+                throw new BusinessException("合约执行失败");
             }
         } catch (Exception e) {
-            log.error("链上充值异常: ", e);
-            // 如果是业务异常直接抛出
-            if (e instanceof BusinessException) throw (BusinessException) e;
-            // 其他未知异常（如网络超时），记录一条状态为失败的账单
-            saveExceptionBill(user, amount, orderIdHex, null, "系统处理异常: " + e.getMessage());
-            throw new BusinessException("充值请求异常: " + e.getMessage());
+            log.error("充值过程异常: ", e);
+            Long billId = saveInitFailBill(user, amount, orderId, null, e.getMessage());
+            billRetryServe.markAbnormal(billId);
+            throw new BusinessException("充值异常: " + e.getMessage());
         }
     }
-
-    /**
-     * 辅助方法：记录失败/异常账单
-     */
-    private void saveExceptionBill(User user, BigDecimal amount, String orderId, String txHash, String errorMsg) {
-        UserBill failBill = new UserBill();
-        failBill.setUserId(user.getId());
-        failBill.setUserWalletAddress(user.getUserWalletAddress());
-        failBill.setTransactionOrderId(orderId);
-        failBill.setTxId(txHash);
-        failBill.setBillType(BillType.ERROR_ORDER);
-        failBill.setFundType(FundType.INCOME);
-        failBill.setTransactionType(TransactionType.DEPOSIT);
-        failBill.setAmount(amount);
-        failBill.setBalanceBefore(user.getBalance());
-        failBill.setBalanceAfter(user.getBalance());
-        failBill.setRemark("账单异常: " + errorMsg);
-        failBill.setTransactionTime(LocalDateTime.now());
-        failBill.setStatus(TransactionStatus.FAILED); // 状态设为失败/异常
-        this.save(failBill);
-    }
-
-
-
 
     @Override
     public void purchaseNftCard(Long userId, int quantity) {
-        // 基本参数校验
-        if (quantity <= 0) {
-            throw new BusinessException("购买数量必须大于0");
-        }
+        billRetryServe.checkUserErr(String.valueOf(userId));
         User user = userMapper.selectById(userId);
-        if (user == null || StringUtils.isBlank(user.getUserWalletAddress())) {
-            throw new BusinessException("用户不存在或未绑定钱包");
-        }
-        // 获取当前激活且启用的批次 (不再硬编码单价)
         ETFCard currentBatch = etfCardServe.getActiveAndEnabledBatch();
-        if (currentBatch == null) {
-            throw new BusinessException("购买失败：当前没有可售卖的卡牌");
-        }
-        // 校验库存：从合约方法 remainingMintable 获取实时数据
-        BigInteger remaining;
-        try {
-            remaining = cardNftContract.remainingMintable();
-            log.info("当前链上剩余可分发数量: {}", remaining);
-        } catch (Exception e) {
-            log.error("调用合约获取剩余库存失败", e);
-            throw new BusinessException("获取链上库存失败，请稍后再试");
-        }
-        if (remaining.compareTo(BigInteger.valueOf(quantity)) < 0) {
-            throw new BusinessException("链上库存不足，当前仅剩: " + remaining);
-        }
-        // 计算总价
+        if (currentBatch == null) throw new BusinessException("无可用批次");
         BigDecimal totalCost = currentBatch.getUnitPrice().multiply(new BigDecimal(quantity));
-        String orderId = "BILL_" + IdWorker.getIdStr();
-        // 执行编程式事务
-        transactionTemplate.execute(status -> {
+        String orderId = "NFT_BUY_" + IdWorker.getIdStr();
+        // 事务内：先锁定库存和余额（防止并发超卖和余额双花）
+        UserBill billRecord = transactionTemplate.execute(status -> {
             try {
-                // 乐观锁扣减库存
-                // 核心：在 SQL 层面增加 inventory >= quantity 的判断，利用数据库行锁保证并发安全
-                boolean inventoryUpdated = etfCardServe.update(new LambdaUpdateWrapper<ETFCard>()
-                        .eq(ETFCard::getId, currentBatch.getId())
-                        .ge(ETFCard::getInventory, quantity) // 关键：乐观锁条件，确保库存够扣
-                        .setSql("inventory = inventory - " + quantity)
-                        .setSql("sold_count = sold_count + " + quantity));
-
-                if (!inventoryUpdated) {
-                    // 如果返回 false，说明在该事务执行期间，库存已被其他线程抢先扣减
-                    throw new BusinessException("抢购失败：库存已被抢光或不足");
-                }
-                // 执行平台余额扣款
-                this.createBillAndUpdateBalance(
-                        userId,
-                        totalCost,
-                        BillType.PLATFORM,
-                        FundType.EXPENSE,
-                        TransactionType.PURCHASE,
-                        "购买NFT卡牌(" + currentBatch.getBatchNo() + ") x" + quantity,
-                        orderId,
-                        null,
-                        null
-                );
-                // 执行链上分发（distribute）
-                log.info("开始链上分发: 批次={}, 用户={}, 数量={}", currentBatch.getBatchNo(), user.getUserWalletAddress(), quantity);
-                TransactionReceipt receipt = cardNftContract.distribute(
-                        user.getUserWalletAddress(),
-                        BigInteger.valueOf(quantity)
-                );
-                // 检查合约执行状态并补全账单
-                if (receipt != null && "0x1".equals(receipt.getStatus())) {
-                    String receiptJson = JSON.toJSONString(receipt);
-                    String txHash = receipt.getTransactionHash();
-                    boolean billUpdated = this.update(new LambdaUpdateWrapper<UserBill>()
-                            .eq(UserBill::getTransactionOrderId, orderId)
-                            .set(UserBill::getTxId, txHash)
-                            .set(UserBill::getChainResponse, receiptJson));
-                    if (!billUpdated) {
-                        throw new BusinessException("账单同步失败");
-                    }
-                    log.info("购买成功: 订单={}, txHash={}", orderId, txHash);
-                    return true;
-                } else {
-                    log.error("合约执行失败: {}", receipt);
-                    throw new BusinessException("链上铸造失败，资金已退回");
-                }
-            } catch (BusinessException e) {
-                status.setRollbackOnly(); // 触发事务回滚：库存会加回去，余额扣款会撤销
-                throw e;
+                boolean invOk = etfCardServe.update(new LambdaUpdateWrapper<ETFCard>()
+                        .eq(ETFCard::getId, currentBatch.getId()).ge(ETFCard::getInventory, quantity)
+                        .setSql("inventory = inventory - " + quantity).setSql("sold_count = sold_count + " + quantity));
+                if (!invOk) throw new BusinessException("库存不足");
+                createBillAndUpdateBalance(userId, totalCost, BillType.PLATFORM, FundType.EXPENSE,
+                        TransactionType.PURCHASE, "购买NFT x" + quantity, orderId, null, null);
+                return this.getOne(new LambdaQueryWrapper<UserBill>().eq(UserBill::getTransactionOrderId, orderId));
             } catch (Exception e) {
-                log.error("购买过程发生异常: ", e);
                 status.setRollbackOnly();
-                throw new BusinessException("系统处理异常: " + e.getMessage());
+                throw e;
             }
         });
+        // 事务外：调用合约分发（重要：即使合约超时，余额和库存也已扣除，避免回滚导致的逻辑错乱）
+        try {
+            log.info("开始NFT链上分发: 订单={}, 地址={}", orderId, user.getUserWalletAddress());
+            TransactionReceipt receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(quantity));
+            if (receipt != null && "0x1".equals(receipt.getStatus())) {
+                // 成功：补全账单状态 -> 标记框架成功
+                this.update(new LambdaUpdateWrapper<UserBill>().eq(UserBill::getId, billRecord.getId())
+                        .set(UserBill::getStatus, TransactionStatus.SUCCESS)
+                        .set(UserBill::getTxId, receipt.getTransactionHash())
+                        .set(UserBill::getChainResponse, JSON.toJSONString(receipt)));
+                billRetryServe.ProcessingSuccessful(billRecord.getId());
+            } else {
+                // 合约显式失败：更新状态为 FAILED -> 标记框架异常
+                markBillFailed(billRecord.getId(), receipt != null ? receipt.getTransactionHash() : null, "合约执行失败");
+                billRetryServe.markAbnormal(billRecord.getId());
+            }
+        } catch (Exception e) {
+            log.error("NFT分发合约异常: ", e);
+            markBillFailed(billRecord.getId(), null, e.getMessage());
+            billRetryServe.markAbnormal(billRecord.getId());
+        }
+    }
+
+
+    private void markBillFailed(Long id, String txHash, String msg) {
+        this.update(new LambdaUpdateWrapper<UserBill>().eq(UserBill::getId, id)
+                .set(UserBill::getStatus, TransactionStatus.FAILED)
+                .set(UserBill::getTxId, txHash)
+                .set(UserBill::getRemark, "处理失败: " + msg));
+    }
+
+    private Long saveInitFailBill(User user, BigDecimal amount, String orderId, String txHash, String msg) {
+        UserBill bill = new UserBill();
+        bill.setUserId(user.getId());
+        bill.setUserWalletAddress(user.getUserWalletAddress());
+        bill.setTransactionOrderId(orderId);
+        bill.setTxId(txHash);
+        bill.setBillType(BillType.ERROR_ORDER);
+        bill.setFundType(FundType.INCOME);
+        bill.setTransactionType(TransactionType.DEPOSIT);
+        bill.setAmount(amount);
+        bill.setBalanceBefore(user.getBalance());
+        bill.setBalanceAfter(user.getBalance());
+        bill.setRemark("充值异常: " + msg);
+        bill.setStatus(TransactionStatus.FAILED);
+        bill.setTransactionTime(LocalDateTime.now());
+        this.save(bill);
+        return bill.getId();
     }
 
     @Override

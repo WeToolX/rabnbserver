@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import com.ra.rabnbserver.annotation.ColumnComment;
 import com.ra.rabnbserver.annotation.ColumnType;
 import com.ra.rabnbserver.common.BaseEntity;
+import com.ra.rabnbserver.exception.Abnormal.model.AbnormalBaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -16,7 +17,7 @@ import java.math.BigDecimal;
 @EqualsAndHashCode(callSuper = true)
 @Data
 @TableName("miner_profit_record")
-public class MinerProfitRecord extends BaseEntity {
+public class MinerProfitRecord extends AbnormalBaseEntity {
     /**
      * 用户ID
      */
@@ -66,4 +67,11 @@ public class MinerProfitRecord extends BaseEntity {
     @TableField("tx_id")
     @ColumnType("VARCHAR(100)")
     private String txId;
+
+    /**
+     * 业务状态：0: 失败/待处理, 1: 成功
+     */
+    @TableField("status")
+    @ColumnComment("业务状态 0:失败, 1:成功")
+    private Integer status;
 }

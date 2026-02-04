@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.ra.rabnbserver.annotation.ColumnComment;
 import com.ra.rabnbserver.annotation.DefaultValue;
 import com.ra.rabnbserver.common.BaseEntity;
+import com.ra.rabnbserver.exception.Abnormal.model.AbnormalBaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -14,7 +15,7 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(callSuper = true)
 @Data
 @TableName("user_miner")
-public class UserMiner extends BaseEntity {
+public class UserMiner extends AbnormalBaseEntity {
     /**
      * 用户id
      */
