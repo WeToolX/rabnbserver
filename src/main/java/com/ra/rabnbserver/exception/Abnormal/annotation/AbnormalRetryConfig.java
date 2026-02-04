@@ -7,6 +7,7 @@ import java.lang.annotation.Target;
 
 /**
  * 异常重试配置注解
+ * @author qiexi
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
