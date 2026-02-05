@@ -15,10 +15,24 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 
 public interface UserBillServe extends IService<UserBill> {
-    @Transactional(rollbackFor = Exception.class)
-    void createBillAndUpdateBalance(Long userId, BigDecimal amount, BillType billType,
-                                    FundType fundType, TransactionType txType,
-                                    String remark, String orderId, String txId,String res);
+//    @Transactional(rollbackFor = Exception.class)
+//    void createBillAndUpdateBalance(Long userId, BigDecimal amount, BillType billType,
+//                                    FundType fundType, TransactionType txType,
+//                                    String remark, String orderId, String txId,String res);
+
+
+    void createBillAndUpdateBalance(
+            Long userId,
+            BigDecimal amount,
+            BillType billType,
+            FundType fundType,
+            TransactionType txType,
+            String remark,
+            String orderId,
+            String txId,
+            String res,
+            int num
+    );
 
     IPage<UserBill> getUserBillPage(Long userId, BillQueryDTO query);
 
@@ -32,6 +46,5 @@ public interface UserBillServe extends IService<UserBill> {
 
     PaymentUsdtMetaVO getPaymentUsdtMeta() throws Exception;
 
-    @Transactional(rollbackFor = Exception.class)
     void distributeNftByAdmin(Long userId, Integer amount);
 }

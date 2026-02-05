@@ -284,7 +284,8 @@ public class UserController {
                     dto.getRemark() == null ? "" : dto.getRemark(),
                     null,
                     null,
-                    null
+                    null,
+                    0
             );
             return ApiResponse.success("扣款成功");
         } catch (BusinessException e) {

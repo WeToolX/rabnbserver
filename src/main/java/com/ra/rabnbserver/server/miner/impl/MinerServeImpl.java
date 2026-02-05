@@ -168,7 +168,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             executeDistribution(user, unitFee, settings.getDistributionRatios());
         }
         userBillServe.createBillAndUpdateBalance(userId, totalFee, BillType.PLATFORM, FundType.EXPENSE,
-                TransactionType.EXCHANGE, "缴纳电费-模式" + dto.getMode(), null, null, null);
+                TransactionType.EXCHANGE, "缴纳电费-模式" + dto.getMode(), null, null, null,0);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -207,7 +207,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             this.updateById(m);
         }
         userBillServe.createBillAndUpdateBalance(userId, totalFee, BillType.PLATFORM, FundType.EXPENSE,
-                TransactionType.PURCHASE, "购买加速包-模式" + dto.getMode(), null, null, null);
+                TransactionType.PURCHASE, "购买加速包-模式" + dto.getMode(), null, null, null,0);
     }
 
     @Override
@@ -310,7 +310,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                                 FundType.INCOME,
                                 TransactionType.REWARD,
                                 String.format("下级激活奖励(来自用户ID:%d, 层级:%d)", user.getId(), currentLevel),
-                                null, null, null
+                                null, null, null,0
                         );
                         log.info("奖励发放成功: 用户ID {} -> 上级ID {}(第{}层), 金额: {}",
                                 user.getId(), parentId, currentLevel, rewardAmount);

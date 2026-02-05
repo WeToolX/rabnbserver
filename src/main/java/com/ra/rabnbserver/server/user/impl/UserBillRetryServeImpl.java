@@ -17,9 +17,6 @@ import org.springframework.stereotype.Service;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
 
 import java.math.BigInteger;
-import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -41,7 +38,6 @@ public class UserBillRetryServeImpl extends AbstractAbnormalRetryService {
     private final UserBillMapper userBillMapper;
     private final PaymentUsdtContract paymentUsdtContract;
     private final CardNftContract cardNftContract;
-    private static final Pattern QTY_PATTERN = Pattern.compile("x(\\d+)$");
 
     public UserBillRetryServeImpl(AbnormalRetryManager abnormalRetryManager,
                                   UserBillMapper userBillMapper,
@@ -53,80 +49,65 @@ public class UserBillRetryServeImpl extends AbstractAbnormalRetryService {
         this.cardNftContract = cardNftContract;
     }
 
+    /**
+     * 检查链上事务状态以判定本地账单是否应当标记成功
+     */
     @Override
     public boolean checkStatus(Long dataId) {
         UserBill bill = userBillMapper.selectById(dataId);
-        if (bill == null) return false;
+        if (bill == null || TransactionStatus.SUCCESS.equals(bill.getStatus())) return true;
 
-        // 1. 如果本地已经是成功，直接返回成功
-        if (TransactionStatus.SUCCESS.equals(bill.getStatus())) {
-            return true;
-        }
-
-        // 2. 根据不同业务类型去链上核实
         try {
+            // 针对充值业务通过订单号在合约中检索执行状态
             if (TransactionType.DEPOSIT.equals(bill.getTransactionType())) {
-                // 充值业务：通过订单哈希在合约查询执行状态
-                Boolean executed = paymentUsdtContract.executed(bill.getTransactionOrderId());
-                if (Boolean.TRUE.equals(executed)) {
-                    updateBillToSuccess(bill, null, "链上核实成功");
+                if (Boolean.TRUE.equals(paymentUsdtContract.executed(bill.getTransactionOrderId()))) {
+                    updateToSuccess(bill, null, "链上自动核实成功");
                     return true;
                 }
-            } else if (bill.getTxId() != null) {
-                // 购买或奖励业务：如果有交易哈希，检查回执
-//                Optional<TransactionReceipt> receipt = cardNftContract.getTransactionReceipt(bill.getTxId());
-//                if (receipt.isPresent() && "0x1".equals(receipt.get().getStatus())) {
-//                    updateBillToSuccess(bill, receipt.get(), "链上核实回执成功");
-//                    return true;
-//                }
-                return false;
             }
         } catch (Exception e) {
-            log.error("异常框架：检查账单 {} 链上状态失败: {}", dataId, e.getMessage());
+            log.error("异常框架状态核查异常，账单ID：{}", dataId, e);
         }
         return false;
     }
 
+    /**
+     * 执行异常业务的自动重发逻辑
+     */
     @Override
     public boolean ExceptionHandling(Long dataId) {
         UserBill bill = userBillMapper.selectById(dataId);
         if (bill == null) return false;
 
-        log.info("异常框架：正在执行自动重试，账单ID: {}, 类型: {}", dataId, bill.getTransactionType());
-
         try {
-            // 充值操作：通常由用户签名，后端无法代为重试，只能核实，返回false触发持续提醒或等待checkStatus核实
+            // 充值业务无法由系统重发仅支持核实
             if (TransactionType.DEPOSIT.equals(bill.getTransactionType())) {
                 return checkStatus(dataId);
             }
 
-            // NFT购买/奖励分发：后端有Executor权限，可以发起自动重试补发
+            // NFT分发类业务支持由后端执行器代为补发
             if (TransactionType.PURCHASE.equals(bill.getTransactionType()) || TransactionType.REWARD.equals(bill.getTransactionType())) {
-                int quantity = extractQuantity(bill.getRemark());
-                if (quantity <= 0) {
-                    log.error("异常框架：账单 {} 无法解析分发数量", dataId);
-                    return false;
-                }
-
-                log.info("异常框架：重新发起NFT分发，用户: {}, 数量: {}", bill.getUserWalletAddress(), quantity);
-                TransactionReceipt receipt = cardNftContract.distribute(bill.getUserWalletAddress(), BigInteger.valueOf(quantity));
-
+                if (bill.getNum() == null || bill.getNum() <= 0) return false;
+                TransactionReceipt receipt = cardNftContract.distribute(bill.getUserWalletAddress(), BigInteger.valueOf(bill.getNum()));
                 if (receipt != null && "0x1".equals(receipt.getStatus())) {
-                    updateBillToSuccess(bill, receipt, "自动重试分发成功");
+                    updateToSuccess(bill, receipt, "重试机制补发成功 x" + bill.getNum());
                     return true;
                 }
             }
         } catch (Exception e) {
-            log.error("异常框架：重试执行过程中发生异常", e);
+            log.error("重试执行异常，账单ID：{}", dataId, e);
         }
         return false;
     }
 
-    private void updateBillToSuccess(UserBill bill, TransactionReceipt receipt, String msg) {
+    /**
+     * 内部辅助方法：完成账单状态更新
+     */
+    private void updateToSuccess(UserBill bill, TransactionReceipt receipt, String remark) {
         LambdaUpdateWrapper<UserBill> luw = new LambdaUpdateWrapper<UserBill>()
                 .eq(UserBill::getId, bill.getId())
                 .set(UserBill::getStatus, TransactionStatus.SUCCESS)
-                .set(UserBill::getRemark, bill.getRemark() + "(" + msg + ")");
+                .set(UserBill::getRemark, remark);
         if (receipt != null) {
             luw.set(UserBill::getTxId, receipt.getTransactionHash())
                     .set(UserBill::getChainResponse, JSON.toJSONString(receipt));
@@ -134,16 +115,9 @@ public class UserBillRetryServeImpl extends AbstractAbnormalRetryService {
         userBillMapper.update(null, luw);
     }
 
-    private int extractQuantity(String remark) {
-        if (remark == null) return 0;
-        Matcher matcher = QTY_PATTERN.matcher(remark.trim());
-        if (matcher.find()) {
-            return Integer.parseInt(matcher.group(1));
-        }
-        return 0;
-    }
-
-    // 暴露基类方法供业务层调用
+    /**
+     * 封装基类标记异常方法
+     */
     @Override public void markAbnormal(Long dataId) { super.markAbnormal(dataId); }
     @Override public void markAbnormal(Long dataId, String userValue) { super.markAbnormal(dataId, userValue); }
     @Override public void checkUserErr(String userValue) { super.checkUserErr(userValue); }
