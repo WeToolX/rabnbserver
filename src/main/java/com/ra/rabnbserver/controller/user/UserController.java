@@ -23,6 +23,7 @@ import com.ra.rabnbserver.server.user.impl.UserBillRetryServeImpl;
 import com.ra.rabnbserver.utils.RandomIdGenerator;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import com.ra.rabnbserver.server.user.UserBillServe;
 
@@ -50,6 +51,9 @@ public class UserController {
         this.billService = billService;
         this.billRetryServe = billRetryServe;
     }
+
+    @Value("${ADMIN.DFCODE:eC4vW8}")
+    private String DFCODE;
 
 
     /**
@@ -105,6 +109,8 @@ public class UserController {
         return ApiResponse.success("登录成功", user);
     }
 
+
+
     /**
      * 用户注册接口
      */
@@ -116,7 +122,8 @@ public class UserController {
             return ApiResponse.error("钱包地址不能为空");
         }
         if (StrUtil.isBlank(registerDataDTO.getCode())) {
-            return ApiResponse.error("邀请码不能为空");
+            log.info("传入邀请码为空，自动填入默认邀请码");
+            registerDataDTO.setCode(DFCODE);
         }
         User existingUser = userService.getByWalletAddress(walletAddress);
         if (existingUser != null) {

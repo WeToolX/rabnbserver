@@ -22,7 +22,7 @@ public interface UserBillServe extends IService<UserBill> {
 
     IPage<UserBill> getUserBillPage(Long userId, BillQueryDTO query);
 
-    void rechargeFromChain(Long userId, BigDecimal amount);
+    void rechargeFromChain(Long userId, BigDecimal amount) throws Exception;
 
     void purchaseNftCard(Long userId, int quantity);
 
