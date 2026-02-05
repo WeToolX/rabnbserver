@@ -28,8 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,33 +39,32 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     private final UserBillServe userBillServe;
     private final MinerProfitRecordMapper profitRecordMapper;
     private final SystemConfigMapper configMapper;
-    // private final CardNftContract cardNftContract; // 合约先注释
 
-    // 本地缓存：用于拦截10分钟内的重复购买/重试任务
-    private static final Map<Long, Long> RETRY_CACHE = new ConcurrentHashMap<>();
+    // 注入专门的重试处理服务
+    // 注意：请确保这两个类中已经重写并将 markAbnormal/ProcessingSuccessful 等方法设为 public
+    private final MinerPurchaseRetryServeImpl purchaseRetryServe;
+    private final MinerProfitRetryServeImpl profitRetryServe;
 
     @Override
     public IPage<UserMiner> getUserMinerPage(Long userId, MinerQueryDTO query) {
-        // 初始化分页对象
         Page<UserMiner> pageParam = new Page<>(query.getPage(), query.getSize());
-        // 构造查询条件
         LambdaQueryWrapper<UserMiner> wrapper = new LambdaQueryWrapper<>();
-        // 强制限定为当前用户
         wrapper.eq(UserMiner::getUserId, userId);
-        // 动态组合筛选条件 (判断非空或非null)
+
+        // 动态条件
         wrapper.eq(StrUtil.isNotBlank(query.getMinerType()), UserMiner::getMinerType, query.getMinerType());
         wrapper.eq(query.getStatus() != null, UserMiner::getStatus, query.getStatus());
         wrapper.eq(query.getIsElectricityPaid() != null, UserMiner::getIsElectricityPaid, query.getIsElectricityPaid());
         wrapper.eq(query.getIsAccelerated() != null, UserMiner::getIsAccelerated, query.getIsAccelerated());
         wrapper.like(StrUtil.isNotBlank(query.getMinerId()), UserMiner::getMinerId, query.getMinerId());
-        // 时间范围筛选
+
         if (StrUtil.isNotBlank(query.getStartTime())) {
             wrapper.ge(UserMiner::getCreateTime, cn.hutool.core.date.DateUtil.parse(query.getStartTime()).toLocalDateTime());
         }
         if (StrUtil.isNotBlank(query.getEndTime())) {
             wrapper.le(UserMiner::getCreateTime, cn.hutool.core.date.DateUtil.parse(query.getEndTime()).toLocalDateTime());
         }
-        // 排序：按创建时间倒序
+
         wrapper.orderByDesc(UserMiner::getCreateTime);
         return this.page(pageParam, wrapper);
     }
@@ -76,25 +73,38 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     @Override
     public void buyMinerBatch(Long userId, String minerType, int quantity) {
         if (quantity <= 0) throw new BusinessException("数量不合法");
-        // 10分钟防抖
-        Long lastTime = RETRY_CACHE.get(userId);
-        if (lastTime != null && (System.currentTimeMillis() - lastTime < 10 * 60 * 1000)) {
-            throw new BusinessException("操作过于频繁，请10分钟后再试");
-        }
+
+        // 1. 异常框架准入检查：如果用户当前已有大量卡死且需要人工处理的异常，禁止继续购买
+        purchaseRetryServe.checkUserErr(String.valueOf(userId));
+
         User user = userMapper.selectById(userId);
-        try {
-            // 模拟合约批量销毁卡牌
-            boolean contractSuccess = true;
-            if (contractSuccess) {
-                for (int i = 0; i < quantity; i++) {
-                    doCreateMiner(user, minerType);
+        for (int i = 0; i < quantity; i++) {
+            // 2. 预创建记录：状态 status=0(待激活)，技术状态默认为 2000(处理中)
+            UserMiner miner = new UserMiner();
+            miner.setUserId(user.getId());
+            miner.setWalletAddress(user.getUserWalletAddress());
+            miner.setMinerId("M-" + System.nanoTime());
+            miner.setMinerType(minerType);
+            miner.setStatus(0);
+            miner.setEligibleDate(LocalDateTime.now().plusDays(15));
+            this.save(miner);
+
+            try {
+                // 3. 尝试执行合约逻辑（销毁卡牌）
+                boolean contractSuccess = true; // 模拟合约调用
+                if (contractSuccess) {
+                    // 4. 初次执行成功：同步更新异常框架状态为 2001
+                    // 只有 err_status 变为 2001/2002，该矿机才允许被“缴纳电费”
+                    purchaseRetryServe.ProcessingSuccessful(miner.getId());
+                } else {
+                    // 5. 合约明确返回失败：标记异常，进入自动重试队列
+                    purchaseRetryServe.markAbnormal(miner.getId());
                 }
-            } else {
-                throw new BusinessException("合约销毁失败");
+            } catch (Exception e) {
+                // 6. 异常或超时：标记异常，交由框架自动补齐字段并开始后台重试
+                log.error("购买矿机合约调用异常，已存入重试队列。ID: {}, 原因: {}", miner.getId(), e.getMessage());
+                purchaseRetryServe.markAbnormal(miner.getId());
             }
-        } catch (Exception e) {
-            log.error("批量购买失败: {}", e.getMessage());
-            throw new BusinessException("兑换失败: " + e.getMessage());
         }
     }
 
@@ -105,40 +115,56 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         BigDecimal unitFee = settings.getElectricFee();
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiryLimit = now.minusDays(30);
+
         LambdaQueryWrapper<UserMiner> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(UserMiner::getUserId, userId);
+
         switch (dto.getMode()) {
-            case 1: // 待激活
-                wrapper.eq(UserMiner::getStatus, 0).eq(UserMiner::getMinerType, dto.getMinerType());
+            case 1: // 待激活矿机缴费
+                wrapper.eq(UserMiner::getStatus, 0)
+                        .eq(UserMiner::getMinerType, dto.getMinerType());
+                // 【核心安全校验】只有合约处理成功(2001)或管理员人工确认成功(2002)的矿机，才允许缴费激活
+                wrapper.and(w -> w.eq(UserMiner::getErrStatus, 2001).or().eq(UserMiner::getErrStatus, 2002));
                 break;
-            case 2: // 即将到期
+
+            case 2: // 即将到期续费
                 LocalDateTime targetDate = expiryLimit.plusDays(dto.getDays());
                 wrapper.eq(UserMiner::getStatus, 1).eq(UserMiner::getMinerType, dto.getMinerType())
                         .ge(UserMiner::getPaymentDate, expiryLimit).le(UserMiner::getPaymentDate, targetDate);
                 if (dto.getQuantity() != null) wrapper.last("LIMIT " + dto.getQuantity());
                 break;
+
             case 3: // 已到期 (按类型)
                 wrapper.eq(UserMiner::getMinerType, dto.getMinerType())
                         .and(w -> w.lt(UserMiner::getPaymentDate, expiryLimit).or().eq(UserMiner::getStatus, 0));
+                // 同样需要满足技术状态成功
+                wrapper.and(w -> w.eq(UserMiner::getErrStatus, 2001).or().eq(UserMiner::getErrStatus, 2002));
                 break;
+
             case 4: // 全部已到期/未激活
                 wrapper.and(w -> w.lt(UserMiner::getPaymentDate, expiryLimit).or().eq(UserMiner::getStatus, 0));
+                wrapper.and(w -> w.eq(UserMiner::getErrStatus, 2001).or().eq(UserMiner::getErrStatus, 2002));
                 break;
             default: throw new BusinessException("模式错误");
         }
+
         List<UserMiner> targets = this.list(wrapper);
-        if (targets.isEmpty()) throw new BusinessException("没有符合条件的矿机");
+        if (targets.isEmpty()) {
+            // 如果查不到数据，大概率是卡牌销毁还没成功
+            throw new BusinessException("没有符合条件的矿机（若刚购买，请等待系统处理完成）");
+        }
+
         BigDecimal totalFee = unitFee.multiply(new BigDecimal(targets.size()));
         if (userMapper.updateBalanceAtomic(userId, totalFee.negate()) == 0) {
             throw new BusinessException("余额不足，需支付: " + totalFee);
         }
+
         User user = userMapper.selectById(userId);
         for (UserMiner m : targets) {
-            m.setStatus(1);
+            m.setStatus(1); // 激活，进入正式收益状态
             m.setIsElectricityPaid(1);
             m.setPaymentDate(now);
             this.updateById(m);
-            // 分销
             executeDistribution(user, unitFee, settings.getDistributionRatios());
         }
         userBillServe.createBillAndUpdateBalance(userId, totalFee, BillType.PLATFORM, FundType.EXPENSE,
@@ -151,8 +177,14 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         MinerSettings settings = getSettings();
         BigDecimal unitFee = settings.getAccelerationFee();
         LocalDateTime now = LocalDateTime.now();
+
         LambdaQueryWrapper<UserMiner> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(UserMiner::getUserId, userId).eq(UserMiner::getIsAccelerated, 0).gt(UserMiner::getEligibleDate, now);
+        // 只有已经激活运行 (status=1) 且处于等待期内的矿机才能加速
+        wrapper.eq(UserMiner::getUserId, userId)
+                .eq(UserMiner::getStatus, 1)
+                .eq(UserMiner::getIsAccelerated, 0)
+                .gt(UserMiner::getEligibleDate, now);
+
         switch (dto.getMode()) {
             case 1: wrapper.eq(UserMiner::getMinerType, dto.getMinerType()); break;
             case 2: wrapper.eq(UserMiner::getMinerType, dto.getMinerType()).last("LIMIT " + dto.getQuantity()); break;
@@ -160,8 +192,10 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             case 4: wrapper.eq(UserMiner::getId, dto.getUserMinerId()); break;
             default: throw new BusinessException("模式错误");
         }
+
         List<UserMiner> targets = this.list(wrapper);
-        if (targets.isEmpty()) throw new BusinessException("无可加速的矿机");
+        if (targets.isEmpty()) throw new BusinessException("当前无可加速的矿机");
+
         BigDecimal totalFee = unitFee.multiply(new BigDecimal(targets.size()));
         if (userMapper.updateBalanceAtomic(userId, totalFee.negate()) == 0) {
             throw new BusinessException("余额不足");
@@ -176,54 +210,49 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 TransactionType.PURCHASE, "购买加速包-模式" + dto.getMode(), null, null, null);
     }
 
-    private void doCreateMiner(User user, String minerType) {
-        UserMiner miner = new UserMiner();
-        miner.setUserId(user.getId());
-        miner.setWalletAddress(user.getUserWalletAddress());
-        miner.setMinerId("M001");
-        miner.setMinerType(minerType);
-        miner.setStatus(0);
-        miner.setEligibleDate(LocalDateTime.now().plusDays(15));
-        this.save(miner);
-    }
-
-
-    /**
-     * 每日收益发放 (定时任务)
-     */
     @Override
     public void processDailyProfit() {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiryPoint = now.minusDays(30);
-        // 提取逻辑：1.已激活 2.电费30天内 3.已过起算等待期
+
+        // 由于 payElectricity 已经拦截了合约未成功的矿机，
+        // 这里取出 status=1 的矿机必定是：合约已确认成功 且 已付电费 且 在有效期内的。
         List<UserMiner> validMiners = this.list(new LambdaQueryWrapper<UserMiner>()
                 .eq(UserMiner::getStatus, 1)
                 .ge(UserMiner::getPaymentDate, expiryPoint)
                 .le(UserMiner::getEligibleDate, now));
-        for (UserMiner miner : validMiners) {
-            int retries = 0;
-            while (retries < 3) {
-                try {
-                    // --- 调用合约获取收益 (模拟) ---
-                    // Map result = cardNftContract.getProfit(miner.getWalletAddress());
-                    BigDecimal amount = new BigDecimal("1.5");
-                    Integer locks = 3;
 
-                    MinerProfitRecord record = new MinerProfitRecord();
-                    record.setUserId(miner.getUserId());
-                    record.setMinerType(miner.getMinerType());
-                    record.setAmount(amount);
-                    record.setLockMonths(locks);
-                    profitRecordMapper.insert(record);
-                    break;
-                } catch (Exception e) {
-                    retries++;
-                    if (retries == 3) log.error("矿机收益发放失败，跳过: {}", miner.getId());
+        for (UserMiner miner : validMiners) {
+            // 1. 创建收益记录，初始业务状态 status=0
+            MinerProfitRecord record = new MinerProfitRecord();
+            record.setUserId(miner.getUserId());
+            record.setWalletAddress(miner.getWalletAddress());
+            record.setMinerType(miner.getMinerType());
+            record.setAmount(new BigDecimal("1.5"));
+            record.setLockMonths(3);
+            record.setStatus(0);
+            profitRecordMapper.insert(record);
+
+            try {
+                // 2. 尝试执行合约收益分发
+                boolean success = true;
+                if (success) {
+                    record.setStatus(1);
+                    record.setTxId("TX-" + System.currentTimeMillis());
+                    profitRecordMapper.updateById(record);
+                    // 3. 同步框架状态为成功
+                    profitRetryServe.ProcessingSuccessful(record.getId());
+                } else {
+                    // 4. 合约显式失败：标记异常
+                    profitRetryServe.markAbnormal(record.getId());
                 }
+            } catch (Exception e) {
+                log.error("发放收益合约异常，记录ID: {}, 进入异常框架重试", record.getId());
+                // 5. 异常标记：由 MinerProfitRetryServeImpl 负责后续自动重试
+                profitRetryServe.markAbnormal(record.getId());
             }
         }
     }
-
 
     /**
      * 执行电费分润分销

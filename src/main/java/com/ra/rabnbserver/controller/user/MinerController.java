@@ -12,6 +12,8 @@ import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.UserMiner;
 import com.ra.rabnbserver.server.miner.MinerServe;
+import com.ra.rabnbserver.server.miner.impl.MinerPurchaseRetryServeImpl;
+import com.ra.rabnbserver.server.miner.impl.MinerProfitRetryServeImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -23,32 +25,27 @@ import org.springframework.web.bind.annotation.*;
 public class MinerController {
 
     private final MinerServe minerServe;
+    private final MinerPurchaseRetryServeImpl purchaseRetryServe;
+    private final MinerProfitRetryServeImpl profitRetryServe;
+
     /**
      * 分页查询我的矿机列表
-     * 支持多条件筛选（状态、类型、是否加速、电费情况等）
      */
     @SaCheckLogin
     @PostMapping("/list")
     public String getMinerList(@RequestBody(required = false) MinerQueryDTO query) {
-        // 如果前端不传 Body，初始化一个默认对象
-        if (query == null) {
-            query = new MinerQueryDTO();
-        }
-
+        if (query == null) query = new MinerQueryDTO();
         Long userId = getFormalUserId();
-        log.info("用户 {} 查询矿机列表, 条件: {}", userId, query);
-
         try {
             IPage<UserMiner> result = minerServe.getUserMinerPage(userId, query);
             return ApiResponse.success("获取成功", result);
         } catch (Exception e) {
-            log.error("查询矿机列表失败", e);
             return ApiResponse.error("查询失败: " + e.getMessage());
         }
     }
 
     /**
-     * 购买矿机 (卡牌兑换)
+     * 购买矿机
      */
     @SaCheckLogin
     @PostMapping("/purchase")
@@ -60,6 +57,31 @@ public class MinerController {
         minerServe.buyMinerBatch(userId, dto.getMinerType(), dto.getQuantity());
         return ApiResponse.success("购买申请提交成功");
     }
+
+    /**
+     * 异常处理：人工干预-矿机激活/购买成功（卡牌兑换成功）回调
+     * 当自动重试多次失败或超时后，管理员通过此接口手动同步状态
+     */
+    @SaCheckLogin
+    @PostMapping("/manual-purchase-success")
+    public String manualPurchaseSuccess(@RequestParam("dataId") Long dataId) {
+        log.info("人工干预：矿机购买激活成功回调，ID: {}", dataId);
+        purchaseRetryServe.ProcessingSuccessful(dataId);
+        return ApiResponse.success("人工处理成功", dataId);
+    }
+
+    /**
+     * 异常处理：人工干预-矿机收益发放成功回调
+     * 管理员在后台手动补发合约收益后，通过此接口回写数据库
+     */
+    @SaCheckLogin
+    @PostMapping("/manual-profit-success")
+    public String manualProfitSuccess(@RequestParam("dataId") Long dataId) {
+        log.info("人工干预：收益发放成功回调，ID: {}", dataId);
+        profitRetryServe.ProcessingSuccessful(dataId);
+        return ApiResponse.success("人工处理成功", dataId);
+    }
+
 
     /**
      * 缴纳电费 (激活/续费)
@@ -93,9 +115,6 @@ public class MinerController {
         }
     }
 
-    /**
-     * 获取当前登录的正式用户ID
-     */
     private Long getFormalUserId() {
         StpUtil.checkLogin();
         String loginId = StpUtil.getLoginIdAsString();

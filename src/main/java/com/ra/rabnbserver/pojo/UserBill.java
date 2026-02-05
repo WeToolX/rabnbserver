@@ -13,6 +13,7 @@ import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;
 import com.ra.rabnbserver.enums.TransactionStatus;
 import com.ra.rabnbserver.enums.TransactionType;
+import com.ra.rabnbserver.exception.Abnormal.model.AbnormalBaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -26,7 +27,7 @@ import java.time.LocalDateTime;
 @Data
 @TableComment("用户账单表")
 @TableName("user_bill")
-public class UserBill extends BaseEntity {
+public class UserBill extends AbnormalBaseEntity {
 
     /**
      * 用户ID

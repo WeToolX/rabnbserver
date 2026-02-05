@@ -19,6 +19,7 @@ import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.User;
 import com.ra.rabnbserver.pojo.UserBill;
 import com.ra.rabnbserver.server.user.UserServe;
+import com.ra.rabnbserver.server.user.impl.UserBillRetryServeImpl;
 import com.ra.rabnbserver.utils.RandomIdGenerator;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -43,9 +44,11 @@ public class UserController {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final UserServe userService;
     private final UserBillServe billService;
-    public UserController(UserServe userService, UserBillServe billService) {
+    private final UserBillRetryServeImpl billRetryServe;
+    public UserController(UserServe userService, UserBillServe billService, UserBillRetryServeImpl billRetryServe) {
         this.userService = userService;
         this.billService = billService;
+        this.billRetryServe = billRetryServe;
     }
 
 
@@ -337,6 +340,16 @@ public class UserController {
             log.error("购买 NFT 接口异常", e);
             return ApiResponse.error("购买服务暂时不可用");
         }
+    }
+
+    /**
+     * 管理员人工核销账单（补发成功）
+     */
+    @PostMapping("/admin/manual-bill-success")
+    public String manualBillSuccess(@RequestParam("billId") Long billId) {
+        log.info("管理员人工干预账单成功，ID: {}", billId);
+        billRetryServe.ProcessingSuccessful(billId);
+        return ApiResponse.success("核销成功");
     }
 
 
