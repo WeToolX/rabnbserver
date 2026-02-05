@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
         table = "miner_profit_record",
         serviceName = "每日收益合约发放",
         idField = "id",
-        userField = "user_id",
+        userField = "walletAddress",
         statusField = "status",
         successValue = "1",
         failValue = "0",

@@ -24,7 +24,7 @@ import java.math.BigInteger;
         table = "user_bill",
         serviceName = "账本链上操作重试",
         idField = "id",
-        userField = "user_id",
+        userField = "user_wallet_address",
         statusField = "status",
         successValue = "1",
         failValue = "2",
