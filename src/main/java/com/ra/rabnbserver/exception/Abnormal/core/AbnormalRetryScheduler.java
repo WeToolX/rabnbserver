@@ -2,6 +2,8 @@ package com.ra.rabnbserver.exception.Abnormal.core;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.task.AsyncTaskExecutor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -20,6 +22,8 @@ public class AbnormalRetryScheduler {
     private final AbnormalRetryManager manager;
     private final PlatformTransactionManager transactionManager;
     private final AbnormalRetryProperties properties;
+    @Qualifier("taskExecutor")
+    private final AsyncTaskExecutor taskExecutor;
 
     /**
      * 轮询任务
@@ -41,15 +45,21 @@ public class AbnormalRetryScheduler {
         List<AbnormalRecord> records = manager.getAllAbnormalData(context);
         log.debug("异常重试待处理数量，服务={}, 数量={}", context.getConfig().serviceName(), records.size());
         for (AbnormalRecord record : records) {
-            transactionTemplate.executeWithoutResult(status -> processWithLock(context, handler, record.getId()));
+            Long dataId = record.getId();
+            // 任务投递到线程池执行，避免阻塞调度线程
+            taskExecutor.execute(() ->
+                    transactionTemplate.executeWithoutResult(status -> processWithLock(context, handler, dataId)));
         }
-        // 超时但未达到最大重试次数的数据，直接升级为人工处理
-        int promoted = manager.promoteTimeoutToManual(context);
-        log.debug("异常超时升级人工统计，服务={}, 数量={}", context.getConfig().serviceName(), promoted);
+        // 超时但未达到最大重试次数的数据，升级为人工处理（线程池执行）
+        taskExecutor.execute(() ->
+                transactionTemplate.executeWithoutResult(status -> manager.promoteTimeoutToManual(context)));
         List<AbnormalRecord> manualList = manager.getAllAbnormalDataNoticeManually(context);
         log.debug("异常人工通知待处理数量，服务={}, 数量={}", context.getConfig().serviceName(), manualList.size());
         for (AbnormalRecord record : manualList) {
-            transactionTemplate.executeWithoutResult(status -> notifyManualWithLock(context, record.getId()));
+            Long dataId = record.getId();
+            // 任务投递到线程池执行，避免阻塞调度线程
+            taskExecutor.execute(() ->
+                    transactionTemplate.executeWithoutResult(status -> notifyManualWithLock(context, dataId)));
         }
     }
 

@@ -23,6 +23,7 @@ public abstract class AbnormalBaseEntity extends BaseEntity {
     @TableField("err_status")
     @ColumnComment("异常主状态")
     @ColumnType("INT")
+    // 默认值 2000，对应 AbnormalStatus.NORMAL
     @DefaultValue("2000")
     private Integer errStatus;
 

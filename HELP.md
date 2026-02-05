@@ -72,6 +72,8 @@ rabnbserver
 │  │  │     │  └── DatabaseInitService.java         # 数据库初始化与表结构维护
 │  │  │     ├── dto                                 # 请求 DTO（登录/账单/购买/配置等）
 │  │  │     ├── enums                               # 账单/订单/状态等枚举
+│  │  │     │  ├── AbnormalManualStatus.java         # 异常人工处理状态枚举
+│  │  │     │  └── AbnormalStatus.java               # 异常主状态枚举
 │  │  │     ├── exception
 │  │  │     │  ├── BusinessException.java           # 业务异常
 │  │  │     │  ├── GlobalExceptionHandler.java      # 全局异常处理
@@ -137,8 +139,9 @@ rabnbserver
 - 异常重试框架：扫描 @AbnormalRetryConfig，自动补齐异常字段并定时轮询，行锁使用 FOR UPDATE SKIP LOCKED，支持自动重试/人工通知/err_manual_notify_count，超时或达上限会升级人工并持续通知直至人工处理成功（人工提醒间隔线性递增）
 - 邮件配置：application.yaml 中 spring.mail.* 与 abnormal.retry.* 控制通知
 - 时区统一：JVM/Jackson/JDBC/日志均使用 Asia/Shanghai
-- 调试日志：异常重试框架包（com.ra.rabnbserver.exception.Abnormal）默认 DEBUG 输出
+- 调试日志：异常重试框架包默认不输出 DEBUG，如需开启请手动配置日志级别
 - 异常自愈：err_start_time 为空会自动补当前时间，业务状态成功但 err_status 未同步会自动修复为 2001
+- 异常任务执行：重试、超时升级人工与人工通知任务投递到 taskExecutor 线程池执行
 
 ### Reference Documentation
 

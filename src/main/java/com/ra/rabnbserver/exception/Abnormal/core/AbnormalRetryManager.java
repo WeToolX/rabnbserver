@@ -1,5 +1,7 @@
 package com.ra.rabnbserver.exception.Abnormal.core;
 
+import com.ra.rabnbserver.enums.AbnormalManualStatus;
+import com.ra.rabnbserver.enums.AbnormalStatus;
 import com.ra.rabnbserver.exception.Abnormal.annotation.AbnormalRetryConfig;
 import com.ra.rabnbserver.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
@@ -102,7 +104,10 @@ public class AbnormalRetryManager {
                 + " WHERE (" + wrapColumn("err_status") + " = ? OR " + wrapColumn(config.statusField()) + " = ?)"
                 + " AND " + wrapColumn(config.userField()) + " = ?";
         Object failValue = parseValue(config.failValue());
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, 4000, failValue, userValue);
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class,
+                AbnormalStatus.WAIT_AUTO.getCode(),
+                failValue,
+                userValue);
         log.debug("异常校验完成，服务={}, 用户={}, 命中数={}", config.serviceName(), userValue, count);
         if (count != null && count > 0) {
             throw new BusinessException("当前操作存在异常，请过一会再试试或联系客服");
@@ -118,12 +123,14 @@ public class AbnormalRetryManager {
         AbnormalRetryConfig config = context.getConfig();
         Object successValue = parseValue(config.successValue());
 
-        // 1) err_status=4000/4001 且 err_start_time 为空时补当前时间
+        // 1) err_status=WAIT_AUTO/WAIT_MANUAL 且 err_start_time 为空时补当前时间
         String fillStartTimeSql = "UPDATE " + wrapTable(config.table()) + " SET "
                 + wrapColumn("err_start_time") + " = NOW() "
-                + "WHERE " + wrapColumn("err_status") + " IN (4000, 4001)"
+                + "WHERE " + wrapColumn("err_status") + " IN (?, ?)"
                 + " AND " + wrapColumn("err_start_time") + " IS NULL";
-        int filled = jdbcTemplate.update(fillStartTimeSql);
+        int filled = jdbcTemplate.update(fillStartTimeSql,
+                AbnormalStatus.WAIT_AUTO.getCode(),
+                AbnormalStatus.WAIT_MANUAL.getCode());
         if (filled > 0) {
             log.warn("异常数据开始时间为空，已自动补全，服务={}, 数量={}", config.serviceName(), filled);
         }
@@ -132,8 +139,12 @@ public class AbnormalRetryManager {
         String fixSuccessSql = "UPDATE " + wrapTable(config.table()) + " SET "
                 + wrapColumn("err_status") + " = ? "
                 + "WHERE " + wrapColumn(config.statusField()) + " = ?"
-                + " AND (" + wrapColumn("err_status") + " IS NULL OR " + wrapColumn("err_status") + " NOT IN (2001, 2002))";
-        int fixed = jdbcTemplate.update(fixSuccessSql, 2001, successValue);
+                + " AND (" + wrapColumn("err_status") + " IS NULL OR " + wrapColumn("err_status") + " NOT IN (?, ?))";
+        int fixed = jdbcTemplate.update(fixSuccessSql,
+                AbnormalStatus.AUTO_SUCCESS.getCode(),
+                successValue,
+                AbnormalStatus.AUTO_SUCCESS.getCode(),
+                AbnormalStatus.MANUAL_SUCCESS.getCode());
         if (fixed > 0) {
             log.warn("异常数据业务状态已成功但未同步 err_status，已自动修复，服务={}, 数量={}",
                     config.serviceName(), fixed);
@@ -157,7 +168,11 @@ public class AbnormalRetryManager {
                 + wrapColumn("err_submit_manual_status") + " = ?, "
                 + wrapColumn(config.statusField()) + " = ? "
                 + "WHERE " + wrapColumn(config.idField()) + " = ?";
-        jdbcTemplate.update(sql, 2002, 4002, parseValue(config.successValue()), dataId);
+        jdbcTemplate.update(sql,
+                AbnormalStatus.MANUAL_SUCCESS.getCode(),
+                AbnormalManualStatus.MANUAL_SUCCESS.getCode(),
+                parseValue(config.successValue()),
+                dataId);
         log.info("人工处理成功已回写，服务={}, 数据ID={}", config.serviceName(), dataId);
     }
 
@@ -199,7 +214,7 @@ public class AbnormalRetryManager {
                 .append(wrapColumn("err_next_remind_staff_time")).append(" = NULL, ")
                 .append(wrapColumn("err_manual_notify_count")).append(" = 0");
         List<Object> params = new ArrayList<>();
-        params.add(4000);
+        params.add(AbnormalStatus.WAIT_AUTO.getCode());
         params.add(parseValue(config.failValue()));
         params.add(config.minIntervalSeconds());
         params.add(config.timeoutSeconds());
@@ -228,7 +243,7 @@ public class AbnormalRetryManager {
         Object failValue = parseValue(config.failValue());
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 sql,
-                4000,
+                AbnormalStatus.WAIT_AUTO.getCode(),
                 failValue
         );
         List<AbnormalRecord> records = new ArrayList<>();
@@ -248,12 +263,13 @@ public class AbnormalRetryManager {
     public List<AbnormalRecord> getAllAbnormalDataNoticeManually(AbnormalContext context) {
         AbnormalRetryConfig config = context.getConfig();
         String sql = "SELECT * FROM " + wrapTable(config.table())
-                + " WHERE " + wrapColumn("err_status") + " = 4001"
+                + " WHERE " + wrapColumn("err_status") + " = ?"
                 + " AND (" + wrapColumn("err_next_remind_staff_time") + " IS NULL OR " + wrapColumn("err_next_remind_staff_time") + " < NOW())"
                 + " AND " + wrapColumn(config.statusField()) + " = ?";
         Object failValue = parseValue(config.failValue());
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 sql,
+                AbnormalStatus.WAIT_MANUAL.getCode(),
                 failValue
         );
         List<AbnormalRecord> records = new ArrayList<>();
@@ -285,9 +301,9 @@ public class AbnormalRetryManager {
         Object failValue = parseValue(config.failValue());
         int updated = jdbcTemplate.update(
                 sql,
-                4001,
+                AbnormalStatus.WAIT_MANUAL.getCode(),
                 config.maxRetryCount(),
-                4000,
+                AbnormalStatus.WAIT_AUTO.getCode(),
                 config.timeoutSeconds(),
                 config.maxRetryCount(),
                 failValue
@@ -311,7 +327,10 @@ public class AbnormalRetryManager {
                 + wrapColumn("err_status") + " = ?, "
                 + wrapColumn(config.statusField()) + " = ? "
                 + "WHERE " + wrapColumn(config.idField()) + " = ?";
-        jdbcTemplate.update(sql, 2001, parseValue(config.successValue()), dataId);
+        jdbcTemplate.update(sql,
+                AbnormalStatus.AUTO_SUCCESS.getCode(),
+                parseValue(config.successValue()),
+                dataId);
         log.info("自动重试成功，服务={}, 数据ID={}", config.serviceName(), dataId);
         log.debug("自动重试成功回写完成，服务={}, 数据ID={}", config.serviceName(), dataId);
     }
@@ -372,7 +391,7 @@ public class AbnormalRetryManager {
         LocalDateTime now = LocalDateTime.now();
         log.debug("升级人工开始，服务={}, 数据ID={}, 当前状态={}, 已重试={}",
                 config.serviceName(), record.getId(), record.getErrStatus(), record.getErrRetryCount());
-        if (record.getErrStatus() == null || record.getErrStatus() != 4001) {
+        if (record.getErrStatus() == null || record.getErrStatus() != AbnormalStatus.WAIT_MANUAL.getCode()) {
             String sql = "UPDATE " + wrapTable(config.table()) + " SET "
                     + wrapColumn("err_status") + " = ?, "
                     + wrapColumn("err_retry_count") + " = ?, "
@@ -380,8 +399,11 @@ public class AbnormalRetryManager {
                     + wrapColumn("err_submit_manual_status") + " = NULL, "
                     + wrapColumn("err_next_remind_staff_time") + " = NULL "
                     + "WHERE " + wrapColumn(config.idField()) + " = ?";
-            jdbcTemplate.update(sql, 4001, config.maxRetryCount(), record.getId());
-            record.setErrStatus(4001);
+            jdbcTemplate.update(sql,
+                    AbnormalStatus.WAIT_MANUAL.getCode(),
+                    config.maxRetryCount(),
+                    record.getId());
+            record.setErrStatus(AbnormalStatus.WAIT_MANUAL.getCode());
             record.setErrRetryCount(config.maxRetryCount());
             record.setErrNextRetryTime(null);
             record.setErrNextRemindStaffTime(null);
@@ -424,7 +446,11 @@ public class AbnormalRetryManager {
                     + wrapColumn("err_submit_manual_status") + " = ?, "
                     + wrapColumn("err_manual_notify_count") + " = ? "
                     + "WHERE " + wrapColumn(config.idField()) + " = ?";
-            int updated = jdbcTemplate.update(sql, Timestamp.valueOf(nextRemindTime), 2000, currentCount + 1, record.getId());
+            int updated = jdbcTemplate.update(sql,
+                    Timestamp.valueOf(nextRemindTime),
+                    AbnormalManualStatus.SUBMITTED.getCode(),
+                    currentCount + 1,
+                    record.getId());
             log.info("人工通知发送成功，服务={}, 数据ID={}, 下次提醒时间={}",
                     config.serviceName(), record.getId(), nextRemindTime);
             log.debug("人工通知成功回写完成，服务={}, 数据ID={}, 下次提醒时间={}",
@@ -435,7 +461,10 @@ public class AbnormalRetryManager {
                     + wrapColumn("err_next_remind_staff_time") + " = ?, "
                     + wrapColumn("err_submit_manual_status") + " = ? "
                     + "WHERE " + wrapColumn(config.idField()) + " = ?";
-            int updated = jdbcTemplate.update(sql, Timestamp.valueOf(nextRemindTime), 4000, record.getId());
+            int updated = jdbcTemplate.update(sql,
+                    Timestamp.valueOf(nextRemindTime),
+                    AbnormalManualStatus.SUBMIT_FAILED.getCode(),
+                    record.getId());
             log.warn("人工通知发送失败，将继续重试，服务={}, 数据ID={}, 下次提醒时间={}",
                     config.serviceName(), record.getId(), nextRemindTime);
             log.debug("人工通知失败回写完成，服务={}, 数据ID={}, 下次提醒时间={}",
@@ -517,7 +546,7 @@ public class AbnormalRetryManager {
         return switch (column) {
             case "err_status" ->
                     "ALTER TABLE " + wrapTable(tableName) + " ADD COLUMN " + wrapColumn(column)
-                            + " INT DEFAULT 2000 COMMENT '异常主状态'";
+                            + " INT DEFAULT " + AbnormalStatus.NORMAL.getCode() + " COMMENT '异常主状态'";
             case "err_start_time" ->
                     "ALTER TABLE " + wrapTable(tableName) + " ADD COLUMN " + wrapColumn(column)
                             + " DATETIME NULL COMMENT '首次异常时间'";
@@ -579,7 +608,7 @@ public class AbnormalRetryManager {
             return false;
         }
         AbnormalRetryConfig config = context.getConfig();
-        if (record.getErrStatus() == null || record.getErrStatus() != 4000) {
+        if (record.getErrStatus() == null || record.getErrStatus() != AbnormalStatus.WAIT_AUTO.getCode()) {
             log.debug("重试条件校验失败：状态不匹配，服务={}, 数据ID={}, err_status={}",
                     config.serviceName(), record.getId(), record.getErrStatus());
             return false;
@@ -616,7 +645,7 @@ public class AbnormalRetryManager {
             return false;
         }
         AbnormalRetryConfig config = context.getConfig();
-        if (record.getErrStatus() == null || record.getErrStatus() != 4001) {
+        if (record.getErrStatus() == null || record.getErrStatus() != AbnormalStatus.WAIT_MANUAL.getCode()) {
             log.debug("人工通知校验失败：状态不匹配，服务={}, 数据ID={}, err_status={}",
                     config.serviceName(), record.getId(), record.getErrStatus());
             return false;
@@ -651,7 +680,7 @@ public class AbnormalRetryManager {
         if (record == null) {
             return false;
         }
-        if (record.getErrStatus() == null || record.getErrStatus() != 4000) {
+        if (record.getErrStatus() == null || record.getErrStatus() != AbnormalStatus.WAIT_AUTO.getCode()) {
             return false;
         }
         AbnormalRetryConfig config = context.getConfig();
