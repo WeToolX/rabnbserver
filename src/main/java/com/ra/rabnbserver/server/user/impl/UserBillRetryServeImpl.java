@@ -123,7 +123,7 @@ public class UserBillRetryServeImpl extends AbstractAbnormalRetryService {
 
     @Override
     public String manualSuccessRoute() {
-        return "/api/user/admin/manual-bill-success";
+        return "/user/admin/manual-bill-success";
     }
     @Override public void checkUserErr(String userValue) { super.checkUserErr(userValue); }
     @Override public void ProcessingSuccessful(Long dataId) { super.ProcessingSuccessful(dataId); }

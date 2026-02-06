@@ -350,15 +350,15 @@ public class UserController {
         }
     }
 
-    /**
-     * 管理员人工核销账单（补发成功）
-     */
-    @PostMapping("/admin/manual-bill-success")
-    public String manualBillSuccess(@RequestParam("billId") Long billId) {
-        log.info("管理员人工干预账单成功，ID: {}", billId);
-        billRetryServe.ProcessingSuccessful(billId);
-        return ApiResponse.success("核销成功");
-    }
+//    /**
+//     * 管理员人工核销账单（补发成功）
+//     */
+//    @PostMapping("/admin/manual-bill-success")
+//    public String manualBillSuccess(@RequestParam("billId") Long billId) {
+//        log.info("管理员人工干预账单成功，ID: {}", billId);
+//        billRetryServe.ProcessingSuccessful(billId);
+//        return ApiResponse.success("核销成功");
+//    }
 
 
 

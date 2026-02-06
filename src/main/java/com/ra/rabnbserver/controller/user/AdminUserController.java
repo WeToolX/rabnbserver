@@ -1,10 +1,14 @@
 package com.ra.rabnbserver.controller.user;
 
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ra.rabnbserver.contract.CardNftContract;
-import com.ra.rabnbserver.dto.AdminUserLoginDTO;
-import com.ra.rabnbserver.dto.DistributeNftDTO;
+import com.ra.rabnbserver.dto.*;
+import com.ra.rabnbserver.enums.BillType;
+import com.ra.rabnbserver.enums.FundType;
+import com.ra.rabnbserver.enums.TransactionType;
+import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.AdminPermission;
 import com.ra.rabnbserver.pojo.AdminRole;
@@ -15,13 +19,13 @@ import com.ra.rabnbserver.server.admin.AdminRoleService;
 import com.ra.rabnbserver.server.admin.AdminUserService;
 import com.ra.rabnbserver.server.user.UserBillServe;
 import com.ra.rabnbserver.server.user.UserServe;
-import com.ra.rabnbserver.dto.UserQueryDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Collections;
 
@@ -41,13 +45,15 @@ public class AdminUserController {
     private final AdminUserService adminUserService;
     private final AdminRoleService adminRoleService;
     private final AdminPermissionService adminPermissionService;
+    private final UserBillServe userBillServe;
 
-    public AdminUserController(CardNftContract cardNftContract, UserBillServe userBillServer, AdminUserService adminUserService, AdminRoleService adminRoleService, AdminPermissionService adminPermissionService) {
+    public AdminUserController(CardNftContract cardNftContract, UserBillServe userBillServer, AdminUserService adminUserService, AdminRoleService adminRoleService, AdminPermissionService adminPermissionService, UserBillServe userBillServe) {
         this.cardNftContract = cardNftContract;
         this.userBillServer = userBillServer;
         this.adminUserService = adminUserService;
         this.adminRoleService = adminRoleService;
         this.adminPermissionService = adminPermissionService;
+        this.userBillServe = userBillServe;
     }
 
     @Value("${ADMIN.USERNAME}")
@@ -182,5 +188,38 @@ public class AdminUserController {
     public String distributeNft(@RequestBody DistributeNftDTO dto) {
         userBillServer.distributeNftByAdmin(dto.getUserId(), dto.getAmount());
         return ApiResponse.success("分发指令已执行");
+    }
+
+
+
+    /**
+     * 管理员给指定用户充值
+     */
+    @SaCheckLogin
+    @PostMapping("/amount/deposit")
+    public String deposit(@RequestBody AdminAmountRequestDTO dto) throws Exception {
+        BigDecimal amount = new BigDecimal(dto.getAmount());
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return ApiResponse.error("充值金额必须大于0");
+        }
+        try {
+            // 调用统一方法：平台类型、入账类型、充值业务
+            userBillServe.createBillAndUpdateBalance(
+                    dto.getUserId(),
+                    amount,
+                    BillType.PLATFORM,
+                    FundType.INCOME,
+                    TransactionType.DEPOSIT,
+                    "系统充值",
+                    null, // orderId 为空则内部自动生成
+                    null,  // 平台内充值通常无链上 TxHash
+                    null,
+                    0
+            );
+            return ApiResponse.success("充值成功");
+        } catch (BusinessException e) {
+            log.error("充值失败: {}", e.getMessage());
+            return ApiResponse.error("充值失败: " + e.getMessage());
+        }
     }
 }
