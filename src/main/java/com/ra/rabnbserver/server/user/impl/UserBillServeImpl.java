@@ -29,7 +29,6 @@ import io.micrometer.common.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
 
@@ -65,6 +64,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
 
     /**
      * 处理链上充值业务
+     * 修改点：重构逻辑避免重复记账
      */
     @Override
     public void rechargeFromChain(Long userId, BigDecimal amount) throws Exception {
@@ -75,33 +75,35 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         // 验证链上授权额度与余额
         checkChainAllowanceAndBalance(user.getUserWalletAddress(), rawAmount);
 
+        TransactionReceipt receipt = null;
+        String systemErrorMsg = null;
+
+        // 1. 仅针对合约调用/网络请求进行 Try-Catch
         try {
             log.info("发起链上充值请求，用户：{}，金额：{}", user.getUserWalletAddress(), amount);
-            TransactionReceipt receipt = paymentUsdtContract.deposit(orderId, user.getUserWalletAddress(), rawAmount);
-
-            if (receipt != null && "0x1".equals(receipt.getStatus())) {
-                // 充值成功后统一调用创建账单方法增加用户余额
-                createBillAndUpdateBalance(userId, amount, BillType.PLATFORM, FundType.INCOME,
-                        TransactionType.DEPOSIT, "USDT充值成功", orderId, receipt.getTransactionHash(), JSON.toJSONString(receipt), 0);
-                billRetryServe.ProcessingSuccessful(getBillIdByOrder(orderId));
-            } else {
-                // 合约执行失败时记录一笔零元账单用于异常框架追踪
-                createBillAndUpdateBalance(userId, BigDecimal.ZERO, BillType.ERROR_ORDER, FundType.INCOME,
-                        TransactionType.DEPOSIT, "链上合约执行失败", orderId, receipt != null ? receipt.getTransactionHash() : null, null, 0);
-                Long billId = getBillIdByOrder(orderId);
-                updateBillStatus(billId, TransactionStatus.FAILED, "合约执行失败");
-                billRetryServe.markAbnormal(billId, String.valueOf(userId));
-                throw new BusinessException("合约执行失败，系统已记录");
-            }
+            receipt = paymentUsdtContract.deposit(orderId, user.getUserWalletAddress(), rawAmount);
         } catch (Exception e) {
-            log.error("充值过程发生异常", e);
-            // 发生异常时记录零元账单并进入异常处理队列
+            log.error("充值合约调用发生系统异常", e);
+            systemErrorMsg = e.getMessage();
+        }
+        // 2. 统一处理结果（确保只执行一次记账操作）
+        if (receipt != null && "0x1".equals(receipt.getStatus())) {
+            // 情况 A: 链上执行成功
+            createBillAndUpdateBalance(userId, amount, BillType.PLATFORM, FundType.INCOME,
+                    TransactionType.DEPOSIT, "USDT充值成功", orderId, receipt.getTransactionHash(), JSON.toJSONString(receipt), 0);
+            billRetryServe.ProcessingSuccessful(getBillIdByOrder(orderId));
+        } else {
+            // 情况 B: 链上执行失败 (receipt.status != 0x1) 或 系统异常 (systemErrorMsg != null)
+            String finalRemark = (systemErrorMsg != null) ? "系统异常：" + systemErrorMsg : "链上合约执行失败";
+            // 记录一笔零元账单用于异常框架追踪
             createBillAndUpdateBalance(userId, BigDecimal.ZERO, BillType.ERROR_ORDER, FundType.INCOME,
-                    TransactionType.DEPOSIT, "系统异常：" + e.getMessage(), orderId, null, null, 0);
+                    TransactionType.DEPOSIT, finalRemark, orderId, (receipt != null ? receipt.getTransactionHash() : null), null, 0);
             Long billId = getBillIdByOrder(orderId);
-            updateBillStatus(billId, TransactionStatus.FAILED, "充值发起异常");
-            billRetryServe.markAbnormal(billId, String.valueOf(userId));
-            throw new BusinessException("充值指令已提交，请稍后在账单中查看结果");
+            updateBillByError(billId, TransactionStatus.FAILED, receipt, finalRemark);
+            // 标记异常，注意此处传入钱包地址 user.getUserWalletAddress() 解决显示 "15" 的问题
+            billRetryServe.markAbnormal(billId, user.getUserWalletAddress());
+            // 抛出异常返回前端，此处已在 Try-Catch 外部，不会被再次拦截
+            throw new BusinessException(finalRemark);
         }
     }
 
@@ -116,16 +118,14 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             throw new BusinessException("当前无可用卡牌批次");
         }
 
-        // 获取链上剩余库存并同步数据库
-        BigInteger remaining = syncChainInventory(currentBatch.getId());
-        if (remaining.compareTo(BigInteger.valueOf(quantity)) < 0) {
-            throw new BusinessException("链上库存不足，剩余数量：" + remaining);
-        }
+//        BigInteger remaining = syncChainInventory(currentBatch.getId());
+//        if (remaining.compareTo(BigInteger.valueOf(quantity)) < 0) {
+//            throw new BusinessException("链上库存不足，剩余数量：" + remaining);
+//        }
 
         BigDecimal totalCost = currentBatch.getUnitPrice().multiply(new BigDecimal(quantity));
         String orderId = "NFT_BUY_" + IdWorker.getIdStr();
 
-        // 事务内执行库存扣减与余额扣除
         transactionTemplate.executeWithoutResult(status -> {
             try {
                 boolean stockOk = etfCardServe.update(new LambdaUpdateWrapper<ETFCard>()
@@ -135,7 +135,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                         .setSql("sold_count = sold_count + " + quantity));
                 if (!stockOk) throw new BusinessException("本地库存不足");
 
-                // 使用统一方法扣除余额并生成初始成功的账单
                 createBillAndUpdateBalance(userId, totalCost, BillType.PLATFORM, FundType.EXPENSE,
                         TransactionType.PURCHASE, "购买NFT卡牌 x" + quantity, orderId, null, null, quantity);
             } catch (Exception e) {
@@ -145,24 +144,25 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         });
 
         Long billId = getBillIdByOrder(orderId);
+        TransactionReceipt receipt = null;
+        String nftError = null;
 
         try {
             log.info("发起NFT链上分发，用户：{}，数量：{}", user.getUserWalletAddress(), quantity);
-            TransactionReceipt receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(quantity));
-
-            if (receipt != null && "0x1".equals(receipt.getStatus())) {
-                updateBillReceipt(billId, receipt, "购买NFT卡牌成功 x" + quantity);
-                billRetryServe.ProcessingSuccessful(billId);
-            } else {
-                // 链上失败则修改账单状态为失败并进入异常框架
-                updateBillStatus(billId, TransactionStatus.FAILED, "分发合约执行失败");
-                billRetryServe.markAbnormal(billId, String.valueOf(userId));
-            }
+            receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(quantity));
         } catch (Exception e) {
             log.error("NFT分发执行异常", e);
-            updateBillStatus(billId, TransactionStatus.FAILED, "分发请求异常：" + e.getMessage());
-            billRetryServe.markAbnormal(billId, String.valueOf(userId));
-            throw new BusinessException(0, "卡牌分发处理中，请稍后查看");
+            nftError = e.getMessage();
+        }
+
+        if (receipt != null && "0x1".equals(receipt.getStatus())) {
+            updateBillReceipt(billId, receipt, "购买NFT卡牌成功 x" + quantity);
+            billRetryServe.ProcessingSuccessful(billId);
+        } else {
+            String msg = (nftError != null) ? "分发异常：" + nftError : "分发合约执行失败";
+            updateBillByError(billId, TransactionStatus.FAILED, receipt, msg);
+            billRetryServe.markAbnormal(billId, user.getUserWalletAddress());
+            if (nftError != null) throw new BusinessException(0, "卡牌分发处理中，请稍后查看");
         }
     }
 
@@ -174,32 +174,29 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         User user = validateUserAndCheckLock(userId);
         String orderId = "DIST_" + IdWorker.getIdStr();
 
-        // 管理员分发不涉及金额变动，调用统一方法创建一笔零元账单
         createBillAndUpdateBalance(userId, BigDecimal.ZERO, BillType.ON_CHAIN, FundType.INCOME,
                 TransactionType.REWARD, "管理员发起分发 x" + amount, orderId, null, null, amount);
 
         Long billId = getBillIdByOrder(orderId);
-
+        TransactionReceipt receipt = null;
+        String adminErr = null;
         try {
-            TransactionReceipt receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(amount));
-            if (receipt != null && "0x1".equals(receipt.getStatus())) {
-                updateBillReceipt(billId, receipt, "系统管理员手动分发成功 x" + amount);
-            } else {
-                updateBillStatus(billId, TransactionStatus.FAILED, "管理员分发链上失败");
-                billRetryServe.markAbnormal(billId, String.valueOf(userId));
-                throw new BusinessException("链上分发失败");
-            }
+            receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(amount));
         } catch (Exception e) {
             log.error("管理员分发异常", e);
-            updateBillStatus(billId, TransactionStatus.FAILED, "分发异常：" + e.getMessage());
-            billRetryServe.markAbnormal(billId, String.valueOf(userId));
-            throw new BusinessException("请求已提交至异常处理队列");
+            adminErr = e.getMessage();
+        }
+
+        if (receipt != null && "0x1".equals(receipt.getStatus())) {
+            updateBillReceipt(billId, receipt, "系统管理员手动分发成功 x" + amount);
+        } else {
+            String msg = (adminErr != null) ? "分发异常：" + adminErr : "管理员分发链上失败";
+            updateBillByError(billId, TransactionStatus.FAILED, receipt, msg);
+            billRetryServe.markAbnormal(billId, user.getUserWalletAddress());
+            throw new BusinessException(msg);
         }
     }
 
-    /**
-     * 验证用户状态并检查异常处理锁定
-     */
     private User validateUserAndCheckLock(Long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) throw new BusinessException("用户不存在");
@@ -207,9 +204,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         return user;
     }
 
-    /**
-     * 同步链上库存至本地数据库
-     */
     private BigInteger syncChainInventory(Long batchId) {
         try {
             BigInteger remaining = cardNftContract.remainingMintable();
@@ -223,17 +217,11 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         }
     }
 
-    /**
-     * 根据订单号获取账单唯一标识
-     */
     private Long getBillIdByOrder(String orderId) {
         UserBill bill = this.getOne(new LambdaQueryWrapper<UserBill>().eq(UserBill::getTransactionOrderId, orderId));
         return bill != null ? bill.getId() : null;
     }
 
-    /**
-     * 更新账单状态及备注内容
-     */
     private void updateBillStatus(Long billId, TransactionStatus status, String remark) {
         this.update(new LambdaUpdateWrapper<UserBill>()
                 .eq(UserBill::getId, billId)
@@ -241,9 +229,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                 .set(UserBill::getRemark, remark));
     }
 
-    /**
-     * 更新账单的链上回执信息
-     */
     private void updateBillReceipt(Long billId, TransactionReceipt receipt, String remark) {
         this.update(new LambdaUpdateWrapper<UserBill>()
                 .eq(UserBill::getId, billId)
@@ -253,17 +238,22 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                 .set(UserBill::getRemark, remark));
     }
 
-    /**
-     * 校验链上资产状况
-     */
+    private void updateBillByError(Long billId, TransactionStatus status, TransactionReceipt receipt, String remark) {
+        LambdaUpdateWrapper<UserBill> wrapper = new LambdaUpdateWrapper<UserBill>()
+                .eq(UserBill::getId, billId)
+                .set(UserBill::getStatus, status)
+                .set(UserBill::getRemark, remark);
+        if (receipt != null) {
+            wrapper.set(UserBill::getTxId, receipt.getTransactionHash())
+                    .set(UserBill::getChainResponse, JSON.toJSONString(receipt));
+        }
+        this.update(wrapper);
+    }
+
     private void checkChainAllowanceAndBalance(String address, BigInteger amount) throws Exception {
         if (paymentUsdtContract.allowanceToPaymentUsdt(address).compareTo(amount) < 0) throw new BusinessException("授权额度不足");
         if (paymentUsdtContract.balanceOf(address).compareTo(amount) < 0) throw new BusinessException("链上余额不足");
     }
-
-    /**
-     * 统一账单创建与余额变动逻辑方法
-     */
 
     @Override
     public void createBillAndUpdateBalance(Long userId, BigDecimal amount, BillType billType, FundType fundType, TransactionType txType, String remark, String orderId, String txId, String res, int num) {
@@ -301,9 +291,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         }
     }
 
-    /**
-     * 管理端账单分页查询
-     */
     @Override
     public IPage<UserBill> getAdminBillPage(AdminBillQueryDTO query) {
         LambdaQueryWrapper<UserBill> wrapper = new LambdaQueryWrapper<>();
@@ -318,21 +305,22 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         return this.page(new Page<>(query.getPage(), query.getSize()), wrapper);
     }
 
-    /**
-     * 平台全局统计数据获取
-     */
     @Override
     public AdminBillStatisticsVO getPlatformStatistics() {
         AdminBillStatisticsVO vo = new AdminBillStatisticsVO();
         QueryWrapper<User> uq = new QueryWrapper<>();
         uq.select("SUM(balance) as sb");
-        Map<String, Object> um = userMapper.selectMaps(uq).get(0);
-        if (um != null && um.get("sb") != null) vo.setTotalUserBalance(new BigDecimal(um.get("sb").toString()));
+        List<Map<String, Object>> maps = userMapper.selectMaps(uq);
+        if (!maps.isEmpty() && maps.get(0) != null && maps.get(0).get("sb") != null) {
+            vo.setTotalUserBalance(new BigDecimal(maps.get(0).get("sb").toString()));
+        }
 
         QueryWrapper<UserBill> dq = new QueryWrapper<>();
         dq.select("SUM(amount) as sa").eq("bill_type", BillType.PLATFORM.getCode()).eq("transaction_type", TransactionType.DEPOSIT.getCode()).eq("status", TransactionStatus.SUCCESS.getCode());
-        Map<String, Object> dm = this.baseMapper.selectMaps(dq).get(0);
-        if (dm != null && dm.get("sa") != null) vo.setTotalPlatformDeposit(new BigDecimal(dm.get("sa").toString()));
+        List<Map<String, Object>> dms = this.baseMapper.selectMaps(dq);
+        if (!dms.isEmpty() && dms.get(0) != null && dms.get(0).get("sa") != null) {
+            vo.setTotalPlatformDeposit(new BigDecimal(dms.get(0).get("sa").toString()));
+        }
 
         List<UserBill> bills = this.list(new LambdaQueryWrapper<UserBill>().select(UserBill::getAmount, UserBill::getRemark).eq(UserBill::getBillType, BillType.PLATFORM).eq(UserBill::getTransactionType, TransactionType.PURCHASE).eq(UserBill::getStatus, TransactionStatus.SUCCESS));
         BigDecimal totalAmt = BigDecimal.ZERO;
@@ -350,9 +338,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         return vo;
     }
 
-    /**
-     * 获取USDT支付配置元数据
-     */
     @Override
     public PaymentUsdtMetaVO getPaymentUsdtMeta() throws Exception {
         PaymentUsdtMetaVO vo = new PaymentUsdtMetaVO();
@@ -365,9 +350,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         return vo;
     }
 
-    /**
-     * 用户个人账单分页查询
-     */
     @Override
     public IPage<UserBill> getUserBillPage(Long userId, BillQueryDTO query) {
         LambdaQueryWrapper<UserBill> wrapper = new LambdaQueryWrapper<UserBill>().eq(UserBill::getUserId, userId);

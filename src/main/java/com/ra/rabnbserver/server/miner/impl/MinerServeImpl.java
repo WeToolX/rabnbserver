@@ -73,6 +73,13 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     @Override
     public void buyMinerBatch(Long userId, String minerType, int quantity) {
         if (quantity <= 0) throw new BusinessException("数量不合法");
+        String minerId = switch (minerType) {
+            case "0" -> "001";  //小型矿机
+            case "1" -> "002";  //中型矿机
+            case "2" -> "003";  //大型矿机
+            case "3" -> "004";  //特殊矿机
+            default -> "001";   //默认矿机（小型矿机）
+        };
 
         // 1. 异常框架准入检查：如果用户当前已有大量卡死且需要人工处理的异常，禁止继续购买
         purchaseRetryServe.checkUserErr(String.valueOf(userId));
@@ -83,7 +90,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             UserMiner miner = new UserMiner();
             miner.setUserId(user.getId());
             miner.setWalletAddress(user.getUserWalletAddress());
-            miner.setMinerId("M-" + System.nanoTime());
+            miner.setMinerId(minerId);
             miner.setMinerType(minerType);
             miner.setStatus(0);
             miner.setEligibleDate(LocalDateTime.now().plusDays(15));

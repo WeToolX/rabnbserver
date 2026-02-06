@@ -84,9 +84,9 @@ public class EtfCardServeImpl extends ServiceImpl<EtfCardMapper, ETFCard> implem
             throw new BusinessException("卡牌批次不存在");
         }
         // 校验：不能修改当前激活批次
-        if (existing.getIsCurrent() == 1) {
-            throw new BusinessException("当前激活中的卡牌批次禁止修改，请先切换激活卡牌批次或停用");
-        }
+//        if (existing.getIsCurrent() == 1) {
+//            throw new BusinessException("当前激活中的卡牌批次禁止修改，请先切换激活卡牌批次或停用");
+//        }
         // 执行受限更新：只允许修改 名称、状态、单价、备注
         // 使用 LambdaUpdateWrapper 确保即便前端传了其他字段（如库存），也不会被写入数据库
         boolean success = this.update(new LambdaUpdateWrapper<ETFCard>()
@@ -95,6 +95,8 @@ public class EtfCardServeImpl extends ServiceImpl<EtfCardMapper, ETFCard> implem
                 .set(card.getStatus() != null, ETFCard::getStatus, card.getStatus())
                 .set(card.getUnitPrice() != null, ETFCard::getUnitPrice, card.getUnitPrice())
                 .set(card.getRemark() != null, ETFCard::getRemark, card.getRemark())
+                .set(card.getInventory() != null, ETFCard::getInventory, card.getInventory())
+                .set(card.getTotalSupply() != null, ETFCard::getTotalSupply, card.getTotalSupply())
         );
         if (!success) {
             throw new BusinessException("更新失败");
