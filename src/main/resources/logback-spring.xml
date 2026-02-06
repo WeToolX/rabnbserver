@@ -40,8 +40,8 @@
     <logger name="com.ra.rabnbserver.controller.user" level="INFO"/>
     <logger name="com.ra.rabnbserver.controller.admin" level="INFO"/>
     <logger name="com.ra.rabnbserver.service" level="INFO"/>
-    <!-- 异常重试框架调试日志 -->
-    <logger name="com.ra.rabnbserver.exception.Abnormal" level="DEBUG"/>
+    <!-- 异常重试框架调试日志（关闭 DEBUG 输出） -->
+    <logger name="com.ra.rabnbserver.exception.Abnormal" level="INFO"/>
     <!-- 数据库日志（可按需要调整级别） -->
     <logger name="org.mybatis" level="INFO"/>
     <logger name="com.baomidou.mybatisplus" level="INFO"/>

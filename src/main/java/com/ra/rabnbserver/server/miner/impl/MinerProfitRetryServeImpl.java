@@ -43,6 +43,11 @@ public class MinerProfitRetryServeImpl extends AbstractAbnormalRetryService {
     }
 
     @Override
+    public String manualSuccessRoute() {
+        return "/api/user/miner/manual-profit-success";
+    }
+
+    @Override
     public void checkUserErr(String userValue) {
         super.checkUserErr(userValue);
     }

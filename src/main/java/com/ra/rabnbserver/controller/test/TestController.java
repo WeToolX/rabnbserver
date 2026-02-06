@@ -35,16 +35,5 @@ public class TestController {
         return ApiResponse.success("写入失败数据成功", dataId);
     }
 
-    /**
-     * 人工处理成功回调（示例）
-     *
-     * @param dataId 数据主键
-     * @return 处理结果
-     */
-    @PostMapping("/payment/manual-success")
-    public String manualSuccess(@RequestParam("dataId") Long dataId) {
-        testServe.manualSuccessExample(dataId);
-        log.info("人工处理成功已回调，dataId={}", dataId);
-        return ApiResponse.success("人工处理成功", dataId);
-    }
+
 }

@@ -1,5 +1,7 @@
 package com.ra.rabnbserver.exception.Abnormal.core;
 
+import com.ra.rabnbserver.VO.AbnormalPageVO;
+import com.ra.rabnbserver.dto.AbnormalQueryDTO;
 import com.ra.rabnbserver.enums.AbnormalManualStatus;
 import com.ra.rabnbserver.enums.AbnormalStatus;
 import com.ra.rabnbserver.exception.Abnormal.annotation.AbnormalRetryConfig;
@@ -9,6 +11,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.sql.Timestamp;
 import java.time.Duration;
@@ -182,6 +187,7 @@ public class AbnormalRetryManager {
      * @param serviceClass 服务类
      * @param dataId 数据主键
      */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markAbnormal(Class<?> serviceClass, Long dataId) {
         markAbnormal(serviceClass, dataId, null);
     }
@@ -193,6 +199,7 @@ public class AbnormalRetryManager {
      * @param dataId 数据主键
      * @param userValue 用户标识值（可空）
      */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markAbnormal(Class<?> serviceClass, Long dataId, String userValue) {
         AbnormalContext context = classContextMap.get(serviceClass);
         if (context == null) {
@@ -224,7 +231,12 @@ public class AbnormalRetryManager {
         }
         sql.append(" WHERE ").append(wrapColumn(config.idField())).append(" = ?");
         params.add(dataId);
-        jdbcTemplate.update(sql.toString(), params.toArray());
+        int updated = jdbcTemplate.update(sql.toString(), params.toArray());
+        if (updated == 0) {
+            log.warn("异常落库未命中记录，服务={}, 数据ID={}, 请确认业务数据已提交或未被回滚",
+                    config.serviceName(), dataId);
+            return;
+        }
         log.info("异常落库完成，服务={}, 数据ID={}", config.serviceName(), dataId);
     }
 
@@ -747,6 +759,149 @@ public class AbnormalRetryManager {
             return Objects.equals(leftBool, rightBool);
         }
         return left.toString().equals(right.toString());
+    }
+
+    /**
+     * 异常记录分页查询
+     *
+     * @param query 查询参数
+     * @return 分页结果
+     */
+    public AbnormalPageVO queryAbnormalPage(AbnormalQueryDTO query) {
+        initializeIfNeeded();
+        AbnormalQueryDTO safeQuery = query == null ? new AbnormalQueryDTO() : query;
+        int pageNum = Optional.ofNullable(safeQuery.getPageNum()).orElse(1);
+        int pageSize = Optional.ofNullable(safeQuery.getPageSize()).orElse(20);
+        if (pageNum < 1) {
+            pageNum = 1;
+        }
+        if (pageSize < 1) {
+            pageSize = 20;
+        }
+
+        Set<String> allServiceNames = new LinkedHashSet<>();
+        List<AbnormalContext> contexts = new ArrayList<>(getAllContexts());
+        for (AbnormalContext context : contexts) {
+            allServiceNames.add(context.getConfig().serviceName());
+        }
+
+        Set<String> serviceFilter = resolveServiceNameFilter(safeQuery);
+        Set<Integer> statusFilter = resolveErrStatusFilter(safeQuery);
+
+        List<Map<String, Object>> allRecords = new ArrayList<>();
+        for (AbnormalContext context : contexts) {
+            AbnormalRetryConfig config = context.getConfig();
+            String serviceName = config.serviceName();
+            if (serviceFilter != null && !serviceFilter.contains(serviceName)) {
+                continue;
+            }
+            List<Map<String, Object>> records = queryAbnormalByContext(config, statusFilter);
+            for (Map<String, Object> record : records) {
+                record.put("table", config.table());
+                record.put("serviceName", serviceName);
+                allRecords.add(record);
+            }
+        }
+
+        allRecords.sort((left, right) -> {
+            LocalDateTime leftTime = toLocalDateTime(left.get("err_start_time"));
+            LocalDateTime rightTime = toLocalDateTime(right.get("err_start_time"));
+            if (leftTime == null && rightTime == null) {
+                return 0;
+            }
+            if (leftTime == null) {
+                return 1;
+            }
+            if (rightTime == null) {
+                return -1;
+            }
+            return rightTime.compareTo(leftTime);
+        });
+
+        int total = allRecords.size();
+        int fromIndex = Math.min((pageNum - 1) * pageSize, total);
+        int toIndex = Math.min(fromIndex + pageSize, total);
+        List<Map<String, Object>> pageRecords = allRecords.subList(fromIndex, toIndex);
+
+        AbnormalPageVO result = new AbnormalPageVO();
+        result.setRecords(pageRecords);
+        result.setTotal(total);
+        result.setPageNum(pageNum);
+        result.setPageSize(pageSize);
+        result.setServiceNames(new ArrayList<>(allServiceNames));
+        return result;
+    }
+
+    private List<Map<String, Object>> queryAbnormalByContext(AbnormalRetryConfig config, Set<Integer> statusFilter) {
+        StringBuilder sql = new StringBuilder();
+        List<Object> params = new ArrayList<>();
+        sql.append("SELECT * FROM ").append(wrapTable(config.table())).append(" WHERE 1=1");
+        if (statusFilter == null || statusFilter.isEmpty()) {
+            sql.append(" AND ").append(wrapColumn("err_status")).append(" IS NOT NULL");
+            sql.append(" AND ").append(wrapColumn("err_status")).append(" <> ?");
+            params.add(AbnormalStatus.NORMAL.getCode());
+        } else {
+            sql.append(" AND ").append(wrapColumn("err_status")).append(" IN (");
+            int index = 0;
+            for (Integer status : statusFilter) {
+                if (index > 0) {
+                    sql.append(", ");
+                }
+                sql.append("?");
+                params.add(status);
+                index++;
+            }
+            sql.append(")");
+        }
+        return jdbcTemplate.queryForList(sql.toString(), params.toArray());
+    }
+
+    private Set<String> resolveServiceNameFilter(AbnormalQueryDTO query) {
+        Set<String> result = new LinkedHashSet<>();
+        if (query == null) {
+            return null;
+        }
+        if (StringUtils.hasText(query.getServiceName())) {
+            result.add(query.getServiceName().trim());
+        }
+        if (query.getServiceNameList() != null) {
+            for (String name : query.getServiceNameList()) {
+                if (StringUtils.hasText(name)) {
+                    result.add(name.trim());
+                }
+            }
+        }
+        return result.isEmpty() ? null : result;
+    }
+
+    private Set<Integer> resolveErrStatusFilter(AbnormalQueryDTO query) {
+        Set<Integer> result = new LinkedHashSet<>();
+        if (query == null) {
+            return null;
+        }
+        if (query.getErrStatus() != null) {
+            result.add(query.getErrStatus());
+        }
+        if (query.getErrStatusList() != null) {
+            result.addAll(query.getErrStatusList());
+        }
+        return result.isEmpty() ? null : result;
+    }
+
+    private LocalDateTime toLocalDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof LocalDateTime time) {
+            return time;
+        }
+        if (value instanceof Timestamp timestamp) {
+            return timestamp.toLocalDateTime();
+        }
+        if (value instanceof java.util.Date date) {
+            return new Timestamp(date.getTime()).toLocalDateTime();
+        }
+        return null;
     }
 
     private Boolean toBoolean(Object value) {

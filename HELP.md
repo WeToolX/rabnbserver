@@ -30,6 +30,8 @@ rabnbserver
 │  │  │     │  ├── AdminRbacController.java         # 后台权限接口
 │  │  │     │  ├── AuthMockController.java          # 鉴权测试接口
 │  │  │     │  ├── CommonController.java            # 公共接口
+│  │  │     │  ├── abnormal
+│  │  │     │  │  └── AdminAbnormalController.java  # 异常处理列表
 │  │  │     │  ├── test
 │  │  │     │  │  └── TestController.java           # 异常框架测试接口
 │  │  │     │  ├── bill
@@ -71,6 +73,7 @@ rabnbserver
 │  │  │     ├── db
 │  │  │     │  └── DatabaseInitService.java         # 数据库初始化与表结构维护
 │  │  │     ├── dto                                 # 请求 DTO（登录/账单/购买/配置等）
+│  │  │     │  └── AbnormalQueryDTO.java            # 异常处理查询参数
 │  │  │     ├── enums                               # 账单/订单/状态等枚举
 │  │  │     │  ├── AbnormalManualStatus.java         # 异常人工处理状态枚举
 │  │  │     │  └── AbnormalStatus.java               # 异常主状态枚举
@@ -82,6 +85,10 @@ rabnbserver
 │  │  │     │     │  └── AbnormalRetryConfig.java   # 异常重试注解
 │  │  │     │     ├── core
 │  │  │     │     │  ├── AbnormalContext.java       # 异常重试上下文
+│  │  │     │     │  ├── AbnormalManualController.java # 人工处理回调入口（动态路由）
+│  │  │     │     │  ├── AbnormalManualEndpointRegistrar.java # 人工处理路由注册
+│  │  │     │     │  ├── AbnormalManualRouteInfo.java # 人工处理路由信息
+│  │  │     │     │  ├── AbnormalManualRouteRegistry.java # 人工处理路由注册表
 │  │  │     │     │  ├── AbnormalMailService.java   # 异常通知邮件
 │  │  │     │     │  ├── AbnormalRecord.java        # 异常记录模型
 │  │  │     │     │  ├── AbnormalRetryHandler.java  # 业务处理接口
@@ -110,6 +117,7 @@ rabnbserver
 │  │  │     ├── utils
 │  │  │     │  └── RandomIdGenerator.java           # 随机 ID 生成
 │  │  │     └── VO                                  # 返回 VO
+│  │  │        └── AbnormalPageVO.java              # 异常处理分页结果
 │  │  └── resources
 │  │     ├── application.yaml                       # 应用配置
 │  │     └── logback-spring.xml                      # 日志配置（按大小+日期滚动）
@@ -137,25 +145,10 @@ rabnbserver
 - USDT 精度：统一使用 18 位（AmountConvertUtils.Currency.USDT=18）
 - PaymentUSDT：minAmount 可配置（链上读取 minAmount()）
 - 异常重试框架：扫描 @AbnormalRetryConfig，自动补齐异常字段并定时轮询，行锁使用 FOR UPDATE SKIP LOCKED，支持自动重试/人工通知/err_manual_notify_count，超时或达上限会升级人工并持续通知直至人工处理成功（人工提醒间隔线性递增）
+- 人工处理回调：业务服务必须重写 manualSuccessRoute() 配置路由，框架自动注册接口并回调 manualSuccessExample()
+- 异常管理接口：/api/admin/abnormal/list 支持分页与 serviceName/err_status 筛选，返回服务名列表
 - 邮件配置：application.yaml 中 spring.mail.* 与 abnormal.retry.* 控制通知
 - 时区统一：JVM/Jackson/JDBC/日志均使用 Asia/Shanghai
 - 调试日志：异常重试框架包默认不输出 DEBUG，如需开启请手动配置日志级别
 - 异常自愈：err_start_time 为空会自动补当前时间，业务状态成功但 err_status 未同步会自动修复为 2001
 - 异常任务执行：重试、超时升级人工与人工通知任务投递到 taskExecutor 线程池执行
-
-### Reference Documentation
-
-For further reference, please consider the following sections:
-
-* [Official Apache Maven documentation](https://maven.apache.org/guides/index.html)
-* [Spring Boot Maven Plugin Reference Guide](https://docs.spring.io/spring-boot/4.0.2/maven-plugin)
-* [Create an OCI image](https://docs.spring.io/spring-boot/4.0.2/maven-plugin/build-image.html)
-* [Spring Boot DevTools](https://docs.spring.io/spring-boot/4.0.2/reference/using/devtools.html)
-
-### Maven Parent overrides
-
-Due to Maven's design, elements are inherited from the parent POM to the project POM.
-While most of the inheritance is fine, it also inherits unwanted elements like `<license>` and `<developers>` from the
-parent.
-To prevent this, the project POM contains empty overrides for these elements.
-If you manually switch to a different parent and actually want the inheritance, you need to remove those overrides.

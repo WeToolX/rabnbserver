@@ -146,6 +146,11 @@ public class UserBillRetryServeImpl extends AbstractAbnormalRetryService {
     // 暴露基类方法供业务层调用
     @Override public void markAbnormal(Long dataId) { super.markAbnormal(dataId); }
     @Override public void markAbnormal(Long dataId, String userValue) { super.markAbnormal(dataId, userValue); }
+
+    @Override
+    public String manualSuccessRoute() {
+        return "/api/user/admin/manual-bill-success";
+    }
     @Override public void checkUserErr(String userValue) { super.checkUserErr(userValue); }
     @Override public void ProcessingSuccessful(Long dataId) { super.ProcessingSuccessful(dataId); }
 }

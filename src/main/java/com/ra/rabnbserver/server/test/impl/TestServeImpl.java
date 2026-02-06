@@ -129,17 +129,9 @@ public class TestServeImpl extends AbstractAbnormalRetryService implements TestS
         return dataId;
     }
 
-    /**
-     * 人工处理成功示例（回写状态）
-     * 必须重写这个方法 也必须在接口层有人工处理的接口调用此方法
-     * @param dataId 数据主键
-     */
     @Override
-    public void manualSuccessExample(Long dataId) {
-        if (dataId == null) {
-            throw new IllegalArgumentException("dataId 不能为空");
-        }
-        ProcessingSuccessful(dataId);
-        log.info("示例人工处理成功已回写，dataId={}", dataId);
+    public String manualSuccessRoute(){
+        return "/api/admin/test/payment/manual-success";
     }
+
 }

@@ -43,6 +43,11 @@ public class MinerPurchaseRetryServeImpl extends AbstractAbnormalRetryService {
     }
 
     @Override
+    public String manualSuccessRoute() {
+        return "/api/user/miner/manual-purchase-success";
+    }
+
+    @Override
     public void checkUserErr(String userValue) {
         super.checkUserErr(userValue);
     }

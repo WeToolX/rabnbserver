@@ -58,6 +58,22 @@ public abstract class AbstractAbnormalRetryService implements AbnormalRetryHandl
     }
 
     /**
+     * 人工处理成功回调路由（必须重写）
+     *
+     * @return 人工处理成功接口路由
+     */
+    public abstract String manualSuccessRoute();
+
+    /**
+     * 人工处理成功回调（可重写）
+     *
+     * @param dataId 数据主键
+     */
+    public void manualSuccessExample(Long dataId) {
+        ProcessingSuccessful(dataId);
+    }
+
+    /**
      * 获取实际业务类（兼容代理）
      * <p>
      * 异常框架以“业务类 + 注解配置”为定位依据，
