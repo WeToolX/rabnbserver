@@ -44,7 +44,7 @@ public class MinerPurchaseRetryServeImpl extends AbstractAbnormalRetryService {
 
     @Override
     public String manualSuccessRoute() {
-        return "/user/miner/manual-purchase-success";
+        return "/api/user/miner/manual-purchase-success";
     }
 
     @Override
