@@ -878,6 +878,11 @@ public class AbnormalRetryManager {
         if (!normalized.startsWith("/")) {
             normalized = "/" + normalized;
         }
+        if (normalized.startsWith("/api/")) {
+            normalized = normalized.substring(4);
+        } else if ("/api".equals(normalized)) {
+            normalized = "/";
+        }
         return normalized;
     }
 
