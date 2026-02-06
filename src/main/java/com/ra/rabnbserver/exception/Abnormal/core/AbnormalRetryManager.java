@@ -780,9 +780,12 @@ public class AbnormalRetryManager {
         }
 
         Set<String> allServiceNames = new LinkedHashSet<>();
+        Map<String, Map<String, String>> columnComments = new LinkedHashMap<>();
         List<AbnormalContext> contexts = new ArrayList<>(getAllContexts());
         for (AbnormalContext context : contexts) {
-            allServiceNames.add(context.getConfig().serviceName());
+            AbnormalRetryConfig config = context.getConfig();
+            allServiceNames.add(config.serviceName());
+            columnComments.put(config.table(), loadColumnComments(config.table()));
         }
 
         Set<String> serviceFilter = resolveServiceNameFilter(safeQuery);
@@ -829,6 +832,7 @@ public class AbnormalRetryManager {
         result.setPageNum(pageNum);
         result.setPageSize(pageSize);
         result.setServiceNames(new ArrayList<>(allServiceNames));
+        result.setColumnComments(columnComments);
         return result;
     }
 
@@ -886,6 +890,22 @@ public class AbnormalRetryManager {
             result.addAll(query.getErrStatusList());
         }
         return result.isEmpty() ? null : result;
+    }
+
+    private Map<String, String> loadColumnComments(String tableName) {
+        String sql = "SELECT COLUMN_NAME, COLUMN_COMMENT FROM information_schema.COLUMNS "
+                + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, tableName);
+        Map<String, String> result = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object columnName = row.get("COLUMN_NAME");
+            if (columnName == null) {
+                continue;
+            }
+            String comment = row.get("COLUMN_COMMENT") == null ? "" : row.get("COLUMN_COMMENT").toString();
+            result.put(columnName.toString(), comment);
+        }
+        return result;
     }
 
     private LocalDateTime toLocalDateTime(Object value) {

@@ -35,4 +35,9 @@ public class AbnormalPageVO {
      * 服务名列表（用于前端筛选）
      */
     private List<String> serviceNames;
+
+    /**
+     * 字段注释映射（table -> (column -> comment)）
+     */
+    private Map<String, Map<String, String>> columnComments;
 }
