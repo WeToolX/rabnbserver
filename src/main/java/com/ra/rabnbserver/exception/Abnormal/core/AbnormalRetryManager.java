@@ -798,10 +798,12 @@ public class AbnormalRetryManager {
             if (serviceFilter != null && !serviceFilter.contains(serviceName)) {
                 continue;
             }
+            String manualRoute = resolveManualRoute(context);
             List<Map<String, Object>> records = queryAbnormalByContext(config, statusFilter);
             for (Map<String, Object> record : records) {
                 record.put("table", config.table());
                 record.put("serviceName", serviceName);
+                record.put("manualSuccessRoute", manualRoute);
                 allRecords.add(record);
             }
         }
@@ -858,6 +860,25 @@ public class AbnormalRetryManager {
             sql.append(")");
         }
         return jdbcTemplate.queryForList(sql.toString(), params.toArray());
+    }
+
+    private String resolveManualRoute(AbnormalContext context) {
+        AbnormalRetryHandler handler = context.getHandler();
+        if (handler instanceof AbstractAbnormalRetryService service) {
+            return normalizeRoute(service.manualSuccessRoute());
+        }
+        return null;
+    }
+
+    private String normalizeRoute(String route) {
+        if (!StringUtils.hasText(route)) {
+            return null;
+        }
+        String normalized = route.trim();
+        if (!normalized.startsWith("/")) {
+            normalized = "/" + normalized;
+        }
+        return normalized;
     }
 
     private Set<String> resolveServiceNameFilter(AbnormalQueryDTO query) {
