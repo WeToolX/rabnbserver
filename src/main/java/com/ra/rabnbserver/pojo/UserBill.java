@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.ra.rabnbserver.annotation.ColumnComment;
 import com.ra.rabnbserver.annotation.ColumnType;
+import com.ra.rabnbserver.annotation.DefaultValue;
 import com.ra.rabnbserver.annotation.TableComment;
 import com.ra.rabnbserver.common.BaseEntity;
 import com.ra.rabnbserver.enums.BillType;
@@ -135,6 +136,13 @@ public class UserBill extends AbnormalBaseEntity {
     @ColumnType("TEXT")
     private String chainResponse;
 
+    /**
+     * 交易数量
+     */
+    @ColumnComment("链上返回响应（原始JSON数据）")
+    @TableField("num")
+    @DefaultValue("0")
+    private Integer num;
     /**
      * 交易状态
      * 0-处理中, 1-成功, 2-失败

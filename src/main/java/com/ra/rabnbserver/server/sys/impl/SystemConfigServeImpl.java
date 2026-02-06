@@ -69,6 +69,9 @@ public class SystemConfigServeImpl extends ServiceImpl<SystemConfigMapper, Syste
                 ratios.put(1, new BigDecimal("0.10"));
                 ratios.put(2, new BigDecimal("0.05"));
                 ratios.put(3, new BigDecimal("0.02"));
+                ratios.put(4, new BigDecimal("0.01"));
+                ratios.put(5, new BigDecimal("0.009"));
+                ratios.put(6, new BigDecimal("0.008"));
                 minerSettings.setDistributionRatios(ratios);
 
                 SystemConfig minerConfig = new SystemConfig();
@@ -90,7 +93,7 @@ public class SystemConfigServeImpl extends ServiceImpl<SystemConfigMapper, Syste
                 SystemConfig noticeConfig = new SystemConfig();
                 noticeConfig.setConfigKey("PLATFORM_NOTICE");
                 noticeConfig.setConfigName("全局公告");
-                noticeConfig.setConfigValue("欢迎来到 RaBnB 矿机系统！");
+                noticeConfig.setConfigValue("欢迎来到矿机系统！");
                 noticeConfig.setRemark("显示在首页的滚动公告");
                 defaultConfigs.add(noticeConfig);
 

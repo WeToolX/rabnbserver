@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
         table = "user_miner",
         serviceName = "矿机购买卡牌销毁",
         idField = "id",
-        userField = "user_id",
+        userField = "walletAddress",
         statusField = "status",
         successValue = "1",
         failValue = "0",

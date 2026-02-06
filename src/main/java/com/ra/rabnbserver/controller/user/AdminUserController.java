@@ -93,6 +93,11 @@ public class AdminUserController {
         superRole.setRoleKey("super_admin");
         superRole.setParentId(0L);
         adminRoleService.save(superRole);
+        AdminRole superRole2 = new AdminRole();
+        superRole.setRoleName("管理员");
+        superRole.setRoleKey("admin");
+        superRole.setParentId(0L);
+        adminRoleService.save(superRole2);
         AdminPermission allPerm = new AdminPermission();
         allPerm.setName("所有权限");
         allPerm.setPermKey("*"); // 标识拥有所有权限
@@ -101,7 +106,7 @@ public class AdminUserController {
         AdminUser superUser = new AdminUser();
         superUser.setUsername(AdminUserName);
         superUser.setPassword(AdminPassword);
-        superUser.setNickname("系统内置超管");
+        superUser.setNickname("系统管理员");
         superUser.setRoleId(superRole.getId());
         superUser.setStatus(1);
         adminUserService.save(superUser);

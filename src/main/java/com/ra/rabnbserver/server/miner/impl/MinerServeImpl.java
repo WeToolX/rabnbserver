@@ -73,6 +73,13 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     @Override
     public void buyMinerBatch(Long userId, String minerType, int quantity) {
         if (quantity <= 0) throw new BusinessException("数量不合法");
+        String minerId = switch (minerType) {
+            case "0" -> "001";  //小型矿机
+            case "1" -> "002";  //中型矿机
+            case "2" -> "003";  //大型矿机
+            case "3" -> "004";  //特殊矿机
+            default -> "001";   //默认矿机（小型矿机）
+        };
 
         // 1. 异常框架准入检查：如果用户当前已有大量卡死且需要人工处理的异常，禁止继续购买
         purchaseRetryServe.checkUserErr(String.valueOf(userId));
@@ -83,7 +90,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             UserMiner miner = new UserMiner();
             miner.setUserId(user.getId());
             miner.setWalletAddress(user.getUserWalletAddress());
-            miner.setMinerId("M-" + System.nanoTime());
+            miner.setMinerId(minerId);
             miner.setMinerType(minerType);
             miner.setStatus(0);
             miner.setEligibleDate(LocalDateTime.now().plusDays(15));
@@ -168,7 +175,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             executeDistribution(user, unitFee, settings.getDistributionRatios());
         }
         userBillServe.createBillAndUpdateBalance(userId, totalFee, BillType.PLATFORM, FundType.EXPENSE,
-                TransactionType.EXCHANGE, "缴纳电费-模式" + dto.getMode(), null, null, null);
+                TransactionType.EXCHANGE, "缴纳电费-模式" + dto.getMode(), null, null, null,0);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -207,7 +214,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             this.updateById(m);
         }
         userBillServe.createBillAndUpdateBalance(userId, totalFee, BillType.PLATFORM, FundType.EXPENSE,
-                TransactionType.PURCHASE, "购买加速包-模式" + dto.getMode(), null, null, null);
+                TransactionType.PURCHASE, "购买加速包-模式" + dto.getMode(), null, null, null,0);
     }
 
     @Override
@@ -310,7 +317,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                                 FundType.INCOME,
                                 TransactionType.REWARD,
                                 String.format("下级激活奖励(来自用户ID:%d, 层级:%d)", user.getId(), currentLevel),
-                                null, null, null
+                                null, null, null,0
                         );
                         log.info("奖励发放成功: 用户ID {} -> 上级ID {}(第{}层), 金额: {}",
                                 user.getId(), parentId, currentLevel, rewardAmount);
