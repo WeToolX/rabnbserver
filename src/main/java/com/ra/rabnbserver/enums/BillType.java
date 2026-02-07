@@ -7,11 +7,15 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.springframework.util.StringUtils;
 
+/**
+ * 账单类型
+ */
 @Getter
 @AllArgsConstructor
 public enum BillType  implements BaseEnum{
     PLATFORM("PLATFORM", "平台资金流水"),
     ON_CHAIN("ON_CHAIN", "链上资金流水"),
+    FRAGMENT("FRAGMENT", "碎片流水"),
     ERROR_ORDER("ERROR_ORDER","异常账单");
 
     @EnumValue // 标记数据库存储的值

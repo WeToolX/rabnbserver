@@ -7,6 +7,9 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.springframework.util.StringUtils;
 
+/**
+ * 交易类型
+ */
 @Getter
 @AllArgsConstructor
 public enum TransactionType implements BaseEnum{

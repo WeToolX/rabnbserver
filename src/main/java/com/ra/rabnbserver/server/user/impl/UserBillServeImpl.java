@@ -10,6 +10,7 @@ import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ra.rabnbserver.VO.AdminBillStatisticsVO;
+import com.ra.rabnbserver.VO.CreateUserBillVO;
 import com.ra.rabnbserver.VO.PaymentUsdtMetaVO;
 import com.ra.rabnbserver.contract.CardNftContract;
 import com.ra.rabnbserver.contract.PaymentUsdtContract;
@@ -90,14 +91,14 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (receipt != null && "0x1".equals(receipt.getStatus())) {
             // 情况 A: 链上执行成功
             createBillAndUpdateBalance(userId, amount, BillType.PLATFORM, FundType.INCOME,
-                    TransactionType.DEPOSIT, "USDT充值成功", orderId, receipt.getTransactionHash(), JSON.toJSONString(receipt), 0);
+                    TransactionType.DEPOSIT, "USDT充值成功", orderId, receipt.getTransactionHash(), JSON.toJSONString(receipt), 0,null);
             billRetryServe.ProcessingSuccessful(getBillIdByOrder(orderId));
         } else {
             // 情况 B: 链上执行失败 (receipt.status != 0x1) 或 系统异常 (systemErrorMsg != null)
             String finalRemark = (systemErrorMsg != null) ? "系统异常：" + systemErrorMsg : "链上合约执行失败";
             // 记录一笔零元账单用于异常框架追踪
             createBillAndUpdateBalance(userId, BigDecimal.ZERO, BillType.ERROR_ORDER, FundType.INCOME,
-                    TransactionType.DEPOSIT, finalRemark, orderId, (receipt != null ? receipt.getTransactionHash() : null), null, 0);
+                    TransactionType.DEPOSIT, finalRemark, orderId, (receipt != null ? receipt.getTransactionHash() : null), null, 0,null);
             Long billId = getBillIdByOrder(orderId);
             updateBillByError(billId, TransactionStatus.FAILED, receipt, finalRemark);
             // 标记异常，注意此处传入钱包地址 user.getUserWalletAddress() 解决显示 "15" 的问题
@@ -136,7 +137,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                 if (!stockOk) throw new BusinessException("本地库存不足");
 
                 createBillAndUpdateBalance(userId, totalCost, BillType.PLATFORM, FundType.EXPENSE,
-                        TransactionType.PURCHASE, "购买NFT卡牌 x" + quantity, orderId, null, null, quantity);
+                        TransactionType.PURCHASE, "购买NFT卡牌 x" + quantity, orderId, null, null, quantity,null);
             } catch (Exception e) {
                 status.setRollbackOnly();
                 throw e;
@@ -175,7 +176,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         String orderId = "DIST_" + IdWorker.getIdStr();
 
         createBillAndUpdateBalance(userId, BigDecimal.ZERO, BillType.ON_CHAIN, FundType.INCOME,
-                TransactionType.REWARD, "管理员发起分发 x" + amount, orderId, null, null, amount);
+                TransactionType.REWARD, "管理员发起分发 x" + amount, orderId, null, null, amount,null);
 
         Long billId = getBillIdByOrder(orderId);
         TransactionReceipt receipt = null;
@@ -255,18 +256,49 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (paymentUsdtContract.balanceOf(address).compareTo(amount) < 0) throw new BusinessException("链上余额不足");
     }
 
+    /**
+     * 统一创建账单并更新余额（支持平台余额与碎片余额）
+     *
+     * @param userId           用户ID
+     * @param amount           变动金额（用于平台资金）
+     * @param billType         账单类型（PLATFORM-平台余额, FRAGMENT-碎片, ON_CHAIN-链上, ERROR_ORDER-异常）
+     * @param fundType         资金流向（INCOME-入账, EXPENSE-出账）
+     * @param txType           交易业务类型
+     * @param remark           备注
+     * @param orderId          业务订单号
+     * @param txId             链上哈希
+     * @param res              链上响应结果
+     * @param num              变动数量（基本整型参数）
+     * @param createUserBillVO 扩展参数对象（主要用于传递字符串格式的高精度碎片数量）
+     */
     @Override
-    public void createBillAndUpdateBalance(Long userId, BigDecimal amount, BillType billType, FundType fundType, TransactionType txType, String remark, String orderId, String txId, String res, int num) {
-        if (StringUtils.isBlank(orderId)) orderId = "BILL_" + IdWorker.getIdStr();
-        User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getId, userId).last("FOR UPDATE"));
-        if (user == null) throw new BusinessException("用户不存在");
+    public void createBillAndUpdateBalance(
+            Long userId,
+            BigDecimal amount,
+            BillType billType,
+            FundType fundType,
+            TransactionType txType,
+            String remark,
+            String orderId,
+            String txId,
+            String res,
+            int num,
+            CreateUserBillVO createUserBillVO
+    ) {
+        // 生成或校验订单号
+        if (StringUtils.isBlank(orderId)) {
+            orderId = "BILL_" + IdWorker.getIdStr();
+        }
 
-        BigDecimal balanceBefore = user.getBalance();
-        BigDecimal change = FundType.EXPENSE.equals(fundType) ? amount.negate() : amount;
-        BigDecimal balanceAfter = balanceBefore.add(change);
+        // 锁行并获取用户信息，确保余额更新的原子性
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
+                .eq(User::getId, userId)
+                .last("FOR UPDATE"));
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
 
-        if (balanceAfter.compareTo(BigDecimal.ZERO) < 0) throw new BusinessException("账户余额不足");
-
+        // 初始化账单记录对象
         UserBill bill = new UserBill();
         bill.setUserId(userId);
         bill.setUserWalletAddress(user.getUserWalletAddress());
@@ -275,20 +307,87 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         bill.setBillType(billType);
         bill.setFundType(fundType);
         bill.setTransactionType(txType);
-        bill.setAmount(amount);
         bill.setNum(num);
-        bill.setBalanceBefore(balanceBefore);
-        bill.setBalanceAfter(balanceAfter);
         bill.setRemark(remark);
         bill.setTransactionTime(LocalDateTime.now());
         bill.setStatus(TransactionStatus.SUCCESS);
         bill.setChainResponse(res);
-        this.save(bill);
 
-        if (BillType.PLATFORM.equals(billType) && amount.compareTo(BigDecimal.ZERO) != 0) {
-            userMapper.update(null, new LambdaUpdateWrapper<User>()
-                    .eq(User::getId, userId).set(User::getBalance, balanceAfter));
+        // 定义快照变量（用于记录账单变动前后的快照）
+        BigDecimal balanceBefore = BigDecimal.ZERO;
+        BigDecimal balanceAfter = BigDecimal.ZERO;
+
+        // 根据账单类型分发逻辑
+        switch (billType) {
+            case FRAGMENT:
+                // --- 碎片逻辑处理 ---
+                // 确定变动数量：优先取 VO 中的字符串（支持高精度），若为空则取 int 类型的 num
+                String changeStr = (createUserBillVO != null && StringUtils.isNotBlank(createUserBillVO.getNum()))
+                        ? createUserBillVO.getNum() : String.valueOf(num);
+                BigDecimal fragChangeAmount = new BigDecimal(changeStr);
+                // 获取当前碎片余额快照（String -> BigDecimal）
+                String currentFragStr = user.getFragmentBalance();
+                balanceBefore = StringUtils.isNotBlank(currentFragStr) ? new BigDecimal(currentFragStr) : BigDecimal.ZERO;
+                // 计算变动后余额
+                if (FundType.EXPENSE.equals(fundType)) {
+                    balanceAfter = balanceBefore.subtract(fragChangeAmount);
+                } else {
+                    balanceAfter = balanceBefore.add(fragChangeAmount);
+                }
+                // 校验余额是否合法
+                if (balanceAfter.compareTo(BigDecimal.ZERO) < 0) {
+                    throw new BusinessException("碎片余额不足");
+                }
+
+                // 更新用户表碎片字段（BigDecimal -> String，使用 toPlainString 避免科学计数法）
+                String balanceAfterStr = balanceAfter.toPlainString();
+                userMapper.update(null, new LambdaUpdateWrapper<User>()
+                        .eq(User::getId, userId)
+                        .set(User::getFragmentBalance, balanceAfterStr));
+                // 设置账单特有字段
+                bill.setAmount(BigDecimal.ZERO);      // 碎片账单金额记录为0
+                bill.setFragmentNum(balanceAfterStr); // 记录碎片变动后的数量快照
+                break;
+
+            case PLATFORM:
+                // --- 平台余额逻辑处理 ---
+                balanceBefore = (user.getBalance() == null) ? BigDecimal.ZERO : user.getBalance();
+                // 计算变动后余额
+                if (FundType.EXPENSE.equals(fundType)) {
+                    balanceAfter = balanceBefore.subtract(amount);
+                } else {
+                    balanceAfter = balanceBefore.add(amount);
+                }
+                // 校验余额是否合法
+                if (balanceAfter.compareTo(BigDecimal.ZERO) < 0) {
+                    throw new BusinessException("账户余额不足");
+                }
+                // 只有当金额不为0时才执行数据库更新，减少无效IO
+                if (amount.compareTo(BigDecimal.ZERO) != 0) {
+                    userMapper.update(null, new LambdaUpdateWrapper<User>()
+                            .eq(User::getId, userId)
+                            .set(User::getBalance, balanceAfter));
+                }
+                bill.setAmount(amount);
+                break;
+
+            case ON_CHAIN:
+            case ERROR_ORDER:
+                // --- 链上流水或异常订单逻辑 ---
+                // 此类账单通常只做流水记录，不直接操作本地缓存余额
+                balanceBefore = (user.getBalance() == null) ? BigDecimal.ZERO : user.getBalance();
+                balanceAfter = balanceBefore; // 余额无变动
+                bill.setAmount(amount);
+                break;
+            default:
+                throw new BusinessException("未知的账单类型: " + billType);
         }
+
+        // 统一设置通用快照字段并持久化账单
+        // 即使是碎片类型，balanceBefore/After 也会存储数值，方便管理后台通用列表展示
+        bill.setBalanceBefore(balanceBefore);
+        bill.setBalanceAfter(balanceAfter);
+        this.save(bill);
     }
 
     @Override

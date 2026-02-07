@@ -1,5 +1,6 @@
 package com.ra.rabnbserver.server.miner.impl;
 
+import com.ra.rabnbserver.contract.CardNftContract;
 import com.ra.rabnbserver.exception.Abnormal.annotation.AbnormalRetryConfig;
 import com.ra.rabnbserver.exception.Abnormal.core.AbstractAbnormalRetryService;
 import com.ra.rabnbserver.exception.Abnormal.core.AbnormalRetryManager;
@@ -7,6 +8,9 @@ import com.ra.rabnbserver.mapper.UserMinerMapper;
 import com.ra.rabnbserver.pojo.UserMiner;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.web3j.protocol.core.methods.response.TransactionReceipt;
+
+import java.math.BigInteger;
 
 @Slf4j
 @Service
@@ -15,7 +19,7 @@ import org.springframework.stereotype.Service;
         serviceName = "矿机购买卡牌销毁",
         idField = "id",
         userField = "walletAddress",
-        statusField = "status",
+        statusField = "nft_burn_status", // 监控这个业务状态
         successValue = "1",
         failValue = "0",
         minIntervalSeconds = 60,
@@ -26,10 +30,12 @@ import org.springframework.stereotype.Service;
 public class MinerPurchaseRetryServeImpl extends AbstractAbnormalRetryService {
 
     private final UserMinerMapper userMinerMapper;
+    private final CardNftContract cardNftContract;
 
-    public MinerPurchaseRetryServeImpl(AbnormalRetryManager abnormalRetryManager, UserMinerMapper userMinerMapper) {
+    public MinerPurchaseRetryServeImpl(AbnormalRetryManager abnormalRetryManager, UserMinerMapper userMinerMapper, CardNftContract cardNftContract) {
         super(abnormalRetryManager);
         this.userMinerMapper = userMinerMapper;
+        this.cardNftContract = cardNftContract;
     }
 
     @Override
@@ -65,18 +71,26 @@ public class MinerPurchaseRetryServeImpl extends AbstractAbnormalRetryService {
 
     @Override
     public boolean ExceptionHandling(Long dataId) {
+        UserMiner miner = userMinerMapper.selectById(dataId);
+        if (miner == null) return false;
+
         try {
-            log.info("重试框架：正在尝试重新销毁卡牌并激活矿机，ID: {}", dataId);
-            // 模拟调用合约销毁卡牌
-            boolean contractSuccess = true;
-            if (contractSuccess) {
-                UserMiner miner = userMinerMapper.selectById(dataId);
-                miner.setStatus(1);
+            // 1. 检查授权
+//            String admin = cardNftContract.getAddress();
+//            if (!cardNftContract.isApprovedForAll(miner.getWalletAddress(), admin)) {
+//                log.warn("用户 {} 未授权卡牌合约", miner.getWalletAddress());
+//                return false;
+//            }
+
+            // 2. 调用合约销毁 (销毁数量1)
+            TransactionReceipt receipt = cardNftContract.burnUser(miner.getWalletAddress(), BigInteger.ONE);
+            if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
+                miner.setNftBurnStatus(1);
                 userMinerMapper.updateById(miner);
                 return true;
             }
         } catch (Exception e) {
-            log.error("重试框架：矿机激活重试异常，ID: {}, 原因: {}", dataId, e.getMessage());
+            log.error("销毁重试异常: {}", e.getMessage());
         }
         return false;
     }

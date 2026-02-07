@@ -11,6 +11,12 @@ public interface UserServe extends IService<User> {
     User getByWalletAddress(String address);
 
     @Transactional(rollbackFor = Exception.class)
+    User handleRegister(String walletAddress, String referrerWalletAddress);
+
+    @Transactional(rollbackFor = Exception.class)
+    User loginOrRegister(String walletAddress, String referrerWalletAddress);
+
+    @Transactional(rollbackFor = Exception.class)
     User register(RegisterDataDTO registerDataDTO);
 
     @Transactional(rollbackFor = Exception.class)

@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
         serviceName = "每日收益合约发放",
         idField = "id",
         userField = "walletAddress",
-        statusField = "status",
+        statusField = "payout_status", // 监控这个业务状态
         successValue = "1",
         failValue = "0",
         minIntervalSeconds = 120,
@@ -66,18 +66,20 @@ public class MinerProfitRetryServeImpl extends AbstractAbnormalRetryService {
     @Override
     public boolean ExceptionHandling(Long dataId) {
         try {
-            log.info("重试框架：正在尝试重新调用合约发放收益，ID: {}", dataId);
-            // 模拟调用合约接口
-            String mockTxId = "0x" + System.currentTimeMillis();
             MinerProfitRecord record = profitRecordMapper.selectById(dataId);
-            if (record != null) {
-                record.setStatus(1);
-                record.setTxId(mockTxId);
+            if (record == null) return false;
+
+            // TODO: 调用收益发放合约
+            boolean contractSuccess = true;
+
+            if (contractSuccess) {
+                record.setPayoutStatus(1);
+                record.setTxId("0x" + System.currentTimeMillis());
                 profitRecordMapper.updateById(record);
                 return true;
             }
         } catch (Exception e) {
-            log.error("重试框架：收益发放重试异常，ID: {}, 原因: {}", dataId, e.getMessage());
+            log.error("收益发放重试异常: {}", e.getMessage());
         }
         return false;
     }

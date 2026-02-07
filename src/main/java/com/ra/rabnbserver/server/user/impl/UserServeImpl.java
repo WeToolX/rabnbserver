@@ -38,6 +38,163 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
     @Value("${ADMIN.DFCODE:eC4vW8}")
     private String DFCODE;
 
+
+    @Transactional(rollbackFor = Exception.class)
+    @Override
+    public User handleRegister(String walletAddress, String referrerWalletAddress) {
+        // 再次兜底检查（防止并发情况下重复写入）
+        User existing = getByWalletAddress(walletAddress);
+        if (existing != null) return existing;
+
+        User parent = null;
+
+        // 1. 邀请人逻辑判断
+        if (DFCODE.equalsIgnoreCase(referrerWalletAddress)) {
+            // 匹配默认地址：作为根用户，没有上级
+            log.info("用户 {} 使用默认地址注册为系统根用户", walletAddress);
+        } else {
+            // 非默认地址：必须是库中已存在的用户
+            parent = getByWalletAddress(referrerWalletAddress);
+            if (parent == null) {
+                throw new BusinessException("邀请人地址无效，请核对后重试");
+            }
+            if (walletAddress.equalsIgnoreCase(referrerWalletAddress)) {
+                throw new BusinessException("不能邀请自己");
+            }
+        }
+
+        // 2. 初始化用户数据
+        User user = new User();
+        user.setUserWalletAddress(walletAddress);
+        user.setUserName(walletAddress);
+        user.setBalance(BigDecimal.ZERO);
+        user.setInviteCode(generateUniqueInviteCode());
+        user.setDirectCount(0);
+        user.setTeamCount(0);
+
+        // 3. 维护层级树结构
+        if (parent != null) {
+            // 正常级联
+            user.setParentInviteCode(parent.getInviteCode());
+            user.setParentId(parent.getId());
+            user.setLevel(parent.getLevel() + 1);
+            user.setPath(parent.getPath() + parent.getId() + ",");
+        } else {
+            // 系统根用户
+            user.setParentInviteCode("0");
+            user.setParentId(0L);
+            user.setLevel(1);
+            user.setPath("0,");
+        }
+
+        this.save(user);
+
+        // 4. 更新上级/团队统计
+        if (parent != null) {
+            // 增加直推人数
+            this.lambdaUpdate()
+                    .setSql("direct_count = direct_count + 1")
+                    .eq(User::getId, parent.getId())
+                    .update();
+
+            // 增加所有祖先的团队人数
+            List<Long> ancestorIds = Arrays.stream(user.getPath().split(","))
+                    .filter(s -> StrUtil.isNotBlank(s) && !"0".equals(s))
+                    .map(Long::parseLong)
+                    .collect(Collectors.toList());
+
+            if (!ancestorIds.isEmpty()) {
+                this.update(new LambdaUpdateWrapper<User>()
+                        .setSql("team_count = team_count + 1")
+                        .in(User::getId, ancestorIds));
+            }
+        }
+
+        return user;
+    }
+
+
+    @Transactional(rollbackFor = Exception.class)
+    @Override
+    public User loginOrRegister(String walletAddress, String referrerWalletAddress) {
+        // 尝试获取当前用户
+        User user = getByWalletAddress(walletAddress);
+        if (user != null) {
+            return user;
+        }
+
+        // 2. 如果用户不存在，执行“无感注册”
+        log.info("用户 {} 不存在，执行自动注册...", walletAddress);
+
+        User parent = null;
+        // 如果传入了邀请人地址，且不是自己
+        if (StrUtil.isNotBlank(referrerWalletAddress) && !referrerWalletAddress.equalsIgnoreCase(walletAddress)) {
+            parent = getByWalletAddress(referrerWalletAddress);
+
+            // 如果邀请人也不存在，则自动创建邀请人为“根用户”
+            if (parent == null) {
+                log.info("邀请人 {} 不存在，先创建邀请人", referrerWalletAddress);
+                parent = createBaseUser(referrerWalletAddress, null);
+            }
+        }
+
+        // 3. 创建当前用户
+        return createBaseUser(walletAddress, parent);
+    }
+
+    /**
+     * 内部私有方法：创建一个基础用户并维护上下级关系
+     * @param walletAddress 钱包地址
+     * @param parent 推荐人对象（可为null）
+     */
+    private User createBaseUser(String walletAddress, User parent) {
+        User user = new User();
+        user.setUserWalletAddress(walletAddress);
+        user.setUserName(walletAddress);
+        user.setBalance(BigDecimal.ZERO);
+        user.setInviteCode(generateUniqueInviteCode());
+        user.setDirectCount(0);
+        user.setTeamCount(0);
+
+        if (parent != null) {
+            // 设置级联关系
+            user.setParentInviteCode(parent.getInviteCode());
+            user.setParentId(parent.getId());
+            user.setLevel(parent.getLevel() + 1);
+            user.setPath(parent.getPath() + parent.getId() + ",");
+        } else {
+            // 默认作为根用户
+            user.setParentInviteCode("0");
+            user.setParentId(0L);
+            user.setLevel(1);
+            user.setPath("0,");
+        }
+
+        this.save(user);
+
+        // 如果有上级，更新上级的统计数据
+        if (parent != null) {
+            // 更新直接上级：直推人数 +1
+            this.lambdaUpdate()
+                    .setSql("direct_count = direct_count + 1")
+                    .eq(User::getId, parent.getId())
+                    .update();
+
+            // 更新所有祖先：团队总人数 +1
+            List<Long> ancestorIds = Arrays.stream(user.getPath().split(","))
+                    .filter(s -> StrUtil.isNotBlank(s) && !"0".equals(s))
+                    .map(Long::parseLong)
+                    .collect(Collectors.toList());
+
+            if (!ancestorIds.isEmpty()) {
+                this.update(new LambdaUpdateWrapper<User>()
+                        .setSql("team_count = team_count + 1")
+                        .in(User::getId, ancestorIds));
+            }
+        }
+        return user;
+    }
+
     @Transactional(rollbackFor = Exception.class)
     @Override
     public User register(RegisterDataDTO registerDataDTO) {

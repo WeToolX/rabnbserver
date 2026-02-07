@@ -3,6 +3,7 @@ package com.ra.rabnbserver.server.user;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.ra.rabnbserver.VO.AdminBillStatisticsVO;
+import com.ra.rabnbserver.VO.CreateUserBillVO;
 import com.ra.rabnbserver.VO.PaymentUsdtMetaVO;
 import com.ra.rabnbserver.dto.AdminBillQueryDTO;
 import com.ra.rabnbserver.dto.BillQueryDTO;
@@ -21,6 +22,25 @@ public interface UserBillServe extends IService<UserBill> {
 //                                    String remark, String orderId, String txId,String res);
 
 
+//    void createBillAndUpdateBalance(
+//            Long userId,
+//            BigDecimal amount,
+//            BillType billType,
+//            FundType fundType,
+//            TransactionType txType,
+//            String remark,
+//            String orderId,
+//            String txId,
+//            String res,
+//            int num
+//    );
+
+    IPage<UserBill> getUserBillPage(Long userId, BillQueryDTO query);
+
+    void rechargeFromChain(Long userId, BigDecimal amount) throws Exception;
+
+    void purchaseNftCard(Long userId, int quantity);
+
     void createBillAndUpdateBalance(
             Long userId,
             BigDecimal amount,
@@ -31,14 +51,9 @@ public interface UserBillServe extends IService<UserBill> {
             String orderId,
             String txId,
             String res,
-            int num
+            int num,
+            CreateUserBillVO createUserBillVO
     );
-
-    IPage<UserBill> getUserBillPage(Long userId, BillQueryDTO query);
-
-    void rechargeFromChain(Long userId, BigDecimal amount) throws Exception;
-
-    void purchaseNftCard(Long userId, int quantity);
 
     IPage<UserBill> getAdminBillPage(AdminBillQueryDTO query);
 

@@ -214,7 +214,8 @@ public class AdminUserController {
                     null, // orderId 为空则内部自动生成
                     null,  // 平台内充值通常无链上 TxHash
                     null,
-                    0
+                    0,
+                    null
             );
             return ApiResponse.success("充值成功");
         } catch (BusinessException e) {

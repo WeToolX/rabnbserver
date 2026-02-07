@@ -99,4 +99,12 @@ public class User extends BaseEntity {
     @DefaultValue("0")
     private Integer teamCount;
 
+    /**
+     * 碎片余额(作为余额缓存)
+     */
+    @TableField("fragment_balance")
+    @ColumnComment("碎片余额(作为缓存)")
+    @DefaultValue("0")
+    private String fragmentBalance;
+
 }

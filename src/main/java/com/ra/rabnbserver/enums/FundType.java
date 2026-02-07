@@ -7,6 +7,9 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.springframework.util.StringUtils;
 
+/**
+ * 资金类型
+ */
 @Getter
 @AllArgsConstructor
 public enum FundType  implements BaseEnum{

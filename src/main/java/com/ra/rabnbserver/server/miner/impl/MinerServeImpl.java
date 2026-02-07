@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ra.rabnbserver.VO.MinerSettings;
+import com.ra.rabnbserver.contract.CardNftContract;
 import com.ra.rabnbserver.dto.MinerAccelerationDTO;
 import com.ra.rabnbserver.dto.MinerElectricityDTO;
 import com.ra.rabnbserver.dto.MinerQueryDTO;
@@ -26,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -40,10 +42,10 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     private final MinerProfitRecordMapper profitRecordMapper;
     private final SystemConfigMapper configMapper;
 
-    // 注入专门的重试处理服务
-    // 注意：请确保这两个类中已经重写并将 markAbnormal/ProcessingSuccessful 等方法设为 public
+    // 注入异常重试框架服务
     private final MinerPurchaseRetryServeImpl purchaseRetryServe;
     private final MinerProfitRetryServeImpl profitRetryServe;
+    private final CardNftContract cardNftContract;
 
     @Override
     public IPage<UserMiner> getUserMinerPage(Long userId, MinerQueryDTO query) {
@@ -73,25 +75,46 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     @Override
     public void buyMinerBatch(Long userId, String minerType, int quantity) {
         if (quantity <= 0) throw new BusinessException("数量不合法");
-        String minerId = switch (minerType) {
-            case "0" -> "001";  //小型矿机
-            case "1" -> "002";  //中型矿机
-            case "2" -> "003";  //大型矿机
-            case "3" -> "004";  //特殊矿机
-            default -> "001";   //默认矿机（小型矿机）
-        };
-
-        // 1. 异常框架准入检查：如果用户当前已有大量卡死且需要人工处理的异常，禁止继续购买
-        purchaseRetryServe.checkUserErr(String.valueOf(userId));
 
         User user = userMapper.selectById(userId);
+        String walletAddress = user.getUserWalletAddress();
+
+        // 1. 异常框架准入检查：若该地址存在大量未处理异常，拦截
+        purchaseRetryServe.checkUserErr(walletAddress);
+
+        // 2. 合约前置检查：检查用户是否授权卡牌合约，以及余额是否足够
+        try {
+            Boolean isApproved = cardNftContract.isApprovedForAll(walletAddress, cardNftContract.getAddress());
+            if (isApproved == null || !isApproved) {
+                throw new BusinessException("请先在页面完成卡牌操作授权");
+            }
+            BigInteger balance = cardNftContract.balanceOf(walletAddress);
+            if (balance == null || balance.compareTo(BigInteger.valueOf(quantity)) < 0) {
+                throw new BusinessException("卡牌余额不足，当前拥有: " + (balance == null ? 0 : balance));
+            }
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("购买矿机合约状态检查失败: {}", e.getMessage());
+            throw new BusinessException("区块链网络通讯异常，请稍后再试");
+        }
+
+        String minerId = switch (minerType) {
+            case "0" -> "001"; // 小型
+            case "1" -> "002"; // 中型
+            case "2" -> "003"; // 大型
+            case "3" -> "004"; // 特殊
+            default -> "001";
+        };
+
         for (int i = 0; i < quantity; i++) {
-            // 2. 预创建记录：状态 status=0(待激活)，技术状态默认为 2000(处理中)
+            // 3. 预创建记录：业务状态 status=0(待激活)，nftBurnStatus=0(未销毁)
             UserMiner miner = new UserMiner();
-            miner.setUserId(user.getId());
-            miner.setWalletAddress(user.getUserWalletAddress());
+            miner.setUserId(userId);
+            miner.setWalletAddress(walletAddress);
             miner.setMinerId(minerId);
             miner.setMinerType(minerType);
+            miner.setNftBurnStatus(0);
             miner.setStatus(0);
             miner.setEligibleDate(LocalDateTime.now().plusDays(15));
             this.save(miner);
@@ -122,60 +145,40 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         BigDecimal unitFee = settings.getElectricFee();
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiryLimit = now.minusDays(30);
-
         LambdaQueryWrapper<UserMiner> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(UserMiner::getUserId, userId);
-
+        // 【核心物理隔离校验】只有卡牌销毁成功(nftBurnStatus=1)的矿机，才允许下一步操作
+        wrapper.eq(UserMiner::getNftBurnStatus, 1);
         switch (dto.getMode()) {
-            case 1: // 待激活矿机缴费
-                wrapper.eq(UserMiner::getStatus, 0)
-                        .eq(UserMiner::getMinerType, dto.getMinerType());
-                // 【核心安全校验】只有合约处理成功(2001)或管理员人工确认成功(2002)的矿机，才允许缴费激活
-                wrapper.and(w -> w.eq(UserMiner::getErrStatus, 2001).or().eq(UserMiner::getErrStatus, 2002));
+            case 1: // 初始激活缴费
+                wrapper.eq(UserMiner::getStatus, 0).eq(UserMiner::getMinerType, dto.getMinerType());
                 break;
-
-            case 2: // 即将到期续费
+            case 2: // 续费
                 LocalDateTime targetDate = expiryLimit.plusDays(dto.getDays());
                 wrapper.eq(UserMiner::getStatus, 1).eq(UserMiner::getMinerType, dto.getMinerType())
                         .ge(UserMiner::getPaymentDate, expiryLimit).le(UserMiner::getPaymentDate, targetDate);
                 if (dto.getQuantity() != null) wrapper.last("LIMIT " + dto.getQuantity());
                 break;
-
             case 3: // 已到期 (按类型)
                 wrapper.eq(UserMiner::getMinerType, dto.getMinerType())
                         .and(w -> w.lt(UserMiner::getPaymentDate, expiryLimit).or().eq(UserMiner::getStatus, 0));
-                // 同样需要满足技术状态成功
-                wrapper.and(w -> w.eq(UserMiner::getErrStatus, 2001).or().eq(UserMiner::getErrStatus, 2002));
                 break;
-
             case 4: // 全部已到期/未激活
                 wrapper.and(w -> w.lt(UserMiner::getPaymentDate, expiryLimit).or().eq(UserMiner::getStatus, 0));
-                wrapper.and(w -> w.eq(UserMiner::getErrStatus, 2001).or().eq(UserMiner::getErrStatus, 2002));
                 break;
             default: throw new BusinessException("模式错误");
         }
 
         List<UserMiner> targets = this.list(wrapper);
         if (targets.isEmpty()) {
-            // 如果查不到数据，大概率是卡牌销毁还没成功
-            throw new BusinessException("没有符合条件的矿机（若刚购买，请等待系统处理完成）");
+            throw new BusinessException("没有符合条件的矿机（若刚购买，请等待卡牌销毁完成）");
         }
-
         BigDecimal totalFee = unitFee.multiply(new BigDecimal(targets.size()));
         if (userMapper.updateBalanceAtomic(userId, totalFee.negate()) == 0) {
             throw new BusinessException("余额不足，需支付: " + totalFee);
         }
-
-        User user = userMapper.selectById(userId);
-        for (UserMiner m : targets) {
-            m.setStatus(1); // 激活，进入正式收益状态
-            m.setIsElectricityPaid(1);
-            m.setPaymentDate(now);
-            this.updateById(m);
-            executeDistribution(user, unitFee, settings.getDistributionRatios());
-        }
         userBillServe.createBillAndUpdateBalance(userId, totalFee, BillType.PLATFORM, FundType.EXPENSE,
-                TransactionType.EXCHANGE, "缴纳电费-模式" + dto.getMode(), null, null, null,0);
+                TransactionType.EXCHANGE, "缴纳电费-模式" + dto.getMode(), null, null, null, 0,null);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -184,14 +187,13 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         MinerSettings settings = getSettings();
         BigDecimal unitFee = settings.getAccelerationFee();
         LocalDateTime now = LocalDateTime.now();
-
         LambdaQueryWrapper<UserMiner> wrapper = new LambdaQueryWrapper<>();
-        // 只有已经激活运行 (status=1) 且处于等待期内的矿机才能加速
+        // 只有运行中(status=1)、卡牌已销毁、且处于等待期内的矿机才能加速
         wrapper.eq(UserMiner::getUserId, userId)
                 .eq(UserMiner::getStatus, 1)
+                .eq(UserMiner::getNftBurnStatus, 1)
                 .eq(UserMiner::getIsAccelerated, 0)
                 .gt(UserMiner::getEligibleDate, now);
-
         switch (dto.getMode()) {
             case 1: wrapper.eq(UserMiner::getMinerType, dto.getMinerType()); break;
             case 2: wrapper.eq(UserMiner::getMinerType, dto.getMinerType()).last("LIMIT " + dto.getQuantity()); break;
@@ -199,10 +201,8 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             case 4: wrapper.eq(UserMiner::getId, dto.getUserMinerId()); break;
             default: throw new BusinessException("模式错误");
         }
-
         List<UserMiner> targets = this.list(wrapper);
         if (targets.isEmpty()) throw new BusinessException("当前无可加速的矿机");
-
         BigDecimal totalFee = unitFee.multiply(new BigDecimal(targets.size()));
         if (userMapper.updateBalanceAtomic(userId, totalFee.negate()) == 0) {
             throw new BusinessException("余额不足");
@@ -214,128 +214,162 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             this.updateById(m);
         }
         userBillServe.createBillAndUpdateBalance(userId, totalFee, BillType.PLATFORM, FundType.EXPENSE,
-                TransactionType.PURCHASE, "购买加速包-模式" + dto.getMode(), null, null, null,0);
+                TransactionType.PURCHASE, "购买加速包-模式" + dto.getMode(), null, null, null, 0,null);
     }
 
     @Override
     public void processDailyProfit() {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiryPoint = now.minusDays(30);
-
-        // 由于 payElectricity 已经拦截了合约未成功的矿机，
-        // 这里取出 status=1 的矿机必定是：合约已确认成功 且 已付电费 且 在有效期内的。
+        // 筛选：NFT已销毁成功、矿机运行中、且已过等待期的矿机
         List<UserMiner> validMiners = this.list(new LambdaQueryWrapper<UserMiner>()
+                .eq(UserMiner::getNftBurnStatus, 1)
                 .eq(UserMiner::getStatus, 1)
                 .ge(UserMiner::getPaymentDate, expiryPoint)
                 .le(UserMiner::getEligibleDate, now));
-
         for (UserMiner miner : validMiners) {
-            // 1. 创建收益记录，初始业务状态 status=0
+            // 1. 创建收益记录，初始业务发放状态 payoutStatus=0
             MinerProfitRecord record = new MinerProfitRecord();
             record.setUserId(miner.getUserId());
             record.setWalletAddress(miner.getWalletAddress());
             record.setMinerType(miner.getMinerType());
-            record.setAmount(new BigDecimal("1.5"));
+            record.setAmount(new BigDecimal("1.5")); // 建议从 settings 获取
             record.setLockMonths(3);
-            record.setStatus(0);
+            record.setPayoutStatus(0);
+            record.setStatus(1); // 记录有效
             profitRecordMapper.insert(record);
-
-            try {
-                // 2. 尝试执行合约收益分发
-                boolean success = true;
-                if (success) {
-                    record.setStatus(1);
-                    record.setTxId("TX-" + System.currentTimeMillis());
-                    profitRecordMapper.updateById(record);
-                    // 3. 同步框架状态为成功
-                    profitRetryServe.ProcessingSuccessful(record.getId());
-                } else {
-                    // 4. 合约显式失败：标记异常
-                    profitRetryServe.markAbnormal(record.getId());
-                }
-            } catch (Exception e) {
-                log.error("发放收益合约异常，记录ID: {}, 进入异常框架重试", record.getId());
-                // 5. 异常标记：由 MinerProfitRetryServeImpl 负责后续自动重试
-                profitRetryServe.markAbnormal(record.getId());
-            }
+            // 2. 提交至重试框架异步执行合约收益发放
+            profitRetryServe.markAbnormal(record.getId(), record.getWalletAddress());
         }
     }
+
 
     /**
-     * 执行电费分润分销
-     * @param user   当前缴费的用户
-     * @param amount 缴纳的金额基数
-     * @param ratios 分润比例配置 Map<层级, 比例>
+     * 获取系统设置
+     * @return
      */
-    private void executeDistribution(User user, BigDecimal amount, Map<Integer, BigDecimal> ratios) {
-        // 基础校验：如果没有上级路径或没有配置比例，直接返回
-        if (StrUtil.isBlank(user.getPath()) || "0,".equals(user.getPath()) || ratios == null || ratios.isEmpty()) {
-            return;
-        }
-
-        // 解析上级路径并反转
-        // 原始 path 示例: "0,1,5,10," -> 解析并反转后: [10, 5, 1] (10是直属1级上级)
-        List<Long> parents = Arrays.stream(user.getPath().split(","))
-                .filter(s -> StrUtil.isNotBlank(s) && !"0".equals(s))
-                .map(Long::parseLong)
-                .collect(Collectors.toList());
-        Collections.reverse(parents);
-        // 确定后台配置的最大分润层级（例如配置了 {1: 0.1, 3: 0.05}，maxConfigLevel 就是 3）
-        int maxConfigLevel = ratios.keySet().stream()
-                .max(Integer::compare)
-                .orElse(0);
-        // 开始向上追溯分润
-        for (int i = 0; i < parents.size(); i++) {
-            // 当前代数（1代表直属，2代表上上的上级...）
-            int currentLevel = i + 1;
-            // 如果当前代数已经超过了后台设置的最大代数，直接结束循环
-            if (currentLevel > maxConfigLevel) {
-                log.debug("用户 {} 的分润已达到设置的最大层级 {}，停止向上追溯", user.getId(), maxConfigLevel);
-                break;
-            }
-            BigDecimal ratio = ratios.get(currentLevel);
-            // 检查配置是否存在
-            if (ratio != null) {
-                // 如果比例 > 1 (代表 > 100%，通常是后台误填了整数如 10) 或比例为负数
-                if (ratio.compareTo(BigDecimal.ONE) > 0 || ratio.compareTo(BigDecimal.ZERO) < 0) {
-                    log.error("【严重配置异常】分润中断！检测到非法的比例配置：层级={}, 比例={}。" +
-                            "预期应为 0 到 1 之间的小数（如 0.1 代表 10%）。" +
-                            "为了防止资金安全风险，已停止发放后续所有奖励！", currentLevel, ratio);
-                    // 发现配置错误，立即退出方法，不再给任何人发钱，保护系统账户
-                    return;
-                }
-                // 比例合法且大于 0 才执行发放
-                if (ratio.compareTo(BigDecimal.ZERO) > 0) {
-                    Long parentId = parents.get(i);
-                    BigDecimal rewardAmount = amount.multiply(ratio);
-                    try {
-                        // 执行账单创建和余额增加
-                        userBillServe.createBillAndUpdateBalance(
-                                parentId,
-                                rewardAmount,
-                                BillType.PLATFORM,
-                                FundType.INCOME,
-                                TransactionType.REWARD,
-                                String.format("下级激活奖励(来自用户ID:%d, 层级:%d)", user.getId(), currentLevel),
-                                null, null, null,0
-                        );
-                        log.info("奖励发放成功: 用户ID {} -> 上级ID {}(第{}层), 金额: {}",
-                                user.getId(), parentId, currentLevel, rewardAmount);
-                    } catch (Exception e) {
-                        log.error("发放层级奖励异常，上级ID: {}, 错误信息: {}", parentId, e.getMessage());
-                    }
-                }
-            } else {
-                // 如果该层级没有配置比例（层级跳跃），则打印日志并继续寻找更高层级
-                log.debug("第 {} 层未配置分润比例，自动跳过并查找下一层", currentLevel);
-            }
-        }
-    }
-
     private MinerSettings getSettings() {
         SystemConfig config = configMapper.selectOne(new LambdaQueryWrapper<SystemConfig>()
                 .eq(SystemConfig::getConfigKey, "MINER_SYSTEM_SETTINGS"));
         if (config == null) return new MinerSettings();
         return com.alibaba.fastjson2.JSON.parseObject(config.getConfigValue(), MinerSettings.class);
+    }
+
+    /**
+     * 每日电费分成结算
+     * 规则：
+     * 1. 统计直属下级持有的活跃矿机总数决定比例
+     * 2. 奖金基数：若只有1个下级缴费则按该笔计，若多于1个则扣除最高的一笔
+     * 3. 只有直属下级今日产生电费才发放
+     */
+    @Transactional(rollbackFor = Exception.class)
+    @Override
+    public void processDailyElectricityReward() {
+        LocalDateTime todayStart = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
+        LocalDateTime todayEnd = LocalDateTime.now().withHour(23).withMinute(59).withSecond(59);
+
+        MinerSettings settings = getSettings();
+        List<MinerSettings.RewardTier> tiers = settings.getTiers();
+        if (tiers == null || tiers.isEmpty()) {
+            log.warn("未配置电费分成阶梯比例，跳过结算");
+            return;
+        }
+        // 按台数门槛从大到小排序，确保优先匹配高档位
+        tiers.sort((a, b) -> b.getMinCount().compareTo(a.getMinCount()));
+
+        // 获取系统中所有活跃矿机
+        List<UserMiner> allActiveMiners = this.list(new LambdaQueryWrapper<UserMiner>().eq(UserMiner::getStatus, 1));
+        if (allActiveMiners.isEmpty()) return;
+
+        // 获取所有相关用户建立映射
+        Set<Long> userIds = allActiveMiners.stream().map(UserMiner::getUserId).collect(Collectors.toSet());
+        Map<Long, User> userMap = userMapper.selectBatchIds(userIds).stream()
+                .collect(Collectors.toMap(User::getId, u -> u));
+        // Map<上级ID, List<直属下级今日缴纳的电费金额>>
+        Map<Long, List<BigDecimal>> parentSubFeesMap = new HashMap<>();
+        // Map<上级ID, 直属下级活跃矿机总台数>
+        Map<Long, Integer> parentSubActiveCountMap = new HashMap<>();
+
+        for (UserMiner m : allActiveMiners) {
+            User user = userMap.get(m.getUserId());
+            if (user == null) continue;
+
+            Long parentId = getDirectParentId(user);
+            if (parentId == null) continue;
+
+            // 1. 统计直属下级的活跃机器总数（用于定比例阶梯）
+            parentSubActiveCountMap.merge(parentId, 1, Integer::sum);
+
+            // 2. 统计今日缴费情况（用于算奖金基数）
+            boolean isPaidToday = m.getPaymentDate() != null
+                    && m.getPaymentDate().isAfter(todayStart)
+                    && m.getPaymentDate().isBefore(todayEnd);
+
+            if (isPaidToday) {
+                parentSubFeesMap.computeIfAbsent(parentId, k -> new ArrayList<>()).add(settings.getElectricFee());
+            }
+        }
+
+        // 开始对有缴费产生的上级进行奖金核算
+        parentSubFeesMap.forEach((parentId, fees) -> {
+            if (fees.isEmpty()) return;
+
+            // A. 确定比例：基于该上级的【所有直属下级活跃机器总数】
+            int totalSubMiners = parentSubActiveCountMap.getOrDefault(parentId, 0);
+            BigDecimal ratio = BigDecimal.ZERO;
+            for (MinerSettings.RewardTier tier : tiers) {
+                if (totalSubMiners >= tier.getMinCount()) {
+                    ratio = tier.getRatio();
+                    break;
+                }
+            }
+
+            // 未达门槛不发放
+            if (ratio.compareTo(BigDecimal.ZERO) <= 0) return;
+
+            // B. 计算基数：1人缴费不剔除，多人缴费剔除最高一项
+            BigDecimal bonusBase;
+            if (fees.size() == 1) {
+                bonusBase = fees.get(0);
+            } else {
+                BigDecimal maxFee = Collections.max(fees);
+                BigDecimal totalFee = fees.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+                bonusBase = totalFee.subtract(maxFee);
+            }
+
+            // C. 执行发放
+            if (bonusBase.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal rewardAmount = bonusBase.multiply(ratio);
+                try {
+                    userBillServe.createBillAndUpdateBalance(
+                            parentId, rewardAmount, BillType.PLATFORM, FundType.INCOME,
+                            TransactionType.REWARD,
+                            String.format("直属下级电费分成(下级总机:%d, 比例:%.2f%%, 缴费人数:%d)",
+                                    totalSubMiners, ratio.multiply(new BigDecimal("100")), fees.size()),
+                            null, null, null, 0,null
+                    );
+                    log.info("上级 {} 奖励发放成功: {}, 比例: {}", parentId, rewardAmount, ratio);
+                } catch (Exception e) {
+                    log.error("结算上级 {} 分成失败: {}", parentId, e.getMessage());
+                }
+            }
+        });
+    }
+
+    /**
+     * 解析直属上级ID
+     */
+    private Long getDirectParentId(User user) {
+        if (user == null || StrUtil.isBlank(user.getPath()) || "0,".equals(user.getPath())) {
+            return null;
+        }
+        String[] parts = user.getPath().split(",");
+        if (parts.length < 2) return null;
+        try {
+            // path 格式 "0,1,5,10," -> 取最后一位有效数字
+            return Long.parseLong(parts[parts.length - 1]);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

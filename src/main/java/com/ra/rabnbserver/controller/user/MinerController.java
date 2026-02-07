@@ -18,6 +18,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 用户端 - 用户矿机接口
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/user/miner")
@@ -58,29 +61,29 @@ public class MinerController {
         return ApiResponse.success("购买申请提交成功");
     }
 
-    /**
-     * 异常处理：人工干预-矿机激活/购买成功（卡牌兑换成功）回调
-     * 当自动重试多次失败或超时后，管理员通过此接口手动同步状态
-     */
-    @SaCheckLogin
-    @PostMapping("/manual-purchase-success")
-    public String manualPurchaseSuccess(@RequestParam("dataId") Long dataId) {
-        log.info("人工干预：矿机购买激活成功回调，ID: {}", dataId);
-        purchaseRetryServe.ProcessingSuccessful(dataId);
-        return ApiResponse.success("人工处理成功", dataId);
-    }
+//    /**
+//     * 异常处理：人工干预-矿机激活/购买成功（卡牌兑换成功）回调
+//     * 当自动重试多次失败或超时后，管理员通过此接口手动同步状态
+//     */
+//    @SaCheckLogin
+//    @PostMapping("/manual-purchase-success")
+//    public String manualPurchaseSuccess(@RequestParam("dataId") Long dataId) {
+//        log.info("人工干预：矿机购买激活成功回调，ID: {}", dataId);
+//        purchaseRetryServe.ProcessingSuccessful(dataId);
+//        return ApiResponse.success("人工处理成功", dataId);
+//    }
 
-    /**
-     * 异常处理：人工干预-矿机收益发放成功回调
-     * 管理员在后台手动补发合约收益后，通过此接口回写数据库
-     */
-    @SaCheckLogin
-    @PostMapping("/manual-profit-success")
-    public String manualProfitSuccess(@RequestParam("dataId") Long dataId) {
-        log.info("人工干预：收益发放成功回调，ID: {}", dataId);
-        profitRetryServe.ProcessingSuccessful(dataId);
-        return ApiResponse.success("人工处理成功", dataId);
-    }
+//    /**
+//     * 异常处理：人工干预-矿机收益发放成功回调
+//     * 管理员在后台手动补发合约收益后，通过此接口回写数据库
+//     */
+//    @SaCheckLogin
+//    @PostMapping("/manual-profit-success")
+//    public String manualProfitSuccess(@RequestParam("dataId") Long dataId) {
+//        log.info("人工干预：收益发放成功回调，ID: {}", dataId);
+//        profitRetryServe.ProcessingSuccessful(dataId);
+//        return ApiResponse.success("人工处理成功", dataId);
+//    }
 
 
     /**

@@ -151,4 +151,12 @@ public class UserBill extends AbnormalBaseEntity {
     @TableField("status")
     @ColumnType("TINYINT(1)") // 数据库中使用微整型存储
     private TransactionStatus status;
+
+    /**
+     * 碎片余额(作为余额缓存)
+     */
+    @TableField("fragment_num")
+    @ColumnComment("碎片数量")
+    @DefaultValue("0")
+    private String fragmentNum;
 }

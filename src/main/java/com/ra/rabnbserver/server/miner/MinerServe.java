@@ -13,7 +13,6 @@ public interface MinerServe extends IService<UserMiner> {
 
     IPage<UserMiner> getUserMinerPage(Long userId, MinerQueryDTO query);
 
-    @Transactional(rollbackFor = Exception.class)
     void buyMinerBatch(Long userId, String minerType, int quantity);
 
     @Transactional(rollbackFor = Exception.class)
@@ -23,4 +22,7 @@ public interface MinerServe extends IService<UserMiner> {
     void buyAccelerationPack(Long userId, MinerAccelerationDTO dto);
 
     void processDailyProfit();
+
+    @Transactional(rollbackFor = Exception.class)
+    void processDailyElectricityReward();
 }

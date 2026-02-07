@@ -135,6 +135,52 @@ public class UserController {
     }
 
     /**
+     * 统一登录/注册接口
+     * 数据库中是否存在             数据库中是否存在
+     * 提交的 userWalletAddress	提交的 code(邀请人地址（默认地址（默认邀请码））)	库中是否存在该用户	    结果
+     * 为空	                    任意	                                        -	                报错：钱包地址不能为空
+     * 已存在地址	                任意（传或不传）	                            是	                直接登录成功
+     * 未注册地址	                为空	                                        否	                报错：用户未注册，请提供邀请人地址
+     * 未注册地址	                等于系统默认地址	                            否	                注册成功：作为根用户
+     * 未注册地址	                等于库中已有地址	                            否	                注册成功：作为该地址的下级
+     * 未注册地址	                库中不存在且非默认	                            否	                报错：邀请人地址无效
+     */
+    @PostMapping("/access")
+    public String login(@RequestBody LoginDataDTO loginDataDTO) throws Exception {
+        log.info("访问请求：{}", loginDataDTO);
+        String walletAddress = loginDataDTO.getUserWalletAddress();
+        String referrer = loginDataDTO.getCode();
+        // 必填项检查
+        if (StrUtil.isBlank(walletAddress)) {
+            return ApiResponse.error("钱包地址不能为空");
+        }
+        // 检查用户是否存在
+        User user = userService.getByWalletAddress(walletAddress);
+        if (user != null) {
+            // 只要用户存在，直接登录（忽略 referrerWalletAddress 参数）
+            log.info("用户 {} 已存在，执行登录", walletAddress);
+            upgradeToUserSession(user.getId().toString());
+            return ApiResponse.success("登录成功", user);
+        }
+        // 用户不存在，进入注册逻辑
+        // 注册必须提供邀请人地址
+        if (StrUtil.isBlank(referrer)) {
+            return ApiResponse.error("用户未注册，请提供邀请人地址");
+        }
+        try {
+            // 执行注册并获取新用户对象
+            User newUser = userService.handleRegister(walletAddress, referrer);
+            upgradeToUserSession(newUser.getId().toString());
+            return ApiResponse.success("注册成功", newUser);
+        } catch (BusinessException e) {
+            return ApiResponse.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("注册异常", e);
+            return ApiResponse.error("系统异常，注册失败");
+        }
+    }
+
+    /**
      * 获取当前登录用户信息
      */
     @SaCheckLogin
@@ -285,7 +331,8 @@ public class UserController {
                     null,
                     null,
                     null,
-                    0
+                    0,
+                    null
             );
             return ApiResponse.success("扣款成功");
         } catch (BusinessException e) {
