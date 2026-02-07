@@ -1,24 +1,22 @@
 package com.ra.rabnbserver.contract;
 
-import lombok.extern.slf4j.Slf4j;
 import com.ra.rabnbserver.contract.support.BlockchainProperties;
 import com.ra.rabnbserver.contract.support.ContractAddressProperties;
 import com.ra.rabnbserver.contract.support.ContractBase;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.web3j.abi.TypeReference;
+import org.web3j.abi.datatypes.Address;
 import org.web3j.abi.datatypes.Bool;
-import org.web3j.abi.datatypes.DynamicArray;
 import org.web3j.abi.datatypes.Function;
-import org.web3j.abi.datatypes.Type;
 import org.web3j.abi.datatypes.StaticStruct;
+import org.web3j.abi.datatypes.Type;
+import org.web3j.abi.datatypes.Utf8String;
 import org.web3j.abi.datatypes.generated.Uint256;
-import org.web3j.abi.datatypes.generated.Bytes32;
-import org.web3j.abi.datatypes.generated.Uint128;
-import org.web3j.abi.datatypes.generated.Uint64;
+import org.web3j.abi.datatypes.generated.Uint8;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
 import org.web3j.tx.TransactionManager;
-import org.web3j.utils.Numeric;
 
 import java.math.BigInteger;
 import java.util.List;
@@ -28,9 +26,13 @@ import static com.ra.rabnbserver.contract.support.ContractTypeUtils.uint256;
 import static com.ra.rabnbserver.contract.support.ContractTypeUtils.uint8;
 
 /**
- * AION 合约管理员调用接口
+ * AION 合约管理员调用接口（新版 AiRword）
+ *
+ * 说明：
+ * - 锁仓周期在测试合约中已调整为分钟级（1/2/4 分钟），lockType 仍为 1/2/3。
+ * - 读写接口均基于 air.md ABI 定义实现。
  */
-
+@Slf4j(topic = "com.ra.rabnbserver.service.contract")
 @Service
 public class AionContract extends ContractBase {
 
@@ -43,185 +45,54 @@ public class AionContract extends ContractBase {
     }
 
     /**
-     * 管理员发放代币（锁仓计划）
+     * 获取合约地址
      *
-     * @param to 接收地址
-     * @param amount 发放数量
-     * @param plan 锁仓计划（0=ONE_MONTH, 1=TWO_MONTHS, 2=FOUR_MONTHS）
-     * @return 交易回执
-     *         返回类型：TransactionReceipt（Java 对象）
-     *         JSON 序列化示例（字段可能因节点实现略有差异）：
-     *         {
-     *           "status": "0x1",
-     *           "transactionHash": "0x...",
-     *           "from": "0x...",
-     *           "to": "0x...",
-     *           "blockNumber": "0x...",
-     *           "gasUsed": "0x...",
-     *           "effectiveGasPrice": "0x...",
-     *           "logs": [],
-     *           "revertReason": null
-     *         }
-     *         字段含义：status=0x1 成功，status=0x0 失败（回退）
+     * @return 合约地址
      */
-    public TransactionReceipt faucetMint(String to, BigInteger amount, int plan) throws Exception {
-        Function function = new Function(
-                "faucetMint",
-                List.of(address(to), uint256(amount), uint8(plan)),
-                List.of()
-        );
-        return sendTransaction(getAddress(), function);
+    public String getAddress() {
+        return contractAddressProperties.getAion();
     }
 
-    /**
-     * 设置管理员
-     *
-     * @param newAdmin 新管理员地址
-     * @return 交易回执
-     *         返回类型：TransactionReceipt（Java 对象）
-     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
-     */
-    public TransactionReceipt setAdmin(String newAdmin) throws Exception {
-        Function function = new Function(
-                "setAdmin",
-                List.of(address(newAdmin)),
-                List.of()
-        );
-        return sendTransaction(getAddress(), function);
-    }
+    // ===================== ERC20 基础读取 =====================
 
     /**
-     * 撤销管理员
+     * 查询名称
      *
-     * @param admin 管理员地址
-     * @return 交易回执
-     *         返回类型：TransactionReceipt（Java 对象）
-     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
+     * @return 名称
+     *         返回类型：String
      */
-    public TransactionReceipt revokeAdmin(String admin) throws Exception {
-        Function function = new Function(
-                "revokeAdmin",
-                List.of(address(admin)),
-                List.of()
-        );
-        return sendTransaction(getAddress(), function);
-    }
-
-    /**
-     * 暂停合约
-     *
-     * @return 交易回执
-     *         返回类型：TransactionReceipt（Java 对象）
-     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
-     */
-    public TransactionReceipt pause() throws Exception {
-        Function function = new Function("pause", List.of(), List.of());
-        return sendTransaction(getAddress(), function);
-    }
-
-    /**
-     * 解除暂停
-     *
-     * @return 交易回执
-     *         返回类型：TransactionReceipt（Java 对象）
-     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
-     */
-    public TransactionReceipt unpause() throws Exception {
-        Function function = new Function("unpause", List.of(), List.of());
-        return sendTransaction(getAddress(), function);
-    }
-
-    /**
-     * 设置社区地址
-     *
-     * @param newCommunity 新社区地址
-     * @return 交易回执
-     *         返回类型：TransactionReceipt（Java 对象）
-     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
-     */
-    public TransactionReceipt setCommunity(String newCommunity) throws Exception {
-        Function function = new Function(
-                "setCommunity",
-                List.of(address(newCommunity)),
-                List.of()
-        );
-        return sendTransaction(getAddress(), function);
-    }
-
-    /**
-     * 设置兑换参数
-     *
-     * @param fixedEnabled 是否启用固定价格
-     * @param fixedAmount 固定价格金额
-     * @param burnBps 销毁比例（bps）
-     * @param communityBps 社区比例（bps）
-     * @return 交易回执
-     *         返回类型：TransactionReceipt（Java 对象）
-     *         JSON 序列化示例与字段含义同上：status=0x1 成功，status=0x0 失败（回退）
-     */
-    public TransactionReceipt setExchangeParams(
-            boolean fixedEnabled,
-            BigInteger fixedAmount,
-            BigInteger burnBps,
-            BigInteger communityBps
-    ) throws Exception {
-        Function function = new Function(
-                "setExchangeParams",
-                List.of(
-                        new org.web3j.abi.datatypes.Bool(fixedEnabled),
-                        uint256(fixedAmount),
-                        uint256(burnBps),
-                        uint256(communityBps)
-                ),
-                List.of()
-        );
-        return sendTransaction(getAddress(), function);
-    }
-
-    /**
-     * 查询是否暂停
-     *
-     * @return 是否暂停
-     *         返回类型：Boolean
-     *         JSON 序列化示例：true / false
-     *         含义：true 表示暂停，false 表示未暂停，可能为 null（RPC 未返回）
-     */
-    public Boolean paused() throws Exception {
-        Function function = buildViewFunction("paused", List.of(new TypeReference<Bool>() {}));
+    public String name() throws Exception {
+        Function function = buildViewFunction("name", List.of(new TypeReference<Utf8String>() {}));
         List<Type> outputs = callFunction(getAddress(), function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (Boolean) outputs.get(0).getValue();
+        return outputs.get(0).getValue().toString();
     }
 
     /**
-     * 查询固定价格开关
+     * 查询符号
      *
-     * @return 是否启用固定价格
-     *         返回类型：Boolean
-     *         JSON 序列化示例：true / false
-     *         含义：true 表示启用，false 表示未启用，可能为 null（RPC 未返回）
+     * @return 符号
+     *         返回类型：String
      */
-    public Boolean fixedPriceEnabled() throws Exception {
-        Function function = buildViewFunction("fixedPriceEnabled", List.of(new TypeReference<Bool>() {}));
+    public String symbol() throws Exception {
+        Function function = buildViewFunction("symbol", List.of(new TypeReference<Utf8String>() {}));
         List<Type> outputs = callFunction(getAddress(), function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (Boolean) outputs.get(0).getValue();
+        return outputs.get(0).getValue().toString();
     }
 
     /**
-     * 查询固定价格金额
+     * 查询精度
      *
-     * @return 固定价格
+     * @return 精度
      *         返回类型：BigInteger
-     *         JSON 序列化示例：1000000
-     *         含义：固定价格金额（链上原始数量），可能为 null（RPC 未返回）
      */
-    public BigInteger fixedPriceAmount() throws Exception {
-        Function function = buildViewFunction("fixedPriceAmount", List.of(new TypeReference<Uint256>() {}));
+    public BigInteger decimals() throws Exception {
+        Function function = buildViewFunction("decimals", List.of(new TypeReference<Uint8>() {}));
         List<Type> outputs = callFunction(getAddress(), function);
         if (outputs.isEmpty()) {
             return null;
@@ -234,8 +105,6 @@ public class AionContract extends ContractBase {
      *
      * @return 总供应量
      *         返回类型：BigInteger
-     *         JSON 序列化示例：210000000000000000000000000
-     *         含义：总供应量（链上原始数量），可能为 null（RPC 未返回）
      */
     public BigInteger totalSupply() throws Exception {
         Function function = buildViewFunction("totalSupply", List.of(new TypeReference<Uint256>() {}));
@@ -247,13 +116,11 @@ public class AionContract extends ContractBase {
     }
 
     /**
-     * 查询指定地址余额
+     * 查询余额
      *
-     * @param account 地址
+     * @param account 用户地址
      * @return 余额
      *         返回类型：BigInteger
-     *         JSON 序列化示例：1000000
-     *         含义：余额（链上原始数量），可能为 null（RPC 未返回）
      */
     public BigInteger balanceOf(String account) throws Exception {
         Function function = new Function(
@@ -269,58 +136,34 @@ public class AionContract extends ContractBase {
     }
 
     /**
-     * 查询本合约地址余额（balanceOf(address(this))）
+     * 查询授权额度
      *
-     * @return 余额
+     * @param owner 授权方
+     * @param spender 被授权方
+     * @return 授权额度
      *         返回类型：BigInteger
-     *         JSON 序列化示例：1000000
-     *         含义：余额（链上原始数量），可能为 null（RPC 未返回）
      */
-    public BigInteger balanceOfSelf() throws Exception {
-        return balanceOf(getAddress());
-    }
-
-    /**
-     * 查询锁仓列表
-     *
-     * @param user 用户地址
-     * @return 锁仓记录列表
-     *         返回类型：List<LockRecord>
-     *         JSON 序列化示例：
-     *         [
-     *           { "amount": 1000000, "unlockTime": 1700000000, "claimed": false }
-     *         ]
-     *         含义：用户锁仓记录列表，可能为空或为 null（RPC 未返回）
-     */
-    public List<LockRecord> locksOf(String user) throws Exception {
+    public BigInteger allowance(String owner, String spender) throws Exception {
         Function function = new Function(
-                "locksOf",
-                List.of(address(user)),
-                List.of(new TypeReference<DynamicArray<LockRecord>>() {})
+                "allowance",
+                List.of(address(owner), address(spender)),
+                List.of(new TypeReference<Uint256>() {})
         );
         List<Type> outputs = callFunction(getAddress(), function);
         if (outputs.isEmpty()) {
             return null;
         }
-        @SuppressWarnings("unchecked")
-        DynamicArray<LockRecord> array = (DynamicArray<LockRecord>) outputs.get(0);
-        return array.getValue();
+        return (BigInteger) outputs.get(0).getValue();
     }
 
     /**
-     * 查询合约拥有者
+     * 查询合约部署者地址
      *
-     * @return 拥有者地址
+     * @return 部署者地址
      *         返回类型：String
-     *         JSON 序列化示例："0x..."
-     *         含义：拥有者地址，可能为 null（RPC 未返回）
      */
     public String owner() throws Exception {
-        Function function = new Function(
-                "owner",
-                List.of(),
-                List.of(new TypeReference<org.web3j.abi.datatypes.Address>() {})
-        );
+        Function function = buildViewFunction("owner", List.of(new TypeReference<Address>() {}));
         List<Type> outputs = callFunction(getAddress(), function);
         if (outputs.isEmpty()) {
             return null;
@@ -329,12 +172,40 @@ public class AionContract extends ContractBase {
     }
 
     /**
-     * 查询最大供应量（CAP）
+     * 查询管理员地址
      *
-     * @return 最大供应量
+     * @return 管理员地址
+     *         返回类型：String
+     */
+    public String admin() throws Exception {
+        Function function = buildViewFunction("admin", List.of(new TypeReference<Address>() {}));
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return outputs.get(0).getValue().toString();
+    }
+
+    /**
+     * 查询社区地址
+     *
+     * @return 社区地址
+     *         返回类型：String
+     */
+    public String community() throws Exception {
+        Function function = buildViewFunction("community", List.of(new TypeReference<Address>() {}));
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return outputs.get(0).getValue().toString();
+    }
+
+    /**
+     * 查询 CAP（最大总量）
+     *
+     * @return CAP
      *         返回类型：BigInteger
-     *         JSON 序列化示例：210000000000000000000000000
-     *         含义：最大供应量（链上原始数量），可能为 null（RPC 未返回）
      */
     public BigInteger cap() throws Exception {
         Function function = buildViewFunction("CAP", List.of(new TypeReference<Uint256>() {}));
@@ -346,149 +217,824 @@ public class AionContract extends ContractBase {
     }
 
     /**
-     * 查询 ADMIN_ROLE
+     * 查询挖矿开始时间
      *
-     * @return ADMIN_ROLE
-     *         返回类型：Bytes32
-     *         JSON 序列化示例："0x..."
-     *         含义：管理员角色标识，可能为 null（RPC 未返回）
+     * @return 挖矿开始时间戳
+     *         返回类型：BigInteger
      */
-    public String adminRole() throws Exception {
+    public BigInteger miningStart() throws Exception {
+        Function function = buildViewFunction("miningStart", List.of(new TypeReference<Uint256>() {}));
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (BigInteger) outputs.get(0).getValue();
+    }
+
+    /**
+     * 查询已结算年份
+     *
+     * @return 已结算年份
+     *         返回类型：BigInteger
+     */
+    public BigInteger lastSettledYear() throws Exception {
+        Function function = buildViewFunction("lastSettledYear", List.of(new TypeReference<Uint256>() {}));
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (BigInteger) outputs.get(0).getValue();
+    }
+
+    /**
+     * 查询当前年度预算
+     *
+     * @return 年度预算
+     *         返回类型：BigInteger
+     */
+    public BigInteger yearBudget() throws Exception {
+        Function function = buildViewFunction("yearBudget", List.of(new TypeReference<Uint256>() {}));
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (BigInteger) outputs.get(0).getValue();
+    }
+
+    /**
+     * 查询当前年度已分发
+     *
+     * @return 已分发数量
+     *         返回类型：BigInteger
+     */
+    public BigInteger yearMinted() throws Exception {
+        Function function = buildViewFunction("yearMinted", List.of(new TypeReference<Uint256>() {}));
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (BigInteger) outputs.get(0).getValue();
+    }
+
+    /**
+     * 查询剩余可挖额度
+     *
+     * @return 剩余可挖额度
+     *         返回类型：BigInteger
+     */
+    public BigInteger remainingCap() throws Exception {
+        Function function = buildViewFunction("remainingCap", List.of(new TypeReference<Uint256>() {}));
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (BigInteger) outputs.get(0).getValue();
+    }
+
+    /**
+     * 查询年度开始时间
+     *
+     * @return 年度开始时间戳
+     *         返回类型：BigInteger
+     */
+    public BigInteger yearStartTs() throws Exception {
+        Function function = buildViewFunction("yearStartTs", List.of(new TypeReference<Uint256>() {}));
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (BigInteger) outputs.get(0).getValue();
+    }
+
+    /**
+     * 查询扫描上限
+     *
+     * @return 扫描上限
+     *         返回类型：BigInteger
+     */
+    public BigInteger getMaxScanLimit() throws Exception {
+        Function function = buildViewFunction("getMaxScanLimit", List.of(new TypeReference<Uint256>() {}));
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (BigInteger) outputs.get(0).getValue();
+    }
+
+    /**
+     * 预估建议最大扫描条数
+     *
+     * @param perRecordGas 单条 gas
+     * @param fixedGas     固定 gas
+     * @return 建议最大条数
+     *         返回类型：BigInteger
+     */
+    public BigInteger estimateMaxCount(BigInteger perRecordGas, BigInteger fixedGas) throws Exception {
         Function function = new Function(
-                "ADMIN_ROLE",
-                List.of(),
-                List.of(new TypeReference<Bytes32>() {})
+                "estimateMaxCount",
+                List.of(uint256(perRecordGas), uint256(fixedGas)),
+                List.of(new TypeReference<Uint256>() {})
         );
         List<Type> outputs = callFunction(getAddress(), function);
         if (outputs.isEmpty()) {
             return null;
         }
-        byte[] value = (byte[]) outputs.get(0).getValue();
-        return Numeric.toHexString(value);
+        return (BigInteger) outputs.get(0).getValue();
     }
 
     /**
-     * 查询指定地址是否拥有角色
+     * 查询今日最大发行量
      *
-     * @param role 角色
-     * @param account 地址
-     * @return 是否拥有
-     *         返回类型：Boolean
-     *         JSON 序列化示例：true / false
-     *         含义：是否拥有角色，可能为 null（RPC 未返回）
+     * @return 今日最大发行量
+     *         返回类型：BigInteger
      */
-    public Boolean hasRole(String role, String account) throws Exception {
-        if (role == null || role.isBlank()) {
+    public BigInteger getTodayMintable() throws Exception {
+        Function function = buildViewFunction("getTodayMintable", List.of(new TypeReference<Uint256>() {}));
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
             return null;
         }
+        return (BigInteger) outputs.get(0).getValue();
+    }
+
+    // ===================== 锁仓/订单查询 =====================
+
+    /**
+     * 查询锁仓统计（全量）
+     *
+     * @param user 用户地址
+     * @param lockType 仓位类型（1/2/3）
+     * @return 锁仓统计
+     *         返回类型：LockStats（结构体）
+     */
+    public LockStats getLockStats(String user, int lockType) throws Exception {
         Function function = new Function(
-                "hasRole",
-                List.of(toBytes32(role), address(account)),
-                List.of(new TypeReference<org.web3j.abi.datatypes.Bool>() {})
+                "getLockStats",
+                List.of(address(user), uint8(lockType)),
+                List.of(new TypeReference<LockStats>() {})
         );
         List<Type> outputs = callFunction(getAddress(), function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (Boolean) outputs.get(0).getValue();
+        return (LockStats) outputs.get(0);
     }
 
     /**
-     * 将 Hex 角色转换为 Bytes32
+     * 查询锁仓统计（分页）
      *
-     * @param hex 角色 hex
-     * @return Bytes32
+     * @param user 用户地址
+     * @param lockType 仓位类型（1/2/3）
+     * @param cursor 游标
+     * @return 分页统计结果
+     *         返回类型：LockStatsPaged
      */
-    private Bytes32 toBytes32(String hex) {
-        byte[] raw = Numeric.hexStringToByteArray(hex);
-        byte[] fixed = new byte[32];
-        if (raw.length >= 32) {
-            System.arraycopy(raw, raw.length - 32, fixed, 0, 32);
-        } else {
-            System.arraycopy(raw, 0, fixed, 32 - raw.length, raw.length);
+    public LockStatsPaged getLockStatsPaged(String user, int lockType, BigInteger cursor) throws Exception {
+        Function function = new Function(
+                "getLockStatsPaged",
+                List.of(address(user), uint8(lockType), uint256(cursor)),
+                List.of(
+                        new TypeReference<LockStats>() {},
+                        new TypeReference<Uint256>() {},
+                        new TypeReference<Uint256>() {},
+                        new TypeReference<Bool>() {}
+                )
+        );
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.size() < 4) {
+            return null;
         }
-        return new Bytes32(fixed);
+        LockStats stats = (LockStats) outputs.get(0);
+        BigInteger nextCursor = (BigInteger) outputs.get(1).getValue();
+        BigInteger processed = (BigInteger) outputs.get(2).getValue();
+        Boolean finished = (Boolean) outputs.get(3).getValue();
+        return new LockStatsPaged(stats, nextCursor, processed, finished);
     }
 
     /**
-     * 锁仓记录结构
+     * 领取预览（仅 CLAIM）
+     *
+     * @param user 用户地址
+     * @param lockType 仓位类型（1/2/3）
+     * @return 预览结果
+     *         返回类型：PreviewClaimable（结构体）
      */
-    public static class LockRecord extends StaticStruct {
-        /**
-         * 锁仓数量
-         */
-        private final Uint128 amount;
+    public PreviewClaimable previewClaimable(String user, int lockType) throws Exception {
+        Function function = new Function(
+                "previewClaimable",
+                List.of(address(user), uint8(lockType)),
+                List.of(new TypeReference<PreviewClaimable>() {})
+        );
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (PreviewClaimable) outputs.get(0);
+    }
+
+    /**
+     * 订单查询
+     *
+     * @param user 用户地址
+     * @param orderId 订单号
+     * @return 订单记录
+     *         返回类型：OrderRecord（结构体）
+     */
+    public OrderRecord getOrder(String user, BigInteger orderId) throws Exception {
+        Function function = new Function(
+                "getOrder",
+                List.of(address(user), uint256(orderId)),
+                List.of(new TypeReference<OrderRecord>() {})
+        );
+        List<Type> outputs = callFunction(getAddress(), function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (OrderRecord) outputs.get(0);
+    }
+
+    // ===================== 写操作 =====================
+
+    /**
+     * 开始挖矿（仅管理员）
+     *
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     */
+    public TransactionReceipt startMining() throws Exception {
+        Function function = new Function("startMining", List.of(), List.of());
+        return sendTransaction(getAddress(), function);
+    }
+
+    /**
+     * 结算到当前年份
+     *
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     */
+    public TransactionReceipt settleToCurrentYear() throws Exception {
+        Function function = new Function("settleToCurrentYear", List.of(), List.of());
+        return sendTransaction(getAddress(), function);
+    }
+
+    /**
+     * 分发额度（入仓/直接分发）
+     *
+     * @param to 用户地址
+     * @param amount 数量（最小单位）
+     * @param lockType 仓位类型（1/2/3）
+     * @param distType 分发类型（1=入仓，2=直接分发）
+     * @param orderId 订单号
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     */
+    public TransactionReceipt allocateEmissionToLocks(
+            String to,
+            BigInteger amount,
+            int lockType,
+            int distType,
+            BigInteger orderId
+    ) throws Exception {
+        Function function = new Function(
+                "allocateEmissionToLocks",
+                List.of(address(to), uint256(amount), uint8(lockType), uint8(distType), uint256(orderId)),
+                List.of()
+        );
+        return sendTransaction(getAddress(), function);
+    }
+
+    /**
+     * 管理员代用户领取（指定仓位）
+     *
+     * @param user 用户地址
+     * @param lockType 仓位类型（1/2/3）
+     * @param orderId 订单号
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     */
+    public TransactionReceipt claimAll(String user, int lockType, BigInteger orderId) throws Exception {
+        Function function = new Function(
+                "claimAll",
+                List.of(address(user), uint8(lockType), uint256(orderId)),
+                List.of()
+        );
+        return sendTransaction(getAddress(), function);
+    }
+
+    /**
+     * 兑换未解锁碎片
+     *
+     * @param user 用户地址
+     * @param lockType 仓位类型（1/2/3）
+     * @param targetAmount 兑换目标数量
+     * @param orderId 订单号
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     */
+    public TransactionReceipt exchangeLockedFragment(
+            String user,
+            int lockType,
+            BigInteger targetAmount,
+            BigInteger orderId
+    ) throws Exception {
+        Function function = new Function(
+                "exchangeLockedFragment",
+                List.of(address(user), uint8(lockType), uint256(targetAmount), uint256(orderId)),
+                List.of()
+        );
+        return sendTransaction(getAddress(), function);
+    }
+
+    /**
+     * 兑换已解锁碎片
+     *
+     * @param user 用户地址
+     * @param lockType 仓位类型（1/2/3）
+     * @param targetAmount 兑换目标数量
+     * @param orderId 订单号
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     */
+    public TransactionReceipt exchangeUnlockedFragment(
+            String user,
+            int lockType,
+            BigInteger targetAmount,
+            BigInteger orderId
+    ) throws Exception {
+        Function function = new Function(
+                "exchangeUnlockedFragment",
+                List.of(address(user), uint8(lockType), uint256(targetAmount), uint256(orderId)),
+                List.of()
+        );
+        return sendTransaction(getAddress(), function);
+    }
+
+    /**
+     * 用户授权管理员操作
+     *
+     * @param operator 操作员地址（管理员地址）
+     * @param approved 是否授权
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     */
+    public TransactionReceipt approveOperator(String operator, boolean approved) throws Exception {
+        Function function = new Function(
+                "approveOperator",
+                List.of(address(operator), new Bool(approved)),
+                List.of()
+        );
+        return sendTransaction(getAddress(), function);
+    }
+
+    /**
+     * 设置管理员（仅部署者）
+     *
+     * @param newAdmin 新管理员地址
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     */
+    public TransactionReceipt setAdmin(String newAdmin) throws Exception {
+        Function function = new Function(
+                "setAdmin",
+                List.of(address(newAdmin)),
+                List.of()
+        );
+        return sendTransaction(getAddress(), function);
+    }
+
+    /**
+     * 设置扫描上限（仅管理员）
+     *
+     * @param limit 扫描上限
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     */
+    public TransactionReceipt setMaxScanLimit(BigInteger limit) throws Exception {
+        Function function = new Function(
+                "setMaxScanLimit",
+                List.of(uint256(limit)),
+                List.of()
+        );
+        return sendTransaction(getAddress(), function);
+    }
+
+    /**
+     * ERC20 授权
+     *
+     * @param spender 被授权地址
+     * @param amount 授权额度
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     */
+    public TransactionReceipt approve(String spender, BigInteger amount) throws Exception {
+        Function function = new Function(
+                "approve",
+                List.of(address(spender), uint256(amount)),
+                List.of()
+        );
+        return sendTransaction(getAddress(), function);
+    }
+
+    /**
+     * ERC20 转账
+     *
+     * @param to 接收地址
+     * @param amount 转账数量
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     */
+    public TransactionReceipt transfer(String to, BigInteger amount) throws Exception {
+        Function function = new Function(
+                "transfer",
+                List.of(address(to), uint256(amount)),
+                List.of()
+        );
+        return sendTransaction(getAddress(), function);
+    }
+
+    /**
+     * ERC20 代扣转账
+     *
+     * @param from 转出地址
+     * @param to 接收地址
+     * @param amount 转账数量
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     */
+    public TransactionReceipt transferFrom(String from, String to, BigInteger amount) throws Exception {
+        Function function = new Function(
+                "transferFrom",
+                List.of(address(from), address(to), uint256(amount)),
+                List.of()
+        );
+        return sendTransaction(getAddress(), function);
+    }
+
+    // ===================== 结构体定义 =====================
+
+    /**
+     * 锁仓统计
+     */
+    public static class LockStats extends StaticStruct {
+
+        private final Uint256 totalCount;
+        private final Uint256 totalAmount;
+        private final Uint256 claimableCount;
+        private final Uint256 claimableAmount;
+        private final Uint256 unmaturedCount;
+        private final Uint256 unmaturedAmount;
+        private final Uint256 claimedCount;
+        private final Uint256 claimedAmount;
+        private final Uint256 fragmentedCount;
+        private final Uint256 fragmentedAmount;
+        private final Uint256 earliestUnlockTime;
+        private final Uint256 latestUnlockTime;
+        private final Uint256 lastIndex;
+
+        public LockStats(
+                Uint256 totalCount,
+                Uint256 totalAmount,
+                Uint256 claimableCount,
+                Uint256 claimableAmount,
+                Uint256 unmaturedCount,
+                Uint256 unmaturedAmount,
+                Uint256 claimedCount,
+                Uint256 claimedAmount,
+                Uint256 fragmentedCount,
+                Uint256 fragmentedAmount,
+                Uint256 earliestUnlockTime,
+                Uint256 latestUnlockTime,
+                Uint256 lastIndex
+        ) {
+            super(
+                    totalCount,
+                    totalAmount,
+                    claimableCount,
+                    claimableAmount,
+                    unmaturedCount,
+                    unmaturedAmount,
+                    claimedCount,
+                    claimedAmount,
+                    fragmentedCount,
+                    fragmentedAmount,
+                    earliestUnlockTime,
+                    latestUnlockTime,
+                    lastIndex
+            );
+            this.totalCount = totalCount;
+            this.totalAmount = totalAmount;
+            this.claimableCount = claimableCount;
+            this.claimableAmount = claimableAmount;
+            this.unmaturedCount = unmaturedCount;
+            this.unmaturedAmount = unmaturedAmount;
+            this.claimedCount = claimedCount;
+            this.claimedAmount = claimedAmount;
+            this.fragmentedCount = fragmentedCount;
+            this.fragmentedAmount = fragmentedAmount;
+            this.earliestUnlockTime = earliestUnlockTime;
+            this.latestUnlockTime = latestUnlockTime;
+            this.lastIndex = lastIndex;
+        }
 
         /**
-         * 解锁时间戳
+         * @return 总记录数
          */
-        private final Uint64 unlockTime;
+        public BigInteger getTotalCount() {
+            return totalCount.getValue();
+        }
 
         /**
-         * 是否已领取
+         * @return 总额度
          */
-        private final Bool claimed;
+        public BigInteger getTotalAmount() {
+            return totalAmount.getValue();
+        }
 
-        public LockRecord(Uint128 amount, Uint64 unlockTime, Bool claimed) {
-            super(amount, unlockTime, claimed);
+        /**
+         * @return 可领取记录数
+         */
+        public BigInteger getClaimableCount() {
+            return claimableCount.getValue();
+        }
+
+        /**
+         * @return 可领取额度
+         */
+        public BigInteger getClaimableAmount() {
+            return claimableAmount.getValue();
+        }
+
+        /**
+         * @return 未成熟记录数
+         */
+        public BigInteger getUnmaturedCount() {
+            return unmaturedCount.getValue();
+        }
+
+        /**
+         * @return 未成熟额度
+         */
+        public BigInteger getUnmaturedAmount() {
+            return unmaturedAmount.getValue();
+        }
+
+        /**
+         * @return 已领取记录数
+         */
+        public BigInteger getClaimedCount() {
+            return claimedCount.getValue();
+        }
+
+        /**
+         * @return 已领取额度
+         */
+        public BigInteger getClaimedAmount() {
+            return claimedAmount.getValue();
+        }
+
+        /**
+         * @return 已兑换碎片记录数
+         */
+        public BigInteger getFragmentedCount() {
+            return fragmentedCount.getValue();
+        }
+
+        /**
+         * @return 已兑换碎片额度
+         */
+        public BigInteger getFragmentedAmount() {
+            return fragmentedAmount.getValue();
+        }
+
+        /**
+         * @return 最早解锁时间
+         */
+        public BigInteger getEarliestUnlockTime() {
+            return earliestUnlockTime.getValue();
+        }
+
+        /**
+         * @return 最晚解锁时间
+         */
+        public BigInteger getLatestUnlockTime() {
+            return latestUnlockTime.getValue();
+        }
+
+        /**
+         * @return 最后索引
+         */
+        public BigInteger getLastIndex() {
+            return lastIndex.getValue();
+        }
+    }
+
+    /**
+     * 领取预览结构
+     */
+    public static class PreviewClaimable extends StaticStruct {
+
+        private final Uint256 claimable;
+        private final Uint256 burnAmount;
+        private final Uint256 netAmount;
+        private final Uint256 processed;
+        private final Uint256 nextCursor;
+
+        public PreviewClaimable(
+                Uint256 claimable,
+                Uint256 burnAmount,
+                Uint256 netAmount,
+                Uint256 processed,
+                Uint256 nextCursor
+        ) {
+            super(claimable, burnAmount, netAmount, processed, nextCursor);
+            this.claimable = claimable;
+            this.burnAmount = burnAmount;
+            this.netAmount = netAmount;
+            this.processed = processed;
+            this.nextCursor = nextCursor;
+        }
+
+        /**
+         * @return 可领取总额
+         */
+        public BigInteger getClaimable() {
+            return claimable.getValue();
+        }
+
+        /**
+         * @return 本次应销毁数量
+         */
+        public BigInteger getBurnAmount() {
+            return burnAmount.getValue();
+        }
+
+        /**
+         * @return 实际到账数量
+         */
+        public BigInteger getNetAmount() {
+            return netAmount.getValue();
+        }
+
+        /**
+         * @return 本次处理条数
+         */
+        public BigInteger getProcessed() {
+            return processed.getValue();
+        }
+
+        /**
+         * @return 下一游标位置
+         */
+        public BigInteger getNextCursor() {
+            return nextCursor.getValue();
+        }
+    }
+
+    /**
+     * 订单记录结构
+     */
+    public static class OrderRecord extends StaticStruct {
+
+        private final Uint8 methodType;
+        private final Address user;
+        private final Uint8 lockType;
+        private final Uint256 amount;
+        private final Uint256 executedAmount;
+        private final Uint256 netAmount;
+        private final Uint256 burnAmount;
+        private final Uint256 timestamp;
+        private final Uint8 status;
+
+        public OrderRecord(
+                Uint8 methodType,
+                Address user,
+                Uint8 lockType,
+                Uint256 amount,
+                Uint256 executedAmount,
+                Uint256 netAmount,
+                Uint256 burnAmount,
+                Uint256 timestamp,
+                Uint8 status
+        ) {
+            super(methodType, user, lockType, amount, executedAmount, netAmount, burnAmount, timestamp, status);
+            this.methodType = methodType;
+            this.user = user;
+            this.lockType = lockType;
             this.amount = amount;
-            this.unlockTime = unlockTime;
-            this.claimed = claimed;
+            this.executedAmount = executedAmount;
+            this.netAmount = netAmount;
+            this.burnAmount = burnAmount;
+            this.timestamp = timestamp;
+            this.status = status;
         }
 
-        public Uint128 getAmount() {
-            return amount;
+        /**
+         * @return 方法类型
+         */
+        public BigInteger getMethodType() {
+            return methodType.getValue();
         }
 
-        public Uint64 getUnlockTime() {
-            return unlockTime;
+        /**
+         * @return 用户地址
+         */
+        public String getUser() {
+            return user.getValue();
         }
 
-        public Bool getClaimed() {
-            return claimed;
+        /**
+         * @return 仓位类型
+         */
+        public BigInteger getLockType() {
+            return lockType.getValue();
+        }
+
+        /**
+         * @return 数量入参
+         */
+        public BigInteger getAmount() {
+            return amount.getValue();
+        }
+
+        /**
+         * @return 实际执行数量
+         */
+        public BigInteger getExecutedAmount() {
+            return executedAmount.getValue();
+        }
+
+        /**
+         * @return 实际到账数量
+         */
+        public BigInteger getNetAmount() {
+            return netAmount.getValue();
+        }
+
+        /**
+         * @return 本次销毁数量
+         */
+        public BigInteger getBurnAmount() {
+            return burnAmount.getValue();
+        }
+
+        /**
+         * @return 执行时间
+         */
+        public BigInteger getTimestamp() {
+            return timestamp.getValue();
+        }
+
+        /**
+         * @return 执行状态
+         */
+        public BigInteger getStatus() {
+            return status.getValue();
         }
     }
 
     /**
-     * 查询销毁比例
-     *
-     * @return 销毁比例
-     *         返回类型：BigInteger
-     *         JSON 序列化示例：500
-     *         含义：销毁比例（bps），可能为 null（RPC 未返回）
+     * 锁仓统计分页结果
      */
-    public BigInteger burnBps() throws Exception {
-        Function function = buildViewFunction("burnBps", List.of(new TypeReference<Uint256>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
-        if (outputs.isEmpty()) {
-            return null;
-        }
-        return (BigInteger) outputs.get(0).getValue();
-    }
+    public static class LockStatsPaged {
 
-    /**
-     * 查询社区比例
-     *
-     * @return 社区比例
-     *         返回类型：BigInteger
-     *         JSON 序列化示例：500
-     *         含义：社区比例（bps），可能为 null（RPC 未返回）
-     */
-    public BigInteger communityBps() throws Exception {
-        Function function = buildViewFunction("communityBps", List.of(new TypeReference<Uint256>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
-        if (outputs.isEmpty()) {
-            return null;
-        }
-        return (BigInteger) outputs.get(0).getValue();
-    }
+        private final LockStats stats;
+        private final BigInteger nextCursor;
+        private final BigInteger processed;
+        private final Boolean finished;
 
-    /**
-     * 获取合约地址
-     *
-     * @return 合约地址
-     */
-    public String getAddress() {
-        return contractAddressProperties.getAion();
+        public LockStatsPaged(LockStats stats, BigInteger nextCursor, BigInteger processed, Boolean finished) {
+            this.stats = stats;
+            this.nextCursor = nextCursor;
+            this.processed = processed;
+            this.finished = finished;
+        }
+
+        /**
+         * @return 锁仓统计
+         */
+        public LockStats getStats() {
+            return stats;
+        }
+
+        /**
+         * @return 下次游标
+         */
+        public BigInteger getNextCursor() {
+            return nextCursor;
+        }
+
+        /**
+         * @return 本次处理条数
+         */
+        public BigInteger getProcessed() {
+            return processed;
+        }
+
+        /**
+         * @return 是否完成
+         */
+        public Boolean getFinished() {
+            return finished;
+        }
     }
 }

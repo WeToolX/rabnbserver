@@ -107,54 +107,78 @@ class RabnbserverApplicationTests {
         return Numeric.toHexString(bytes);
     }
 
+    /**
+     * 方法作用：生成订单号（uint256）
+     *
+     * @return 订单号
+     */
+    private BigInteger generateOrderId() {
+        byte[] bytes = new byte[32];
+        new SecureRandom().nextBytes(bytes);
+        return new BigInteger(1, bytes);
+    }
+
     // ===================== AionContract（只读）=====================
 
     /**
-     * 方法作用：查询 AION 是否暂停
+     * 方法作用：查询 AION 基础信息
      */
     @Test
-    void testAionPaused() throws Exception {
-        log.info("AION paused: {}", aionContract.paused());
+    void testAionMeta() throws Exception {
+        log.info("AION 名称: {}", aionContract.name());
+        log.info("AION 符号: {}", aionContract.symbol());
+        log.info("AION 精度: {}", aionContract.decimals());
+        log.info("AION 最大总量: {}", aionContract.cap());
+        log.info("AION 总供应量: {}", aionContract.totalSupply());
     }
 
     /**
-     * 方法作用：查询固定价格开关
+     * 方法作用：查询合约角色地址
      */
     @Test
-    void testAionFixedPriceEnabled() throws Exception {
-        log.info("AION fixedPriceEnabled: {}", aionContract.fixedPriceEnabled());
+    void testAionAddresses() throws Exception {
+        log.info("AION 部署者地址: {}", aionContract.owner());
+        log.info("AION 管理员地址: {}", aionContract.admin());
+        log.info("AION 社区地址: {}", aionContract.community());
     }
 
     /**
-     * 方法作用：查询固定价格金额
+     * 方法作用：查询挖矿状态变量
      */
     @Test
-    void testAionFixedPriceAmount() throws Exception {
-        log.info("AION fixedPriceAmount: {}", aionContract.fixedPriceAmount());
+    void testAionMiningState() throws Exception {
+        log.info("AION 挖矿开始时间: {}", aionContract.miningStart());
+        log.info("AION 已结算年份: {}", aionContract.lastSettledYear());
+        log.info("AION 当前年度预算: {}", aionContract.yearBudget());
+        log.info("AION 当前年度已分发: {}", aionContract.yearMinted());
+        log.info("AION 剩余可挖额度: {}", aionContract.remainingCap());
+        log.info("AION 当前年度起始时间: {}", aionContract.yearStartTs());
     }
 
     /**
-     * 方法作用：查询销毁比例
+     * 方法作用：查询扫描上限
      */
     @Test
-    void testAionBurnBps() throws Exception {
-        log.info("AION burnBps: {}", aionContract.burnBps());
+    void testAionMaxScanLimit() throws Exception {
+        log.info("AION 扫描上限: {}", aionContract.getMaxScanLimit());
     }
 
     /**
-     * 方法作用：查询社区比例
+     * 方法作用：预估建议最大扫描条数
      */
     @Test
-    void testAionCommunityBps() throws Exception {
-        log.info("AION communityBps: {}", aionContract.communityBps());
+    void testAionEstimateMaxCount() throws Exception {
+        BigInteger perRecordGas = requireTodoRaw("AION perRecordGas", null);
+        BigInteger fixedGas = requireTodoRaw("AION fixedGas", null);
+        log.info("AION 建议最大扫描条数: {}", aionContract.estimateMaxCount(perRecordGas, fixedGas));
     }
 
     /**
-     * 方法作用：查询总供应量
+     * 方法作用：查询今日最大发行量
      */
     @Test
-    void testAionTotalSupply() throws Exception {
-        log.info("AION totalSupply: {}", aionContract.totalSupply());
+    void testAionTodayMintable() throws Exception {
+        log.info("AION 今日最大发行量: {}", aionContract.getTodayMintable());
     }
 
     /**
@@ -162,8 +186,124 @@ class RabnbserverApplicationTests {
      */
     @Test
     void testAionBalanceOf() throws Exception {
-        String account = requireTodoString("AION balanceOf 地址", "TODO:填写地址");
-        log.info("AION balanceOf({}): {}", account, aionContract.balanceOf(account));
+        String account = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
+        log.info("AION 余额({}): {}", account, aionContract.balanceOf(account));
+    }
+
+    /**
+     * 方法作用：查询授权额度
+     */
+    @Test
+    void testAionAllowance() throws Exception {
+        String owner = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
+        String spender = "0xa068802d54d2aca1ad8ce6f2300eee02e3b50113";
+        log.info("AION 授权额度({},{}): {}", owner, spender, aionContract.allowance(owner, spender));
+    }
+
+    /**
+     * 方法作用：查询锁仓统计（全量）
+     */
+    @Test
+    void testAionLockStats() throws Exception {
+        String user = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
+        int lockType = 1; // TODO: 1/2/3（测试合约为 1/2/4 分钟）
+        AionContract.LockStats stats = aionContract.getLockStats(user, lockType);
+        if (stats == null) {
+            log.info("AION 锁仓统计未返回，user={}, lockType={}", user, lockType);
+            return;
+        }
+        log.info("AION 锁仓统计-总记录数: {}", stats.getTotalCount());
+        log.info("AION 锁仓统计-总额度: {}", stats.getTotalAmount());
+        log.info("AION 锁仓统计-可领取记录数: {}", stats.getClaimableCount());
+        log.info("AION 锁仓统计-可领取额度: {}", stats.getClaimableAmount());
+        log.info("AION 锁仓统计-未到期记录数: {}", stats.getUnmaturedCount());
+        log.info("AION 锁仓统计-未到期额度: {}", stats.getUnmaturedAmount());
+        log.info("AION 锁仓统计-已领取记录数: {}", stats.getClaimedCount());
+        log.info("AION 锁仓统计-已领取额度: {}", stats.getClaimedAmount());
+        log.info("AION 锁仓统计-已兑换碎片记录数: {}", stats.getFragmentedCount());
+        log.info("AION 锁仓统计-已兑换碎片额度: {}", stats.getFragmentedAmount());
+        log.info("AION 锁仓统计-最近可解锁时间: {}", stats.getEarliestUnlockTime());
+        log.info("AION 锁仓统计-最晚解锁时间: {}", stats.getLatestUnlockTime());
+        log.info("AION 锁仓统计-最后索引: {}", stats.getLastIndex());
+    }
+
+    /**
+     * 方法作用：查询锁仓统计（分页）
+     */
+    @Test
+    void testAionLockStatsPaged() throws Exception {
+        String user = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
+        int lockType = 1; // TODO: 1/2/3（测试合约为 1/2/4 分钟）
+        BigInteger cursor = BigInteger.ZERO;
+        int round = 0;
+        log.info("AION 锁仓分页统计开始，user={}, lockType={}, cursor={}", user, lockType, cursor);
+        while (true) {
+            round++;
+            AionContract.LockStatsPaged paged = aionContract.getLockStatsPaged(user, lockType, cursor);
+            if (paged == null) {
+                log.info("AION 锁仓分页统计未返回，user={}, lockType={}, cursor={}", user, lockType, cursor);
+                break;
+            }
+            log.info("AION 锁仓分页统计-第{}页-处理条数: {}", round, paged.getProcessed());
+            log.info("AION 锁仓分页统计-第{}页-下次游标: {}", round, paged.getNextCursor());
+            log.info("AION 锁仓分页统计-第{}页-是否完成: {}", round, paged.getFinished());
+            if (Boolean.TRUE.equals(paged.getFinished())) {
+                log.info("AION 锁仓分页统计完成，最后游标: {}", paged.getNextCursor());
+                break;
+            }
+            if (paged.getNextCursor() == null) {
+                log.info("AION 锁仓分页统计中断：下次游标为空，当前游标: {}", cursor);
+                break;
+            }
+            if (paged.getNextCursor().compareTo(cursor) <= 0) {
+                log.info("AION 锁仓分页统计中断：下次游标未前进，当前游标={}, 下次游标={}",
+                        cursor, paged.getNextCursor());
+                break;
+            }
+            cursor = paged.getNextCursor();
+        }
+    }
+
+    /**
+     * 方法作用：领取预览
+     */
+    @Test
+    void testAionPreviewClaimable() throws Exception {
+        String user = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
+        int lockType = 1; // TODO: 1/2/3（测试合约为 1/2/4 分钟）
+        AionContract.PreviewClaimable preview = aionContract.previewClaimable(user, lockType);
+        if (preview == null) {
+            log.info("AION 领取预览未返回，user={}, lockType={}", user, lockType);
+            return;
+        }
+        log.info("AION 领取预览-可领取: {}", preview.getClaimable());
+        log.info("AION 领取预览-销毁数量: {}", preview.getBurnAmount());
+        log.info("AION 领取预览-到账数量: {}", preview.getNetAmount());
+        log.info("AION 领取预览-处理条数: {}", preview.getProcessed());
+        log.info("AION 领取预览-下次游标: {}", preview.getNextCursor());
+    }
+
+    /**
+     * 方法作用：订单查询
+     */
+    @Test
+    void testAionGetOrder() throws Exception {
+        String user = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
+        BigInteger orderId = new BigInteger("112833510386533327399426205661079829499174750282159489118538109313584546999660");
+        AionContract.OrderRecord record = aionContract.getOrder(user, orderId);
+        if (record == null) {
+            log.info("AION 订单未返回，user={}, orderId={}", user, orderId);
+            return;
+        }
+        log.info("AION 订单-方法类型: {}", record.getMethodType());
+        log.info("AION 订单-用户地址: {}", record.getUser());
+        log.info("AION 订单-仓位: {}", record.getLockType());
+        log.info("AION 订单-入参数量: {}", record.getAmount());
+        log.info("AION 订单-执行数量: {}", record.getExecutedAmount());
+        log.info("AION 订单-到账数量: {}", record.getNetAmount());
+        log.info("AION 订单-销毁数量: {}", record.getBurnAmount());
+        log.info("AION 订单-时间戳: {}", record.getTimestamp());
+        log.info("AION 订单-状态: {}", record.getStatus());
     }
 
     /**
@@ -171,86 +311,94 @@ class RabnbserverApplicationTests {
      */
     @Test
     void testAionBalanceOfSelf() throws Exception {
-        log.info("AION balanceOf(address(this)): {}", aionContract.balanceOfSelf());
-    }
-
-    /**
-     * 方法作用：查询合约 owner
-     */
-    @Test
-    void testAionOwner() throws Exception {
-        log.info("AION owner: {}", aionContract.owner());
-    }
-
-    /**
-     * 方法作用：查询最大供应量 CAP
-     */
-    @Test
-    void testAionCap() throws Exception {
-        log.info("AION CAP: {}", aionContract.cap());
-    }
-
-    /**
-     * 方法作用：查询 ADMIN_ROLE
-     */
-    @Test
-    void testAionAdminRole() throws Exception {
-        log.info("AION ADMIN_ROLE: {}", aionContract.adminRole());
-    }
-
-    /**
-     * 方法作用：查询地址是否拥有指定角色
-     */
-    @Test
-    void testAionHasRole() throws Exception {
-        String role = aionContract.adminRole();
-        String account = requireTodoString("AION hasRole 地址", "TODO:填写地址");
-        log.info("AION hasRole({}, {}): {}", role, account, aionContract.hasRole(role, account));
-    }
-
-    /**
-     * 方法作用：查询用户锁仓列表
-     */
-    @Test
-    void testAionLocksOf() throws Exception {
-        String user = requireTodoString("AION locksOf 地址", "TODO:填写地址");
-        var records = aionContract.locksOf(user);
-        if (records == null) {
-            log.info("锁仓列表为空或未返回，地址: {}", user);
-            return;
-        }
-        log.info("锁仓记录数量: {}", records.size());
-        for (int i = 0; i < records.size(); i++) {
-            AionContract.LockRecord record = records.get(i);
-            BigInteger rawAmount = record.getAmount().getValue();
-            var humanAmount = AmountConvertUtils.toHumanAmount(
-                    AmountConvertUtils.Currency.AION,
-                    rawAmount,
-                    6
-            );
-            log.info("第{}条锁仓: amount={}, unlockTime={}, claimed={}",
-                    i + 1,
-                    rawAmount,
-                    record.getUnlockTime().getValue(),
-                    record.getClaimed().getValue());
-            log.info("第{}条锁仓(可读): amount={}", i + 1, humanAmount);
-        }
+        String self = aionContract.getAddress();
+        log.info("AION 合约自身余额: {}", aionContract.balanceOf(self));
     }
 
     // ===================== AionContract（写操作）=====================
 
     /**
-     * 方法作用：管理员分发 AION（锁仓）
+     * 方法作用：开始挖矿
      */
     @Test
-    void testAionFaucetMint() throws Exception {
-        String to = requireTodoString("AION faucetMint 地址", "TODO:填写地址");
-        BigDecimal amountHuman = requireTodoAmount("AION 发放数量", null);
-        int plan = 1; // TODO: 0/1/2
+    void testAionStartMining() throws Exception {
+        var receipt = aionContract.startMining();
+        log.info("开始挖矿结果: {}", receipt);
+    }
+
+    /**
+     * 方法作用：结算到当前年份
+     */
+    @Test
+    void testAionSettleToCurrentYear() throws Exception {
+        var receipt = aionContract.settleToCurrentYear();
+        log.info("结算到当前年份结果: {}", receipt);
+    }
+
+    /**
+     * 方法作用：分发额度（入仓/直接分发）
+     */
+    @Test
+    void testAionAllocateEmissionToLocks() throws Exception {
+        String to = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
+        BigDecimal amountHuman = BigDecimal.valueOf(1000);
+        int lockType = 1; // TODO: 1/2/3（测试合约为 1/2/4 分钟）
+        int distType = 1; // TODO: 1=入仓 2=直接分发
+        BigInteger orderId = generateOrderId();
         BigInteger amount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.AION, amountHuman);
-        log.info("发放 AION，地址: {}, 数量(原始): {}, plan: {}", to, amount, plan);
-        var receipt = aionContract.faucetMint(to, amount, plan);
-        log.info("发放结果: {}", receipt);
+        log.info("分发 AION，地址: {}, 数量(原始): {}, 仓位: {}, 分发类型: {}, 订单号: {}",
+                to, amount, lockType, distType, orderId);
+        var receipt = aionContract.allocateEmissionToLocks(to, amount, lockType, distType, orderId);
+        log.info("分发入仓结果: {}", receipt);
+    }
+
+    /**
+     * 方法作用：管理员代用户领取
+     */
+    @Test
+    void testAionClaimAll() throws Exception {
+        String user = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
+        int lockType = 1; // TODO: 1/2/3（测试合约为 1/2/4 分钟）
+        BigInteger orderId = generateOrderId();
+        var receipt = aionContract.claimAll(user, lockType, orderId);
+        log.info("代用户领取结果: {}", receipt);
+    }
+
+    /**
+     * 方法作用：兑换未解锁碎片
+     */
+    @Test
+    void testAionExchangeLockedFragment() throws Exception {
+        String user = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
+        int lockType = 1; // TODO: 1/2/3（测试合约为 1/2/4 分钟）
+        BigInteger targetAmount = requireTodoRaw("AION exchangeLockedFragment 目标数量", null);
+        BigInteger orderId = requireTodoRaw("AION exchangeLockedFragment orderId", null);
+        var receipt = aionContract.exchangeLockedFragment(user, lockType, targetAmount, orderId);
+        log.info("兑换未解锁碎片结果: {}", receipt);
+    }
+
+    /**
+     * 方法作用：兑换已解锁碎片
+     */
+    @Test
+    void testAionExchangeUnlockedFragment() throws Exception {
+        String user = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
+        int lockType = 1; // TODO: 1/2/3（测试合约为 1/2/4 分钟）
+        BigInteger targetAmount = new BigInteger("50000000000000000000");
+        BigInteger orderId = generateOrderId();
+        var receipt = aionContract.exchangeUnlockedFragment(user, lockType, targetAmount, orderId);
+        log.info("兑换已解锁碎片结果: {}", receipt);
+    }
+
+    /**
+     * 方法作用：用户授权管理员操作
+     */
+    @Test
+    void testAionApproveOperator() throws Exception {
+        String operator = requireTodoString("AION approveOperator 地址", "TODO:填写地址");
+        boolean approved = true; // TODO: true/false
+        var receipt = aionContract.approveOperator(operator, approved);
+        log.info("授权管理员操作结果: {}", receipt);
     }
 
     /**
@@ -260,59 +408,54 @@ class RabnbserverApplicationTests {
     void testAionSetAdmin() throws Exception {
         String newAdmin = requireTodoString("AION setAdmin 地址", "TODO:填写地址");
         var receipt = aionContract.setAdmin(newAdmin);
-        log.info("setAdmin 结果: {}", receipt);
+        log.info("设置管理员结果: {}", receipt);
     }
 
     /**
-     * 方法作用：撤销管理员地址
+     * 方法作用：设置扫描上限
      */
     @Test
-    void testAionRevokeAdmin() throws Exception {
-        String admin = requireTodoString("AION revokeAdmin 地址", "TODO:填写地址");
-        var receipt = aionContract.revokeAdmin(admin);
-        log.info("revokeAdmin 结果: {}", receipt);
+    void testAionSetMaxScanLimit() throws Exception {
+        BigInteger limit = requireTodoRaw("AION setMaxScanLimit", null);
+        var receipt = aionContract.setMaxScanLimit(limit);
+        log.info("设置扫描上限结果: {}", receipt);
     }
 
     /**
-     * 方法作用：暂停合约
+     * 方法作用：ERC20 授权
      */
     @Test
-    void testAionPause() throws Exception {
-        var receipt = aionContract.pause();
-        log.info("pause 结果: {}", receipt);
+    void testAionApprove() throws Exception {
+        String spender = requireTodoString("AION approve 地址", "TODO:填写地址");
+        BigDecimal amountHuman = requireTodoAmount("AION approve 数量", null);
+        BigInteger amount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.AION, amountHuman);
+        var receipt = aionContract.approve(spender, amount);
+        log.info("ERC20 授权结果: {}", receipt);
     }
 
     /**
-     * 方法作用：解除暂停
+     * 方法作用：ERC20 转账
      */
     @Test
-    void testAionUnpause() throws Exception {
-        var receipt = aionContract.unpause();
-        log.info("unpause 结果: {}", receipt);
+    void testAionTransfer() throws Exception {
+        String to = requireTodoString("AION transfer 地址", "TODO:填写地址");
+        BigDecimal amountHuman = requireTodoAmount("AION transfer 数量", null);
+        BigInteger amount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.AION, amountHuman);
+        var receipt = aionContract.transfer(to, amount);
+        log.info("ERC20 转账结果: {}", receipt);
     }
 
     /**
-     * 方法作用：设置社区地址
+     * 方法作用：ERC20 代扣转账
      */
     @Test
-    void testAionSetCommunity() throws Exception {
-        String newCommunity = requireTodoString("AION setCommunity 地址", "TODO:填写地址");
-        var receipt = aionContract.setCommunity(newCommunity);
-        log.info("setCommunity 结果: {}", receipt);
-    }
-
-    /**
-     * 方法作用：设置兑换参数
-     */
-    @Test
-    void testAionSetExchangeParams() throws Exception {
-        boolean fixedEnabled = true; // TODO: true/false
-        BigDecimal fixedAmountHuman = requireTodoAmount("AION fixedAmount", null);
-        BigInteger fixedAmount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.AION, fixedAmountHuman);
-        BigInteger burnBps = requireTodoRaw("AION burnBps", null); // TODO: 例 8000
-        BigInteger communityBps = requireTodoRaw("AION communityBps", null); // TODO: 例 2000
-        var receipt = aionContract.setExchangeParams(fixedEnabled, fixedAmount, burnBps, communityBps);
-        log.info("setExchangeParams 结果: {}", receipt);
+    void testAionTransferFrom() throws Exception {
+        String from = requireTodoString("AION transferFrom from", "TODO:填写地址");
+        String to = requireTodoString("AION transferFrom to", "TODO:填写地址");
+        BigDecimal amountHuman = requireTodoAmount("AION transferFrom 数量", null);
+        BigInteger amount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.AION, amountHuman);
+        var receipt = aionContract.transferFrom(from, to, amount);
+        log.info("ERC20 代扣转账结果: {}", receipt);
     }
 
     // ===================== AionService ======================
