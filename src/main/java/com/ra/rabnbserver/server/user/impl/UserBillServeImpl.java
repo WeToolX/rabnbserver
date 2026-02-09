@@ -167,32 +167,63 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         }
     }
 
+
+
     /**
-     * 处理管理员分发NFT业务
+     * 处理管理员分发NFT业务 - 增加库存校验与扣减
      */
     @Override
     public void distributeNftByAdmin(Long userId, Integer amount) {
+        // 基础验证
         User user = validateUserAndCheckLock(userId);
+        if (amount == null || amount <= 0) {
+            throw new BusinessException("分发数量必须大于0");
+        }
+        // 获取当前可用批次并校验本地库存
+        ETFCard currentBatch = etfCardServe.getActiveAndEnabledBatch();
+        if (currentBatch == null) {
+            throw new BusinessException("当前无可用卡牌批次，无法分发");
+        }
         String orderId = "DIST_" + IdWorker.getIdStr();
-
-        createBillAndUpdateBalance(userId, BigDecimal.ZERO, BillType.ON_CHAIN, FundType.INCOME,
-                TransactionType.REWARD, "管理员发起分发 x" + amount, orderId, null, null, amount,null);
-
+        // 开启事务：扣减库存并创建初始账单
+        transactionTemplate.executeWithoutResult(status -> {
+            try {
+                // 使用原子更新扣减库存，防止超卖/超发
+                boolean stockOk = etfCardServe.update(new LambdaUpdateWrapper<ETFCard>()
+                        .eq(ETFCard::getId, currentBatch.getId())
+                        .ge(ETFCard::getInventory, amount) // 检查剩余库存是否足够
+                        .setSql("inventory = inventory - " + amount)
+                        .setSql("sold_count = sold_count + " + amount));
+                if (!stockOk) {
+                    throw new BusinessException("本地库存不足，当前剩余：" + currentBatch.getInventory());
+                }
+                // 创建账单记录（分发通常是系统赠送，amount 传 0）
+                createBillAndUpdateBalance(userId, BigDecimal.ZERO, BillType.ON_CHAIN, FundType.INCOME,
+                        TransactionType.REWARD, "系统管理员手动分发 x" + amount, orderId, null, null, amount, null);
+            } catch (Exception e) {
+                status.setRollbackOnly();
+                throw e;
+            }
+        });
+        // 异步/后续执行链上分发逻辑
         Long billId = getBillIdByOrder(orderId);
         TransactionReceipt receipt = null;
         String adminErr = null;
         try {
+            log.info("管理员发起NFT链上分发，用户：{}，数量：{}", user.getUserWalletAddress(), amount);
+            // 调用合约分发
             receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(amount));
         } catch (Exception e) {
-            log.error("管理员分发异常", e);
+            log.error("管理员分发链上执行异常", e);
             adminErr = e.getMessage();
         }
-
+        // 更新最终状态
         if (receipt != null && "0x1".equals(receipt.getStatus())) {
             updateBillReceipt(billId, receipt, "系统管理员手动分发成功 x" + amount);
         } else {
-            String msg = (adminErr != null) ? "分发异常：" + adminErr : "管理员分发链上失败";
+            String msg = (adminErr != null) ? "分发指令已记录，但链上执行异常：" + adminErr : "管理员分发链上失败";
             updateBillByError(billId, TransactionStatus.FAILED, receipt, msg);
+            // 标记异常，进入重试队列
             billRetryServe.markAbnormal(billId, user.getUserWalletAddress());
             throw new BusinessException(msg);
         }

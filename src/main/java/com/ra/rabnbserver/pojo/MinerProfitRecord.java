@@ -85,4 +85,22 @@ public class MinerProfitRecord extends AbnormalBaseEntity {
     @TableField("status")
     @ColumnComment("记录状态 0:无效, 1:有效")
     private Integer status;
+
+    /**
+     * 锁仓类型 0:直接分发, 1:L1, 2:L2, 3:L3
+     */
+    @ColumnComment("锁仓类型 0:直接分发, 1:L1, 2:L2, 3:L3")
+    @TableField("lock_type")
+    private Integer lockType; // 0:直接分发, 1:L1, 2:L2, 3:L3
+
+    /**
+     * 分发类型 1:入仓, 2:直接分发
+     */
+    @ColumnComment("分发类型 1:入仓, 2:直接分发")
+    @TableField("dist_type")
+    private Integer distType; // 1:入仓, 2:直接分发
+
+    @TableField("actual_order_id")
+    @ColumnComment("实际生成的订单号(传给合约)")
+    private Long actualOrderId;
 }
