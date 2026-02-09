@@ -1,5 +1,6 @@
 package com.ra.rabnbserver.contract.support;
 
+import com.ra.rabnbserver.exception.ChainCallException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.web3j.abi.FunctionEncoder;
@@ -49,12 +50,14 @@ public abstract class ContractBase {
         if (sendResult.hasError()) {
             String errorMessage = sendResult.getError().getMessage();
             log.error("合约交易发送失败: {}", errorMessage);
-            throw new IllegalStateException("合约交易发送失败: " + errorMessage);
+            String from = transactionManager.getFromAddress();
+            throw new ChainCallException(errorMessage, contractAddress, function.getName(), from, data, errorMessage, null);
         }
         String txHash = sendResult.getTransactionHash();
         if (txHash == null || txHash.isBlank()) {
             log.error("合约交易发送失败: 未返回交易哈希");
-            throw new IllegalStateException("合约交易发送失败: 未返回交易哈希");
+            String from = transactionManager.getFromAddress();
+            throw new ChainCallException("未返回交易哈希", contractAddress, function.getName(), from, data, null, null);
         }
         return waitForReceipt(txHash);
     }

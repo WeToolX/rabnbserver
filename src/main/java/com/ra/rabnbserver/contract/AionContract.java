@@ -258,6 +258,19 @@ public class AionContract extends ContractBase {
                     errorMessage
             );
         }
+        if (revertReason != null && !revertReason.isBlank()) {
+            return new AionContractException(
+                    revertReason,
+                    getAddress(),
+                    function.getName(),
+                    from,
+                    callData,
+                    revertReason,
+                    null,
+                    null,
+                    revertReason
+            );
+        }
         return new AionContractException("未知原因", getAddress(), function.getName(), from, callData, revertReason, null, null, null);
     }
 
@@ -370,6 +383,8 @@ public class AionContract extends ContractBase {
             }
             return receipt;
         } catch (AionContractException ex) {
+            throw ex;
+        } catch (ChainCallException ex) {
             throw ex;
         } catch (Exception ex) {
             throw buildChainException(function, data, from, ex);
@@ -964,6 +979,16 @@ public class AionContract extends ContractBase {
      *         - CAP_EXCEEDED：超出总量上限
      */
     public TransactionReceipt allocateEmissionToLocksBatch(List<BatchItem> items) throws Exception {
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("批量分发参数为空");
+        }
+        BigInteger maxBatchLimit = getMaxBatchLimit();
+        if (maxBatchLimit != null && maxBatchLimit.signum() > 0) {
+            BigInteger batchSize = BigInteger.valueOf(items.size());
+            if (batchSize.compareTo(maxBatchLimit) > 0) {
+                throw new IllegalArgumentException("批量条数超过上限: 当前=" + batchSize + ", 上限=" + maxBatchLimit);
+            }
+        }
         DynamicArray<BatchItem> batchItems = new DynamicArray<>(BatchItem.class, items);
         Function function = new Function(
                 "allocateEmissionToLocksBatch",

@@ -148,9 +148,13 @@ public class GlobalExceptionHandler {
     public Result<?> handleAionContractException(AionContractException e) {
         Map<String, Object> detail = buildContractExceptionDetail(e);
         log.warn("AION 合约异常: {}, 详情={}", e.getMessage(), detail, e);
-        String message = e.getDecodedDetail() == null || e.getDecodedDetail().isBlank()
-                ? e.getMessage()
-                : e.getDecodedDetail();
+        String message = e.getDecodedDetail();
+        if (message == null || message.isBlank()) {
+            message = e.getRawReason();
+        }
+        if (message == null || message.isBlank()) {
+            message = e.getMessage();
+        }
         return Result.error(500, message, detail);
     }
 
@@ -161,9 +165,13 @@ public class GlobalExceptionHandler {
     public Result<?> handleChainCallException(ChainCallException e) {
         Map<String, Object> detail = buildContractExceptionDetail(e);
         log.warn("链上调用异常: {}, 详情={}", e.getMessage(), detail, e);
-        String message = e.getOriginExceptionMessage() == null || e.getOriginExceptionMessage().isBlank()
-                ? e.getMessage()
-                : e.getOriginExceptionMessage();
+        String message = e.getOriginExceptionMessage();
+        if (message == null || message.isBlank()) {
+            message = e.getRawReason();
+        }
+        if (message == null || message.isBlank()) {
+            message = e.getMessage();
+        }
         return Result.error(500, message, detail);
     }
 

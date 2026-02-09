@@ -488,7 +488,7 @@ class RabnbserverApplicationTests {
      */
     @Test
     void testAionSetMaxBatchLimit() throws Exception {
-        BigInteger limit = requireTodoRaw("AION setMaxBatchLimit", null);
+        BigInteger limit = new BigInteger("10000");
         var receipt = aionContract.setMaxBatchLimit(limit);
         log.info("设置批量分发上限结果: {}", receipt);
     }

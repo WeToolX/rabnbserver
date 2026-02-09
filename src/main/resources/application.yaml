@@ -86,7 +86,7 @@ blockchain:
   # https://bsc-dataseed1.ninicoin.io
   chain-id: 97
   currency-symbol: tBNB
-  gas-limit-default: 1000000
+  gas-limit-default: 10000000
   tx-poll-interval-ms: 2000
   tx-timeout-ms: 1200000
 
