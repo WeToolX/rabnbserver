@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.IService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ra.rabnbserver.VO.CreateUserBillVO;
 import com.ra.rabnbserver.VO.MinerSettings;
@@ -43,14 +44,18 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 @RequiredArgsConstructor
+
 public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> implements MinerServe {
 
     private final UserMapper userMapper;
     private final UserBillServe userBillServe;
     private final MinerProfitRecordMapper profitRecordMapper;
     private final SystemConfigMapper configMapper;
+    private final IService<MinerProfitRecord> profitRecordService;
 
     private final AionContract aionContract;
+
+    private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
     // 注入异常重试框架服务
     private final MinerPurchaseRetryServeImpl purchaseRetryServe;
@@ -260,83 +265,96 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
 
     @Override
     public void processDailyProfit() throws Exception {
-        // 年度结算
+        // 链上前置：年度结算与额度校验
         aionContract.settleToCurrentYear();
-        // 获取今日链上最大分发额度 (已经包含精度的 BigInteger)
         BigInteger todayMintableWei = aionContract.getTodayMintable();
-        if (todayMintableWei.compareTo(BigInteger.ZERO) <= 0) {
-            log.warn("今日链上可挖额度为0，跳过分配");
-            return;
-        }
+        if (todayMintableWei.compareTo(BigInteger.ZERO) <= 0) return;
+
+        // 筛选符合条件的矿机
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiryLimit = now.minusDays(30);
-        // 统计符合条件的活跃矿机
         List<UserMiner> activeMiners = this.list(new LambdaQueryWrapper<UserMiner>()
                 .eq(UserMiner::getNftBurnStatus, 1)
                 .eq(UserMiner::getStatus, 1)
                 .ge(UserMiner::getPaymentDate, expiryLimit)
                 .le(UserMiner::getEligibleDate, now));
         if (activeMiners.isEmpty()) return;
-        //计算在记录中的所有矿机
-        List<UserMiner> allMiners = this.list(new LambdaQueryWrapper<UserMiner>()
-                .eq(UserMiner::getNftBurnStatus, 1));
-        if (allMiners.isEmpty()) return;
-        // 计算每台矿机应得额度
+        // 计算单台矿机收益
+        List<UserMiner> allMiners = this.list(new LambdaQueryWrapper<UserMiner>().eq(UserMiner::getNftBurnStatus, 1));
         BigInteger perMinerAmountWei = todayMintableWei.divide(BigInteger.valueOf(allMiners.size()));
-        for (UserMiner miner : activeMiners) {
-            int lockType;
-            int distType;
-            // 逻辑检查：如果是特殊矿机（类型3）直接分发
-            if ("3".equals(miner.getMinerType())) {
-                lockType = 0;
-                distType = 2; // distType=2 直接分发代币
-            } else {
-                // 普通矿机进入锁仓，根据类型映射 L1(1), L2(2), L3(3)
-                lockType = Integer.parseInt(miner.getMinerType()) + 1;
-                distType = 1; // 入仓
-            }
-            // 插入收益记录
-            MinerProfitRecord record = new MinerProfitRecord();
-            record.setUserId(miner.getUserId());
-            record.setWalletAddress(miner.getWalletAddress());
-            record.setAmount(new BigDecimal(perMinerAmountWei));
-            record.setMinerType(miner.getMinerType());
-            record.setLockType(lockType);
-            record.setDistType(distType);
-            record.setPayoutStatus(0);
-            record.setStatus(1);
+        // 确定批次大小（合约限制）
+        int batchSize = 100;
+        try {
+            batchSize = Math.min(aionContract.getMaxBatchLimit().intValue(), 200);
+        } catch (Exception ignored) {}
+        // 分批次原子处理
+        for (int i = 0; i < activeMiners.size(); i += batchSize) {
+            int end = Math.min(i + batchSize, activeMiners.size());
+            List<UserMiner> subMiners = activeMiners.subList(i, end);
+            // 开启批次事务
+            transactionTemplate.execute(status -> {
+                try {
+                    // 构建收益记录对象并批量插入 (saveBatch)
+                    List<MinerProfitRecord> records = subMiners.stream().map(m -> {
+                        int lockType = "3".equals(m.getMinerType()) ? 0 : Integer.parseInt(m.getMinerType()) + 1;
+                        int distType = "3".equals(m.getMinerType()) ? 2 : 1;
+                        MinerProfitRecord r = new MinerProfitRecord();
+                        r.setUserId(m.getUserId());
+                        r.setWalletAddress(m.getWalletAddress());
+                        r.setAmount(new BigDecimal(perMinerAmountWei));
+                        r.setMinerType(m.getMinerType());
+                        r.setLockType(lockType);
+                        r.setDistType(distType);
+                        r.setPayoutStatus(0);
+                        r.setStatus(1);
+                        return r;
+                    }).collect(Collectors.toList());
+                    // 利用 MyBatis-Plus 批量插入并回填自增 ID
+                    profitRecordService.saveBatch(records);
+                    // 基于回填 ID 生成订单号，并构建合约参数
+                    List<AionContract.BatchItem> batchItems = new ArrayList<>();
+                    long suffix = System.currentTimeMillis() % 1000000;
+                    for (MinerProfitRecord r : records) {
+                        Long orderId = Long.parseLong(r.getId() + "" + suffix);
+                        r.setActualOrderId(orderId);
+                        batchItems.add(new AionContract.BatchItem(
+                                r.getWalletAddress(),
+                                r.getLockType(),
+                                r.getDistType(),
+                                perMinerAmountWei,
+                                BigInteger.valueOf(orderId)
+                        ));
+                    }
+                    // 原子更新订单号：批量更新订单号到数据库（此步骤也是批量 SQL 提交）
+                    profitRecordService.updateBatchById(records);
+                    // 调用链上批量分发
+                    log.info("正在执行链上批量分发，条数: {}", batchItems.size());
+                    TransactionReceipt receipt = aionContract.allocateEmissionToLocksBatch(batchItems);
+                    // 结果原子更新
+                    if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
+                        List<Long> ids = records.stream().map(MinerProfitRecord::getId).collect(Collectors.toList());
+                        // 【核心：原子更新】使用单条 SQL 更新该批次所有记录的状态和 TxID
+                        profitRecordService.lambdaUpdate()
+                                .in(MinerProfitRecord::getId, ids)
+                                .set(MinerProfitRecord::getPayoutStatus, 1)
+                                .set(MinerProfitRecord::getTxId, receipt.getTransactionHash())
+                                .update();
 
-            // 插入初始数据以获取数据库 ID
-            profitRecordMapper.insert(record);
-
-            // 基于数据库 ID 生成唯一订单号
-            Long initialOrderId = Long.parseLong(record.getId() + "" + (System.currentTimeMillis() % 1000000));
-            // 【原子更新】回填生成的订单号
-            profitRecordMapper.update(null, new LambdaUpdateWrapper<MinerProfitRecord>()
-                    .eq(MinerProfitRecord::getId, record.getId())
-                    .set(MinerProfitRecord::getActualOrderId, initialOrderId));
-
-            try {
-                TransactionReceipt receipt = aionContract.allocateEmissionToLocks(
-                        miner.getWalletAddress(),
-                        perMinerAmountWei,
-                        lockType,
-                        distType,
-                        BigInteger.valueOf(initialOrderId)
-                );
-
-                if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
-                    profitRecordMapper.update(null, new LambdaUpdateWrapper<MinerProfitRecord>()
-                            .eq(MinerProfitRecord::getId, record.getId())
-                            .set(MinerProfitRecord::getPayoutStatus, 1)
-                            .set(MinerProfitRecord::getTxId, receipt.getTransactionHash()));
-                } else {
-                    profitRetryServe.markAbnormal(record.getId(), record.getWalletAddress());
+                        log.info("批次处理成功，TxHash: {}", receipt.getTransactionHash());
+                        return true;
+                    } else {
+                        // 合约返回失败状态，手动触发数据库回滚
+                        log.error("合约执行失败（Status=0），执行批次数据回滚");
+                        status.setRollbackOnly();
+                        return false;
+                    }
+                } catch (Exception e) {
+                    // 捕获到任何链上通讯异常或系统异常，执行回滚
+                    log.error("批次处理发生异常，执行回滚。异常信息: {}", e.getMessage());
+                    status.setRollbackOnly();
+                    return false;
                 }
-            } catch (Exception e) {
-                log.error("收益分发异常，ID: {}, 原因: {}", record.getId(), e.getMessage());
-                profitRetryServe.markAbnormal(record.getId(), record.getWalletAddress());
-            }
+            });
         }
     }
 

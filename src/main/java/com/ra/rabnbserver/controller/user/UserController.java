@@ -148,35 +148,45 @@ public class UserController {
     @PostMapping("/access")
     public String login(@RequestBody LoginDataDTO loginDataDTO) throws Exception {
         log.info("访问请求：{}", loginDataDTO);
+
         String walletAddress = loginDataDTO.getUserWalletAddress();
         String referrer = loginDataDTO.getCode();
-        // 必填项检查
+
+        // 1. 校验：钱包地址不能为空 (Code: 4001)
         if (StrUtil.isBlank(walletAddress)) {
-            return ApiResponse.error("钱包地址不能为空");
+            return ApiResponse.error(1001, "钱包地址不能为空");
         }
-        // 检查用户是否存在
+
+        // 2. 检查用户是否存在
         User user = userService.getByWalletAddress(walletAddress);
         if (user != null) {
-            // 只要用户存在，直接登录（忽略 referrerWalletAddress 参数）
-            log.info("用户 {} 已存在，执行登录", walletAddress);
+            // 只要地址存在，直接登录 (Code: 200)
             upgradeToUserSession(user.getId().toString());
             return ApiResponse.success("登录成功", user);
         }
-        // 用户不存在，进入注册逻辑
-        // 注册必须提供邀请人地址
+
+        // 3. 用户不存在，准备注册
+        // 3.1 校验：未注册地址必须传入推荐人 (Code: 4002)
         if (StrUtil.isBlank(referrer)) {
-            return ApiResponse.error("用户未注册，请提供邀请人地址");
+            return ApiResponse.error(1002, "用户未注册，请提供邀请人地址");
         }
+
+        // 3.2 校验：不能邀请自己 (Code: 4004)
+        if (walletAddress.equalsIgnoreCase(referrer)) {
+            return ApiResponse.error(1003, "无效的邀请地址（不能邀请自己）");
+        }
+
         try {
-            // 执行注册并获取新用户对象
+            // 执行注册
             User newUser = userService.handleRegister(walletAddress, referrer);
             upgradeToUserSession(newUser.getId().toString());
             return ApiResponse.success("注册成功", newUser);
         } catch (BusinessException e) {
-            return ApiResponse.error(e.getMessage());
+            // 推荐人无效等业务异常 (Code: 4003)邀请人地址无效，请核对后重试
+            return ApiResponse.error(1004, e.getMessage());
         } catch (Exception e) {
-            log.error("注册异常", e);
-            return ApiResponse.error("系统异常，注册失败");
+            log.error("系统注册异常", e);
+            return ApiResponse.error(500, "系统繁忙，请稍后再试");
         }
     }
 

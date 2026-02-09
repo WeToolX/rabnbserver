@@ -414,6 +414,72 @@ class RabnbserverApplicationTests {
         log.info("批量分发结果: {}", receipt);
     }
 
+
+    /**
+     * 方法作用：结构化压力测试 - 900 条数据单笔发送
+     * 结构：地址(大循环) -> 类型(中循环) -> 条数(小循环)
+     */
+    @Test
+    void testAionStructuredBatchDistribute() throws Exception {
+        // 1. 基础配置
+        List<String> targetAddresses = List.of(
+                "0x61188770CC57cf2f0f66fD746EbDF4A7495A80a9",
+                "0x9EAd035Fd684Dd489155A2dd936a7fDdCeCd2e78",
+                "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF"
+        );
+        int[] lockTypes = {1, 2, 3};
+        int countPerConfig = 80; // 小循环条数
+        int distType = 1;         // 1=入仓
+
+        BigDecimal amountPerRecord = new BigDecimal("10"); // 每条分发的 AION 数量
+        BigInteger rawAmount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.AION, amountPerRecord);
+
+        // 2. 构造数据列表 (三层循环)
+        List<AionContract.BatchItem> allItems = new java.util.ArrayList<>();
+
+        log.info("开始构造数据包...");
+
+        // 第一层：地址大循环
+        for (String address : targetAddresses) {
+            log.info("  -> 大循环：处理地址 {}", address);
+
+            // 第二层：类型中循环
+            for (int lockType : lockTypes) {
+                log.info("    -> 中循环：处理仓位类型 {}", lockType);
+
+                // 第三层：写入数据小循环
+                for (int i = 0; i < countPerConfig; i++) {
+                    // 构造并添加单条分发数据
+                    allItems.add(new AionContract.BatchItem(
+                            address,         // 地址
+                            lockType,        // 类型
+                            distType,        // 分发方式
+                            rawAmount,       // 数量
+                            generateOrderId()// 唯一订单号
+                    ));
+                }
+            }
+        }
+
+        log.info("数据构造完成，总条数: {}", allItems.size());
+
+        // 3. 发送单笔交易
+        try {
+            log.info("正在发送批量分发交易...");
+
+            var receipt = aionContract.allocateEmissionToLocksBatch(allItems);
+
+            if (receipt.isStatusOK()) {
+                log.info("【成功】批量分发完成！Hash: {}", receipt.getTransactionHash());
+                log.info("总计消耗 Gas: {}", receipt.getGasUsed());
+            } else {
+                log.error("【失败】交易执行回滚。Hash: {}", receipt.getTransactionHash());
+            }
+        } catch (Exception e) {
+            log.error("【异常】执行批量分发时发生错误: {}", e.getMessage());
+        }
+    }
+
     /**
      * 方法作用：管理员代用户领取
      */

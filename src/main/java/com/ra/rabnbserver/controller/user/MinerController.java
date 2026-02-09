@@ -41,10 +41,12 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/list")
     public String getMinerList(@RequestBody(required = false) MinerQueryDTO query) {
+        log.info("getMinerList,查询参数：{}", query.toString());
         if (query == null) query = new MinerQueryDTO();
         Long userId = getFormalUserId();
         try {
             IPage<UserMiner> result = minerServe.getUserMinerPage(userId, query);
+            log.info("getMinerList result={}", result);
             return ApiResponse.success("获取成功", result);
         } catch (Exception e) {
             return ApiResponse.error("查询失败: " + e.getMessage());
