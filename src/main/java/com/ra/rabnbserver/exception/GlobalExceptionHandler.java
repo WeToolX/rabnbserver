@@ -146,14 +146,48 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(AionContractException.class)
     public Result<?> handleAionContractException(AionContractException e) {
+        Map<String, Object> detail = buildContractExceptionDetail(e);
+        log.warn("AION 合约异常: {}, 详情={}", e.getMessage(), detail, e);
+        String message = e.getDecodedDetail() == null || e.getDecodedDetail().isBlank()
+                ? e.getMessage()
+                : e.getDecodedDetail();
+        return Result.error(500, message, detail);
+    }
+
+    /**
+     * 处理链上调用异常（非 revert）
+     */
+    @ExceptionHandler(ChainCallException.class)
+    public Result<?> handleChainCallException(ChainCallException e) {
+        Map<String, Object> detail = buildContractExceptionDetail(e);
+        log.warn("链上调用异常: {}, 详情={}", e.getMessage(), detail, e);
+        String message = e.getOriginExceptionMessage() == null || e.getOriginExceptionMessage().isBlank()
+                ? e.getMessage()
+                : e.getOriginExceptionMessage();
+        return Result.error(500, message, detail);
+    }
+
+    /**
+     * 组装合约异常详情
+     *
+     * @param e 合约异常
+     * @return 详情
+     */
+    private Map<String, Object> buildContractExceptionDetail(ContractCallException e) {
         Map<String, Object> detail = new HashMap<>();
+        detail.put("contractAddress", e.getContractAddress());
+        detail.put("functionName", e.getFunctionName());
+        detail.put("fromAddress", e.getFromAddress());
+        detail.put("callData", e.getCallData());
         detail.put("rawReason", e.getRawReason());
         detail.put("decodedSummary", e.getDecodedSummary());
         detail.put("decodedDetail", e.getDecodedDetail());
         detail.put("errorCode", e.getErrorCode());
         detail.put("errorName", e.getErrorName());
-        log.warn("AION 合约异常: {}, 详情={}", e.getMessage(), detail, e);
-        return Result.error(500, e.getMessage(), detail);
+        detail.put("errorMessage", e.getErrorMessage());
+        detail.put("originExceptionClass", e.getOriginExceptionClass());
+        detail.put("originExceptionMessage", e.getOriginExceptionMessage());
+        return detail;
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

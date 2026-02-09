@@ -2,6 +2,7 @@ package com.ra.rabnbserver.contract;
 
 import com.ra.rabnbserver.contract.support.BlockchainProperties;
 import com.ra.rabnbserver.exception.AionContractException;
+import com.ra.rabnbserver.exception.ChainCallException;
 import com.ra.rabnbserver.contract.support.ContractAddressProperties;
 import com.ra.rabnbserver.contract.support.ContractBase;
 import lombok.Getter;
@@ -216,14 +217,18 @@ public class AionContract extends ContractBase {
      * @param revertReason 原始信息
      * @return 合约异常
      */
-    private AionContractException buildContractException(String revertReason) {
+    private AionContractException buildContractException(Function function, String callData, String from, String revertReason) {
         if (revertReason == null || revertReason.isBlank()) {
-            return new AionContractException("未知原因", revertReason, null, null, null);
+            return new AionContractException("未知原因", getAddress(), function.getName(), from, callData, revertReason, null, null, null);
         }
         AionBizErrorCode code = parseBizError(revertReason);
         if (code != null) {
             return new AionContractException(
                     code.getDescription(),
+                    getAddress(),
+                    function.getName(),
+                    from,
+                    callData,
                     revertReason,
                     code.getCode(),
                     code.getErrorName(),
@@ -232,9 +237,33 @@ public class AionContract extends ContractBase {
         }
         String errorMessage = parseErrorString(revertReason);
         if (errorMessage != null && !errorMessage.isBlank()) {
-            return new AionContractException(errorMessage, revertReason, null, "Error(string)", errorMessage);
+            return new AionContractException(
+                    errorMessage,
+                    getAddress(),
+                    function.getName(),
+                    from,
+                    callData,
+                    revertReason,
+                    null,
+                    "Error(string)",
+                    errorMessage
+            );
         }
-        return new AionContractException("未知原因", revertReason, null, null, null);
+        return new AionContractException("未知原因", getAddress(), function.getName(), from, callData, revertReason, null, null, null);
+    }
+
+    /**
+     * 构造链上异常（非 revert 类型）
+     *
+     * @param function 函数
+     * @param callData 调用数据
+     * @param from 发起地址
+     * @param ex 原始异常
+     * @return 链上异常
+     */
+    private ChainCallException buildChainException(Function function, String callData, String from, Exception ex) {
+        String message = ex == null || ex.getMessage() == null ? "链上调用异常" : ex.getMessage();
+        return new ChainCallException(message, getAddress(), function.getName(), from, callData, ex == null ? null : ex.getMessage(), ex);
     }
 
     /**
@@ -295,12 +324,18 @@ public class AionContract extends ContractBase {
     private List<Type<?>> callViewFunction(Function function) throws Exception {
         String data = FunctionEncoder.encode(function);
         String from = transactionManager.getFromAddress();
-        Transaction transaction = Transaction.createEthCallTransaction(from, getAddress(), data);
-        EthCall response = web3j.ethCall(transaction, DefaultBlockParameterName.LATEST).send();
-        if (response.isReverted()) {
-            throw buildContractException(response.getRevertReason());
+        try {
+            Transaction transaction = Transaction.createEthCallTransaction(from, getAddress(), data);
+            EthCall response = web3j.ethCall(transaction, DefaultBlockParameterName.LATEST).send();
+            if (response.isReverted()) {
+                throw buildContractException(function, data, from, response.getRevertReason());
+            }
+            return (List) FunctionReturnDecoder.decode(response.getValue(), function.getOutputParameters());
+        } catch (AionContractException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw buildChainException(function, data, from, ex);
         }
-        return (List) FunctionReturnDecoder.decode(response.getValue(), function.getOutputParameters());
     }
 
     /**
@@ -310,18 +345,26 @@ public class AionContract extends ContractBase {
      * @return 交易回执
      */
     private TransactionReceipt sendAionTransaction(Function function) throws Exception {
-        TransactionReceipt receipt = sendTransaction(getAddress(), function);
-        if (receipt == null) {
-            return null;
-        }
-        if (isReceiptFailed(receipt)) {
-            String reason = receipt.getRevertReason();
-            if (reason == null || reason.isBlank()) {
-                reason = queryRevertReason(function);
+        String data = FunctionEncoder.encode(function);
+        String from = transactionManager.getFromAddress();
+        try {
+            TransactionReceipt receipt = sendTransaction(getAddress(), function);
+            if (receipt == null) {
+                return null;
             }
-            throw buildContractException(reason);
+            if (isReceiptFailed(receipt)) {
+                String reason = receipt.getRevertReason();
+                if (reason == null || reason.isBlank()) {
+                    reason = queryRevertReason(function);
+                }
+                throw buildContractException(function, data, from, reason);
+            }
+            return receipt;
+        } catch (AionContractException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw buildChainException(function, data, from, ex);
         }
-        return receipt;
     }
 
     /**

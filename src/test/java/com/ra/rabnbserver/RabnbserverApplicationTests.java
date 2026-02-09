@@ -118,6 +118,10 @@ class RabnbserverApplicationTests {
         new SecureRandom().nextBytes(bytes);
         return new BigInteger(1, bytes);
     }
+    @Test
+    void getod(){
+        log.info(generateOrderId().toString());
+    }
 
     // ===================== AionContract（只读）=====================
 
@@ -307,7 +311,7 @@ class RabnbserverApplicationTests {
             log.info("AION 订单-时间戳: {}", record.getTimestamp());
             log.info("AION 订单-状态: {}", record.getStatus());
         } catch (AionContractException e) {
-            log.error(e.getErrorMessage());
+            log.error(e.getDecodedDetail());
         }
 
     }

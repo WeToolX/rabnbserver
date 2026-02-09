@@ -79,6 +79,8 @@ rabnbserver
 │  │  │     │  └── AbnormalStatus.java               # 异常主状态枚举
 │  │  │     ├── exception
 │  │  │     │  ├── BusinessException.java           # 业务异常
+│  │  │     │  ├── ContractCallException.java       # 合约调用异常基类
+│  │  │     │  ├── ChainCallException.java          # 链上调用异常（非 revert）
 │  │  │     │  ├── AionContractException.java       # AION 合约异常（原始+解码信息）
 │  │  │     │  ├── GlobalExceptionHandler.java      # 全局异常处理
 │  │  │     │  └── Abnormal
@@ -155,3 +157,4 @@ rabnbserver
 - 调试日志：异常重试框架包默认不输出 DEBUG，如需开启请手动配置日志级别
 - 异常自愈：err_start_time 为空会自动补当前时间，业务状态成功但 err_status 未同步会自动修复为 2001
 - 异常任务执行：重试、超时升级人工与人工通知任务投递到 taskExecutor 线程池执行
+- AION 异常响应：捕获 AionContractException/ChainCallException 并返回 rawReason/decodedSummary/decodedDetail/errorCode/errorName/contractAddress/functionName/fromAddress/callData 等字段，便于前端与日志定位
