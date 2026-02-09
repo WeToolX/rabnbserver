@@ -13,6 +13,7 @@ import org.web3j.abi.FunctionReturnDecoder;
 import org.web3j.abi.TypeReference;
 import org.web3j.abi.datatypes.Address;
 import org.web3j.abi.datatypes.Bool;
+import org.web3j.abi.datatypes.DynamicArray;
 import org.web3j.abi.datatypes.Function;
 import org.web3j.abi.datatypes.StaticStruct;
 import org.web3j.abi.datatypes.Type;
@@ -152,7 +153,15 @@ public class AionContract extends ContractBase {
         /**
          * 授权额度不足
          */
-        INSUFFICIENT_ALLOWANCE(16, "INSUFFICIENT_ALLOWANCE", "授权额度不足");
+        INSUFFICIENT_ALLOWANCE(16, "INSUFFICIENT_ALLOWANCE", "授权额度不足"),
+        /**
+         * 批量条数超过上限
+         */
+        BATCH_LIMIT_EXCEEDED(17, "BATCH_LIMIT_EXCEEDED", "批量条数超过上限"),
+        /**
+         * 批量参数为空
+         */
+        EMPTY_BATCH(18, "EMPTY_BATCH", "批量参数为空");
 
         /**
          * 错误码值（链上返回的 code）
@@ -672,6 +681,21 @@ public class AionContract extends ContractBase {
     }
 
     /**
+     * 查询批量分发上限
+     *
+     * @return 批量分发上限
+     *         返回类型：BigInteger
+     */
+    public BigInteger getMaxBatchLimit() throws Exception {
+        Function function = buildViewFunction("getMaxBatchLimit", List.of(new TypeReference<Uint256>() {}));
+        List<Type<?>> outputs = callViewFunction(function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (BigInteger) outputs.getFirst().getValue();
+    }
+
+    /**
      * 预估建议最大扫描条数
      *
      * @param perRecordGas 单条 gas
@@ -709,6 +733,23 @@ public class AionContract extends ContractBase {
             return null;
         }
         return (BigInteger) outputs.getFirst().getValue();
+    }
+
+    /**
+     * 查询当前年度剩余额度
+     *
+     * @return 当前年度剩余额度
+     *         返回类型：CurrentYearRemaining（结构体）
+     *         错误码：
+     *         - MINING_NOT_STARTED：挖矿未启动
+     */
+    public CurrentYearRemaining getCurrentYearRemaining() throws Exception {
+        Function function = buildViewFunction("getCurrentYearRemaining", List.of(new TypeReference<CurrentYearRemaining>() {}));
+        List<Type<?>> outputs = callViewFunction(function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (CurrentYearRemaining) outputs.getFirst();
     }
 
     // ===================== 锁仓/订单查询 =====================
@@ -819,6 +860,27 @@ public class AionContract extends ContractBase {
         return (OrderRecord) outputs.getFirst();
     }
 
+    /**
+     * 查询用户是否授权管理员操作
+     *
+     * @param user 用户地址
+     * @param operator 操作员地址（管理员地址）
+     * @return 是否已授权
+     *         返回类型：Boolean
+     */
+    public Boolean isOperatorApproved(String user, String operator) throws Exception {
+        Function function = new Function(
+                "isOperatorApproved",
+                List.of(address(user), address(operator)),
+                List.of(new TypeReference<Bool>() {})
+        );
+        List<Type<?>> outputs = callViewFunction(function);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return (Boolean) outputs.getFirst().getValue();
+    }
+
     // ===================== 写操作 =====================
 
     /**
@@ -877,6 +939,35 @@ public class AionContract extends ContractBase {
         Function function = new Function(
                 "allocateEmissionToLocks",
                 List.of(address(to), uint256(amount), uint8(lockType), uint8(distType), uint256(orderId)),
+                List.of()
+        );
+        return sendAionTransaction(function);
+    }
+
+    /**
+     * 批量分发额度（入仓/直接分发）
+     *
+     * @param items 批量分发数据
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     *         错误码：
+     *         - NOT_ADMIN：非管理员调用
+     *         - MINING_NOT_STARTED：挖矿未启动
+     *         - INVALID_LOCK_TYPE：仓位非法
+     *         - INVALID_DIST_TYPE：分发类型非法
+     *         - ORDER_ID_DUPLICATE：订单号重复
+     *         - ANNUAL_BUDGET_EXCEEDED：年度额度不足
+     *         - ZERO_AMOUNT：数量为 0
+     *         - INVALID_ADDRESS：地址非法（零地址）
+     *         - EMPTY_BATCH：批量参数为空
+     *         - BATCH_LIMIT_EXCEEDED：批量条数超过上限
+     *         - CAP_EXCEEDED：超出总量上限
+     */
+    public TransactionReceipt allocateEmissionToLocksBatch(List<BatchItem> items) throws Exception {
+        DynamicArray<BatchItem> batchItems = new DynamicArray<>(BatchItem.class, items);
+        Function function = new Function(
+                "allocateEmissionToLocksBatch",
+                List.of(batchItems),
                 List.of()
         );
         return sendAionTransaction(function);
@@ -1029,6 +1120,24 @@ public class AionContract extends ContractBase {
     }
 
     /**
+     * 设置批量分发上限（仅管理员）
+     *
+     * @param limit 批量分发上限
+     * @return 交易回执
+     *         返回类型：TransactionReceipt
+     *         错误码：
+     *         - NOT_ADMIN：非管理员调用
+     */
+    public TransactionReceipt setMaxBatchLimit(BigInteger limit) throws Exception {
+        Function function = new Function(
+                "setMaxBatchLimit",
+                List.of(uint256(limit)),
+                List.of()
+        );
+        return sendAionTransaction(function);
+    }
+
+    /**
      * ERC20 授权
      *
      * @param spender 被授权地址
@@ -1081,6 +1190,104 @@ public class AionContract extends ContractBase {
     }
 
     // ===================== 结构体定义 =====================
+
+    /**
+     * 当前年度剩余额度
+     */
+    public static class CurrentYearRemaining extends StaticStruct {
+
+        private final Uint256 yearRemaining;
+        private final Uint256 budget;
+        private final Uint256 minted;
+
+        public CurrentYearRemaining(Uint256 yearRemaining, Uint256 budget, Uint256 minted) {
+            super(yearRemaining, budget, minted);
+            this.yearRemaining = yearRemaining;
+            this.budget = budget;
+            this.minted = minted;
+        }
+
+        /**
+         * @return 当前年度剩余额度
+         */
+        public BigInteger getYearRemaining() {
+            return yearRemaining.getValue();
+        }
+
+        /**
+         * @return 当前年度预算
+         */
+        public BigInteger getBudget() {
+            return budget.getValue();
+        }
+
+        /**
+         * @return 当前年度已分发
+         */
+        public BigInteger getMinted() {
+            return minted.getValue();
+        }
+    }
+
+    /**
+     * 批量分发入参
+     */
+    public static class BatchItem extends StaticStruct {
+
+        private final Address to;
+        private final Uint8 lockType;
+        private final Uint8 distType;
+        private final Uint256 amount;
+        private final Uint256 orderId;
+
+        public BatchItem(Address to, Uint8 lockType, Uint8 distType, Uint256 amount, Uint256 orderId) {
+            super(to, lockType, distType, amount, orderId);
+            this.to = to;
+            this.lockType = lockType;
+            this.distType = distType;
+            this.amount = amount;
+            this.orderId = orderId;
+        }
+
+        public BatchItem(String to, int lockType, int distType, BigInteger amount, BigInteger orderId) {
+            this(address(to), uint8(lockType), uint8(distType), uint256(amount), uint256(orderId));
+        }
+
+        /**
+         * @return 接收地址
+         */
+        public String getTo() {
+            return to.getValue();
+        }
+
+        /**
+         * @return 仓位类型（distType=1 时为 1/2/3；distType=2 时必须为 0）
+         */
+        public BigInteger getLockType() {
+            return lockType.getValue();
+        }
+
+        /**
+         * @return 分发类型（1=入仓，2=直接分发）
+         */
+        public BigInteger getDistType() {
+            return distType.getValue();
+        }
+
+        /**
+         * @return 分发数量（最小单位）
+         */
+        public BigInteger getAmount() {
+            return amount.getValue();
+        }
+
+        /**
+         * @return 订单号
+         */
+        public BigInteger getOrderId() {
+            return orderId.getValue();
+        }
+    }
 
     /**
      * 锁仓统计

@@ -169,6 +169,14 @@ class RabnbserverApplicationTests {
     }
 
     /**
+     * 方法作用：查询批量分发上限
+     */
+    @Test
+    void testAionMaxBatchLimit() throws Exception {
+        log.info("AION 批量分发上限: {}", aionContract.getMaxBatchLimit());
+    }
+
+    /**
      * 方法作用：预估建议最大扫描条数
      */
     @Test
@@ -184,6 +192,21 @@ class RabnbserverApplicationTests {
     @Test
     void testAionTodayMintable() throws Exception {
         log.info("AION 今日最大发行量: {}", aionContract.getTodayMintable());
+    }
+
+    /**
+     * 方法作用：查询当前年度剩余额度
+     */
+    @Test
+    void testAionCurrentYearRemaining() throws Exception {
+        AionContract.CurrentYearRemaining remaining = aionContract.getCurrentYearRemaining();
+        if (remaining == null) {
+            log.info("AION 当前年度剩余额度未返回");
+            return;
+        }
+        log.info("AION 当前年度剩余额度: {}", remaining.getYearRemaining());
+        log.info("AION 当前年度预算: {}", remaining.getBudget());
+        log.info("AION 当前年度已分发: {}", remaining.getMinted());
     }
 
     /**
@@ -317,6 +340,16 @@ class RabnbserverApplicationTests {
     }
 
     /**
+     * 方法作用：查询用户是否授权管理员操作
+     */
+    @Test
+    void testAionIsOperatorApproved() throws Exception {
+        String user = requireTodoString("AION isOperatorApproved user", "TODO:填写地址");
+        String operator = requireTodoString("AION isOperatorApproved operator", "TODO:填写地址");
+        log.info("AION 是否授权({}, {}): {}", user, operator, aionContract.isOperatorApproved(user, operator));
+    }
+
+    /**
      * 方法作用：查询合约自身余额
      */
     @Test
@@ -360,6 +393,25 @@ class RabnbserverApplicationTests {
                 to, amount, lockType, distType, orderId);
         var receipt = aionContract.allocateEmissionToLocks(to, amount, lockType, distType, orderId);
         log.info("分发入仓结果: {}", receipt);
+    }
+
+    /**
+     * 方法作用：批量分发额度（入仓/直接分发）
+     */
+    @Test
+    void testAionAllocateEmissionToLocksBatch() throws Exception {
+        String to = requireTodoString("AION batch to", "TODO:填写地址");
+        BigDecimal amountHuman = requireTodoAmount("AION batch amount", null);
+        int lockType = 1; // TODO: 1/2/3（测试合约为 1/2/4 分钟）
+        int distType = 1; // TODO: 1=入仓 2=直接分发
+        BigInteger orderId = generateOrderId();
+        BigInteger amount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.AION, amountHuman);
+        List<AionContract.BatchItem> items = List.of(
+                new AionContract.BatchItem(to, lockType, distType, amount, orderId)
+        );
+        log.info("批量分发 AION，数量: {}, 订单号: {}", amount, orderId);
+        var receipt = aionContract.allocateEmissionToLocksBatch(items);
+        log.info("批量分发结果: {}", receipt);
     }
 
     /**
@@ -429,6 +481,16 @@ class RabnbserverApplicationTests {
         BigInteger limit = requireTodoRaw("AION setMaxScanLimit", null);
         var receipt = aionContract.setMaxScanLimit(limit);
         log.info("设置扫描上限结果: {}", receipt);
+    }
+
+    /**
+     * 方法作用：设置批量分发上限
+     */
+    @Test
+    void testAionSetMaxBatchLimit() throws Exception {
+        BigInteger limit = requireTodoRaw("AION setMaxBatchLimit", null);
+        var receipt = aionContract.setMaxBatchLimit(limit);
+        log.info("设置批量分发上限结果: {}", receipt);
     }
 
     /**
