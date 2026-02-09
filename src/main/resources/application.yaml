@@ -98,7 +98,7 @@ contract:
   address:
     payment-usdt: '0x600F50058c8cEb5Ad9448c82eA3135d4C5539b12'
     card-nft: '0x2fb88dDfA44168e3EF5a89903b1aF2CfaB236D4b'
-    aion: '0xa008BC1bDDa6dE14F9e834e7A671098C6AA55f40'
+    aion: '0x5Dd576332D4CC12268DDDFD4f1a6fE9A44ef87B4'
 
 # 异常重试框架配置
 abnormal:
