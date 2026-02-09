@@ -66,31 +66,26 @@ public class MinerPurchaseRetryServeImpl extends AbstractAbnormalRetryService {
     @Override
     public boolean checkStatus(Long dataId) {
         UserMiner miner = userMinerMapper.selectById(dataId);
-        return miner != null && Integer.valueOf(1).equals(miner.getStatus());
+        // 核心修正：必须检查 nftBurnStatus 是否已经是 1
+        return miner != null && Integer.valueOf(1).equals(miner.getNftBurnStatus());
     }
 
     @Override
     public boolean ExceptionHandling(Long dataId) {
         UserMiner miner = userMinerMapper.selectById(dataId);
         if (miner == null) return false;
-
         try {
-            // 1. 检查授权
-//            String admin = cardNftContract.getAddress();
-//            if (!cardNftContract.isApprovedForAll(miner.getWalletAddress(), admin)) {
-//                log.warn("用户 {} 未授权卡牌合约", miner.getWalletAddress());
-//                return false;
-//            }
-
-            // 2. 调用合约销毁 (销毁数量1)
             TransactionReceipt receipt = cardNftContract.burnUser(miner.getWalletAddress(), BigInteger.ONE);
+            // ContractBase 及其子类在 status=0x0 时会抛出 ContractCallException
+            // 此处逻辑只需判断 receipt 是否成功到达
             if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
                 miner.setNftBurnStatus(1);
                 userMinerMapper.updateById(miner);
+                log.info("矿机ID: {} 链上补录销毁成功", dataId);
                 return true;
             }
         } catch (Exception e) {
-            log.error("销毁重试异常: {}", e.getMessage());
+            log.error("销毁重试执行异常, ID: {}, 原因: {}", dataId, e.getMessage());
         }
         return false;
     }
