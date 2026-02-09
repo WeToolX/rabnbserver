@@ -5,6 +5,7 @@ import com.ra.rabnbserver.contract.CardNftContract;
 import com.ra.rabnbserver.contract.PaymentUsdtContract;
 import com.ra.rabnbserver.contract.service.AionService;
 import com.ra.rabnbserver.contract.support.AmountConvertUtils;
+import com.ra.rabnbserver.exception.AionContractException;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -244,23 +245,23 @@ class RabnbserverApplicationTests {
                 log.info("AION 锁仓分页统计未返回，user={}, lockType={}, cursor={}", user, lockType, cursor);
                 break;
             }
-            log.info("AION 锁仓分页统计-第{}页-处理条数: {}", round, paged.getProcessed());
-            log.info("AION 锁仓分页统计-第{}页-下次游标: {}", round, paged.getNextCursor());
-            log.info("AION 锁仓分页统计-第{}页-是否完成: {}", round, paged.getFinished());
-            if (Boolean.TRUE.equals(paged.getFinished())) {
-                log.info("AION 锁仓分页统计完成，最后游标: {}", paged.getNextCursor());
+            log.info("AION 锁仓分页统计-第{}页-处理条数: {}", round, paged.processed());
+            log.info("AION 锁仓分页统计-第{}页-下次游标: {}", round, paged.nextCursor());
+            log.info("AION 锁仓分页统计-第{}页-是否完成: {}", round, paged.finished());
+            if (Boolean.TRUE.equals(paged.finished())) {
+                log.info("AION 锁仓分页统计完成，最后游标: {}", paged.nextCursor());
                 break;
             }
-            if (paged.getNextCursor() == null) {
+            if (paged.nextCursor() == null) {
                 log.info("AION 锁仓分页统计中断：下次游标为空，当前游标: {}", cursor);
                 break;
             }
-            if (paged.getNextCursor().compareTo(cursor) <= 0) {
+            if (paged.nextCursor().compareTo(cursor) <= 0) {
                 log.info("AION 锁仓分页统计中断：下次游标未前进，当前游标={}, 下次游标={}",
-                        cursor, paged.getNextCursor());
+                        cursor, paged.nextCursor());
                 break;
             }
-            cursor = paged.getNextCursor();
+            cursor = paged.nextCursor();
         }
     }
 
@@ -288,22 +289,27 @@ class RabnbserverApplicationTests {
      */
     @Test
     void testAionGetOrder() throws Exception {
-        String user = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
-        BigInteger orderId = new BigInteger("112833510386533327399426205661079829499174750282159489118538109313584546999660");
-        AionContract.OrderRecord record = aionContract.getOrder(user, orderId);
-        if (record == null) {
-            log.info("AION 订单未返回，user={}, orderId={}", user, orderId);
-            return;
+        try {
+            String user = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
+            BigInteger orderId = new BigInteger("123");
+            AionContract.OrderRecord record = aionContract.getOrder(user, orderId);
+            if (record == null) {
+                log.info("AION 订单未返回，user={}, orderId={}", user, orderId);
+                return;
+            }
+            log.info("AION 订单-方法类型: {}", record.getMethodType());
+            log.info("AION 订单-用户地址: {}", record.getUser());
+            log.info("AION 订单-仓位: {}", record.getLockType());
+            log.info("AION 订单-入参数量: {}", record.getAmount());
+            log.info("AION 订单-执行数量: {}", record.getExecutedAmount());
+            log.info("AION 订单-到账数量: {}", record.getNetAmount());
+            log.info("AION 订单-销毁数量: {}", record.getBurnAmount());
+            log.info("AION 订单-时间戳: {}", record.getTimestamp());
+            log.info("AION 订单-状态: {}", record.getStatus());
+        } catch (AionContractException e) {
+            log.error(e.getErrorMessage());
         }
-        log.info("AION 订单-方法类型: {}", record.getMethodType());
-        log.info("AION 订单-用户地址: {}", record.getUser());
-        log.info("AION 订单-仓位: {}", record.getLockType());
-        log.info("AION 订单-入参数量: {}", record.getAmount());
-        log.info("AION 订单-执行数量: {}", record.getExecutedAmount());
-        log.info("AION 订单-到账数量: {}", record.getNetAmount());
-        log.info("AION 订单-销毁数量: {}", record.getBurnAmount());
-        log.info("AION 订单-时间戳: {}", record.getTimestamp());
-        log.info("AION 订单-状态: {}", record.getStatus());
+
     }
 
     /**

@@ -141,6 +141,21 @@ public class GlobalExceptionHandler {
         return Result.error(e.getMessage());
     }
 
+    /**
+     * 处理 AION 合约异常（包含原始与解码信息）
+     */
+    @ExceptionHandler(AionContractException.class)
+    public Result<?> handleAionContractException(AionContractException e) {
+        Map<String, Object> detail = new HashMap<>();
+        detail.put("rawReason", e.getRawReason());
+        detail.put("decodedSummary", e.getDecodedSummary());
+        detail.put("decodedDetail", e.getDecodedDetail());
+        detail.put("errorCode", e.getErrorCode());
+        detail.put("errorName", e.getErrorName());
+        log.warn("AION 合约异常: {}, 详情={}", e.getMessage(), detail, e);
+        return Result.error(500, e.getMessage(), detail);
+    }
+
     @ExceptionHandler(NoResourceFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND) // 设置HTTP状态码为404
     public Result<?> handleNoResourceFoundException(NoResourceFoundException e) {

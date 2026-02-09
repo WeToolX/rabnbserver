@@ -637,6 +637,7 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
         * `netAmount=amount`
         * `burnAmount=0`
     * `netAmount` 仅 `claim` 与 `distType=2` 有意义，其它方法为 `0`。
+    * `claimAll` 若本次仅跳过已领取/已兑换记录（游标前进但无可领取），仍会写入订单记录，`executedAmount=0`，并返回 `0`。
 5. `exchangeLockedFragment / exchangeUnlockedFragment` 为**管理员调用**，需校验**用户授权**（链上授权表）。
 6. 授权机制（链上授权表）建议：
     * `mapping(user => mapping(operator => bool))`
@@ -671,6 +672,7 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
 | startMining              | 启动挖矿    | 无          | 无       |
 | settleToCurrentYear      | 年度结算    | 无          | 无       |
 | getTodayMintable         | 今日最大发行量 | 无          | uint256 |
+| getCurrentYearRemaining  | 当前年度剩余额度 | 无          | (yearRemaining, budget, minted) |
 | allocateEmissionToLocks  | 分发额度（入仓/直接） | to, amount, lockType, distType, orderId | 无       |
 | claimAll                 | 管理员代用户领取（指定仓位，含 L1/L2 销毁规则） | user, lockType, orderId | uint256 |
 | exchangeLockedFragment   | 管理员代用户兑换未解锁碎片（指定仓位） | user, lockType, target, orderId | uint256 |
@@ -680,6 +682,7 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
 | previewClaimable         | 领取预览（仅 CLAIM） | user, lockType | 多字段     |
 | getOrder                 | 订单查询（按订单号） | user, orderId | 多字段     |
 | approveOperator          | 授权管理员操作 | operator, approved | 无 |
+| isOperatorApproved       | 查询授权状态 | user, operator | bool |
 | setAdmin                 | 设置管理员（仅部署者） | newAdmin | 无 |
 | setMaxScanLimit          | 设置扫描上限 | limit | 无 |
 | getMaxScanLimit          | 查询扫描上限 | 无 | uint256 |
@@ -718,6 +721,7 @@ function settleToCurrentYear() public;
 
 // 今日最大发行量（只读）
 function getTodayMintable() external view returns (uint256);
+function getCurrentYearRemaining() external view returns (uint256 yearRemaining, uint256 budget, uint256 minted);
 
 // 仅管理员：分发额度（入仓/直接）
 function allocateEmissionToLocks(address to, uint256 amount, uint8 lockType, uint8 distType, uint256 orderId) external;
@@ -751,6 +755,9 @@ function getOrder(address user, uint256 orderId) external view returns (OrderRec
 
 // 用户授权管理员操作
 function approveOperator(address operator, bool approved) external;
+
+// 查询授权状态
+function isOperatorApproved(address user, address operator) external view returns (bool);
 
 // 仅部署者：设置管理员
 function setAdmin(address newAdmin) external;
@@ -799,19 +806,19 @@ struct LockRecord {
 
 // 锁仓统计返回
 struct LockStats {
-    uint256 totalCount;
-    uint256 totalAmount;
-    uint256 claimableCount;
-    uint256 claimableAmount;
-    uint256 unmaturedCount;
-    uint256 unmaturedAmount;
-    uint256 claimedCount;
-    uint256 claimedAmount;
-    uint256 fragmentedCount;
-    uint256 fragmentedAmount;
-    uint256 earliestUnlockTime;
-    uint256 latestUnlockTime;
-    uint256 lastIndex;
+    uint256 totalCount;         // 该仓总记录数
+    uint256 totalAmount;        // 该仓总额度
+    uint256 claimableCount;     // 可领取记录数（已到期且未领取未兑换）
+    uint256 claimableAmount;    // 可领取额度
+    uint256 unmaturedCount;     // 未到期记录数
+    uint256 unmaturedAmount;    // 未到期额度
+    uint256 claimedCount;       // 已领取记录数
+    uint256 claimedAmount;      // 已领取额度
+    uint256 fragmentedCount;    // 已兑换碎片记录数
+    uint256 fragmentedAmount;   // 已兑换碎片额度
+    uint256 earliestUnlockTime; // 最近一次可解锁时间（用于前端倒计时）
+    uint256 latestUnlockTime;   // 最晚解锁时间
+    uint256 lastIndex;          // 最后一条记录索引（便于分页）
 }
 
 // 领取预览返回
@@ -823,6 +830,14 @@ struct PreviewClaimable {
     uint256 nextCursor;  // 下一游标位置（仅计算，不入库）
 }
 
+// 分页锁仓统计返回（本页统计）
+struct LockStatsPaged {
+    LockStats stats;     // 本页统计数据（不是全量）
+    uint256 nextCursor;  // 下一游标位置
+    uint256 processed;   // 本次处理条数
+    bool finished;       // 是否已遍历完成
+}
+
 // 订单类型
 enum OrderMethodType {
     ALLOCATE,         // 分发入仓
@@ -830,6 +845,12 @@ enum OrderMethodType {
     EXCHANGE_LOCKED,  // 兑换未解锁碎片
     EXCHANGE_UNLOCKED // 兑换已解锁碎片
 }
+
+// 方法类型映射关系（枚举默认从 0 开始）
+// 0 = ALLOCATE
+// 1 = CLAIM
+// 2 = EXCHANGE_LOCKED
+// 3 = EXCHANGE_UNLOCKED
 
 // 订单记录
 struct OrderRecord {
@@ -843,6 +864,10 @@ struct OrderRecord {
     uint256 timestamp;          // 执行时间
     uint8 status;               // 执行状态（0=成功，1=失败）
 }
+
+// 订单状态映射关系
+// 0 = 成功
+// 1 = 失败
 ```
 
 ---
@@ -915,10 +940,16 @@ error BizError(uint8 code);
 * `NOT_ADMIN`：非部署者调用
 * `INVALID_ADDRESS`：新管理员为零地址
 
+### setMaxScanLimit
+* `NOT_ADMIN`：非管理员调用
+
 ### settleToCurrentYear
 * `MINING_NOT_STARTED`：挖矿未启动
 
 ### getTodayMintable
+* `MINING_NOT_STARTED`：挖矿未启动
+
+### getCurrentYearRemaining
 * `MINING_NOT_STARTED`：挖矿未启动
 
 ### allocateEmissionToLocks
@@ -936,11 +967,13 @@ error BizError(uint8 code);
 * `MINING_NOT_STARTED`：挖矿未启动
 * `INVALID_LOCK_TYPE`：仓位非法
 * `ORDER_ID_DUPLICATE`：订单号重复
-* `NO_CLAIMABLE`：本次无可领取数量
+* `NO_CLAIMABLE`：本次无可领取数量（且游标未前进）
 * `NOT_AUTHORIZED`：未获得用户授权
 * `CAP_EXCEEDED`：超出总量上限
 
 ### exchangeLockedFragment / exchangeUnlockedFragment
+> `targetAmount` 为最小单位（需乘以 `10^decimals`）。例如 100 个币需传 `100 * 10^18`。
+
 * `NOT_ADMIN`：非管理员调用
 * `MINING_NOT_STARTED`：挖矿未启动
 * `INVALID_LOCK_TYPE`：仓位非法
@@ -957,6 +990,10 @@ error BizError(uint8 code);
 * `MINING_NOT_STARTED`：挖矿未启动
 * `INVALID_LOCK_TYPE`：仓位非法
 
+### getLockStatsPaged
+* `MINING_NOT_STARTED`：挖矿未启动
+* `INVALID_LOCK_TYPE`：仓位非法
+
 ### getOrder
 * `MINING_NOT_STARTED`：挖矿未启动
 * `ORDER_NOT_FOUND`：订单不存在
@@ -965,6 +1002,7 @@ error BizError(uint8 code);
 * 当前未定义业务错误码（如需校验参数可新增错误码）
 
 ---
+
 
 #合约代码
 ```

@@ -1,10 +1,14 @@
 package com.ra.rabnbserver.contract;
 
 import com.ra.rabnbserver.contract.support.BlockchainProperties;
+import com.ra.rabnbserver.exception.AionContractException;
 import com.ra.rabnbserver.contract.support.ContractAddressProperties;
 import com.ra.rabnbserver.contract.support.ContractBase;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.web3j.abi.FunctionEncoder;
+import org.web3j.abi.FunctionReturnDecoder;
 import org.web3j.abi.TypeReference;
 import org.web3j.abi.datatypes.Address;
 import org.web3j.abi.datatypes.Bool;
@@ -14,27 +18,53 @@ import org.web3j.abi.datatypes.Type;
 import org.web3j.abi.datatypes.Utf8String;
 import org.web3j.abi.datatypes.generated.Uint256;
 import org.web3j.abi.datatypes.generated.Uint8;
+import org.web3j.crypto.Hash;
 import org.web3j.protocol.Web3j;
+import org.web3j.protocol.core.DefaultBlockParameterName;
+import org.web3j.protocol.core.methods.request.Transaction;
+import org.web3j.protocol.core.methods.response.EthCall;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
 import org.web3j.tx.TransactionManager;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static com.ra.rabnbserver.contract.support.ContractTypeUtils.address;
 import static com.ra.rabnbserver.contract.support.ContractTypeUtils.uint256;
 import static com.ra.rabnbserver.contract.support.ContractTypeUtils.uint8;
 
 /**
- * AION 合约管理员调用接口（新版 AiRword）
- *
+ * AION 合约管理员调用接口（新版 AiRWord）
  * 说明：
  * - 锁仓周期在测试合约中已调整为分钟级（1/2/4 分钟），lockType 仍为 1/2/3。
  * - 读写接口均基于 air.md ABI 定义实现。
+ * @author qiexi
  */
 @Slf4j(topic = "com.ra.rabnbserver.service.contract")
 @Service
 public class AionContract extends ContractBase {
+
+    /**
+     * BizError 错误码签名
+     */
+    private static final String BIZ_ERROR_SIGNATURE = "BizError(uint8)";
+
+    /**
+     * BizError 选择器（前 4 字节）
+     */
+    private static final String BIZ_ERROR_SELECTOR = Hash.sha3String(BIZ_ERROR_SIGNATURE).substring(0, 10);
+
+    /**
+     * Error(string) 选择器（前 4 字节）
+     */
+    private static final String ERROR_STRING_SELECTOR = "0x08c379a0";
+
+    /**
+     * Hex 数据提取正则
+     */
+    private static final Pattern HEX_PATTERN = Pattern.compile("0x[0-9a-fA-F]+");
 
     private final ContractAddressProperties contractAddressProperties;
 
@@ -53,6 +83,283 @@ public class AionContract extends ContractBase {
         return contractAddressProperties.getAion();
     }
 
+    /**
+     * AION 合约 BizError 错误码定义
+     */
+    @Getter
+    private enum AionBizErrorCode {
+        /**
+         * 非管理员调用
+         */
+        NOT_ADMIN(1, "NOT_ADMIN", "非管理员调用"),
+        /**
+         * 挖矿未启动
+         */
+        MINING_NOT_STARTED(2, "MINING_NOT_STARTED", "挖矿未启动"),
+        /**
+         * 仓位参数非法（非 1/2/3）
+         */
+        INVALID_LOCK_TYPE(3, "INVALID_LOCK_TYPE", "仓位参数非法（非 1/2/3）"),
+        /**
+         * 订单号重复
+         */
+        ORDER_ID_DUPLICATE(4, "ORDER_ID_DUPLICATE", "订单号重复"),
+        /**
+         * 年度额度不足
+         */
+        ANNUAL_BUDGET_EXCEEDED(5, "ANNUAL_BUDGET_EXCEEDED", "年度额度不足"),
+        /**
+         * 可兑换数量不足 target
+         */
+        EXCHANGE_TARGET_NOT_MET(6, "EXCHANGE_TARGET_NOT_MET", "可兑换数量不足 target"),
+        /**
+         * 本次无可领取数量
+         */
+        NO_CLAIMABLE(7, "NO_CLAIMABLE", "本次无可领取数量"),
+        /**
+         * 订单不存在
+         */
+        ORDER_NOT_FOUND(8, "ORDER_NOT_FOUND", "订单不存在"),
+        /**
+         * 未获得用户授权
+         */
+        NOT_AUTHORIZED(9, "NOT_AUTHORIZED", "未获得用户授权"),
+        /**
+         * 分发类型非法（非 1/2）
+         */
+        INVALID_DIST_TYPE(10, "INVALID_DIST_TYPE", "分发类型非法（非 1/2）"),
+        /**
+         * 预估参数非法（如 0）
+         */
+        INVALID_GAS_PARAM(11, "INVALID_GAS_PARAM", "预估参数非法（如 0）"),
+        /**
+         * 数量为 0
+         */
+        ZERO_AMOUNT(12, "ZERO_AMOUNT", "数量为 0"),
+        /**
+         * 地址非法（零地址）
+         */
+        INVALID_ADDRESS(13, "INVALID_ADDRESS", "地址非法（零地址）"),
+        /**
+         * 超出总量上限
+         */
+        CAP_EXCEEDED(14, "CAP_EXCEEDED", "超出总量上限"),
+        /**
+         * 余额不足
+         */
+        INSUFFICIENT_BALANCE(15, "INSUFFICIENT_BALANCE", "余额不足"),
+        /**
+         * 授权额度不足
+         */
+        INSUFFICIENT_ALLOWANCE(16, "INSUFFICIENT_ALLOWANCE", "授权额度不足");
+
+        /**
+         * 错误码值（链上返回的 code）
+         */
+        private final int code;
+        /**
+         * 错误码名称（链上常量名）
+         */
+        private final String errorName;
+        /**
+         * 错误码含义说明（中文）
+         */
+        private final String description;
+
+        AionBizErrorCode(int code, String errorName, String description) {
+            this.code = code;
+            this.errorName = errorName;
+            this.description = description;
+        }
+
+        public static AionBizErrorCode fromCode(int code) {
+            for (AionBizErrorCode value : values()) {
+                if (value.code == code) {
+                    return value;
+                }
+            }
+            return null;
+        }
+    }
+
+    /**
+     * 解析 BizError 错误码
+     *
+     * @param revertReason revert 原始信息
+     * @return 错误码信息
+     */
+    private AionBizErrorCode parseBizError(String revertReason) {
+
+        if (revertReason == null || revertReason.isBlank()) {
+            return null;
+        }
+        String hex = extractHex(revertReason);
+        if (hex == null) {
+            return null;
+        }
+        String normalized = hex.toLowerCase();
+        if (!normalized.startsWith(BIZ_ERROR_SELECTOR)) {
+            return null;
+        }
+        String data = normalized.substring(BIZ_ERROR_SELECTOR.length());
+        if (data.length() < 64) {
+            return null;
+        }
+        String codeHex = data.substring(0, 64);
+        BigInteger code = new BigInteger(codeHex, 16);
+        return AionBizErrorCode.fromCode(code.intValue());
+    }
+
+    /**
+     * 构造合约异常（包含原始与解码信息）
+     *
+     * @param revertReason 原始信息
+     * @return 合约异常
+     */
+    private AionContractException buildContractException(String revertReason) {
+        if (revertReason == null || revertReason.isBlank()) {
+            return new AionContractException("未知原因", revertReason, null, null, null);
+        }
+        AionBizErrorCode code = parseBizError(revertReason);
+        if (code != null) {
+            return new AionContractException(
+                    code.getDescription(),
+                    revertReason,
+                    code.getCode(),
+                    code.getErrorName(),
+                    code.getDescription()
+            );
+        }
+        String errorMessage = parseErrorString(revertReason);
+        if (errorMessage != null && !errorMessage.isBlank()) {
+            return new AionContractException(errorMessage, revertReason, null, "Error(string)", errorMessage);
+        }
+        return new AionContractException("未知原因", revertReason, null, null, null);
+    }
+
+    /**
+     * 解析 Error(string) 错误信息
+     *
+     * @param revertReason revert 原始信息
+     * @return 解析后的错误信息
+     */
+    private String parseErrorString(String revertReason) {
+        String hex = extractHex(revertReason);
+        if (hex == null) {
+            return null;
+        }
+        String normalized = hex.toLowerCase();
+        if (!normalized.startsWith(ERROR_STRING_SELECTOR)) {
+            return null;
+        }
+        String data = normalized.substring(ERROR_STRING_SELECTOR.length());
+        if (data.isBlank()) {
+            return null;
+        }
+        String payload = "0x" + data;
+        try {
+            @SuppressWarnings({"rawtypes", "unchecked"})
+            List<TypeReference<Type>> outputTypes = (List) List.of(new TypeReference<Utf8String>() {});
+            @SuppressWarnings({"rawtypes", "unchecked"})
+            List<Type<?>> decoded = (List) FunctionReturnDecoder.decode(payload, outputTypes);
+            if (decoded.isEmpty()) {
+                return null;
+            }
+            return decoded.getFirst().getValue().toString();
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    /**
+     * 提取 Hex 字符串
+     *
+     * @param value 原始内容
+     * @return Hex 字符串
+     */
+    private String extractHex(String value) {
+        Matcher matcher = HEX_PATTERN.matcher(value);
+        if (matcher.find()) {
+            return matcher.group();
+        }
+        return null;
+    }
+
+    /**
+     * 只读调用（解析 BizError）
+     *
+     * @param function 函数
+     * @return 解码结果
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private List<Type<?>> callViewFunction(Function function) throws Exception {
+        String data = FunctionEncoder.encode(function);
+        String from = transactionManager.getFromAddress();
+        Transaction transaction = Transaction.createEthCallTransaction(from, getAddress(), data);
+        EthCall response = web3j.ethCall(transaction, DefaultBlockParameterName.LATEST).send();
+        if (response.isReverted()) {
+            throw buildContractException(response.getRevertReason());
+        }
+        return (List) FunctionReturnDecoder.decode(response.getValue(), function.getOutputParameters());
+    }
+
+    /**
+     * 写操作调用（解析 BizError）
+     *
+     * @param function 函数
+     * @return 交易回执
+     */
+    private TransactionReceipt sendAionTransaction(Function function) throws Exception {
+        TransactionReceipt receipt = sendTransaction(getAddress(), function);
+        if (receipt == null) {
+            return null;
+        }
+        if (isReceiptFailed(receipt)) {
+            String reason = receipt.getRevertReason();
+            if (reason == null || reason.isBlank()) {
+                reason = queryRevertReason(function);
+            }
+            throw buildContractException(reason);
+        }
+        return receipt;
+    }
+
+    /**
+     * 判断交易回执是否失败
+     *
+     * @param receipt 回执
+     * @return 是否失败
+     */
+    private boolean isReceiptFailed(TransactionReceipt receipt) {
+        String status = receipt.getStatus();
+        if (status == null || status.isBlank()) {
+            return false;
+        }
+        try {
+            String clean = status.startsWith("0x") ? status.substring(2) : status;
+            return new BigInteger(clean, 16).equals(BigInteger.ZERO);
+        } catch (NumberFormatException ex) {
+            return "0x0".equalsIgnoreCase(status);
+        }
+    }
+
+    /**
+     * 通过 eth_call 获取 revert 信息
+     *
+     * @param function 函数
+     * @return revert 原始信息
+     */
+    private String queryRevertReason(Function function) throws Exception {
+        String data = FunctionEncoder.encode(function);
+        String from = transactionManager.getFromAddress();
+        Transaction transaction = Transaction.createEthCallTransaction(from, getAddress(), data);
+        EthCall response = web3j.ethCall(transaction, DefaultBlockParameterName.LATEST).send();
+        if (response.isReverted()) {
+            return response.getRevertReason();
+        }
+        return null;
+    }
+
     // ===================== ERC20 基础读取 =====================
 
     /**
@@ -63,11 +370,11 @@ public class AionContract extends ContractBase {
      */
     public String name() throws Exception {
         Function function = buildViewFunction("name", List.of(new TypeReference<Utf8String>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return outputs.get(0).getValue().toString();
+        return outputs.getFirst().getValue().toString();
     }
 
     /**
@@ -78,11 +385,11 @@ public class AionContract extends ContractBase {
      */
     public String symbol() throws Exception {
         Function function = buildViewFunction("symbol", List.of(new TypeReference<Utf8String>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return outputs.get(0).getValue().toString();
+        return outputs.getFirst().getValue().toString();
     }
 
     /**
@@ -93,11 +400,11 @@ public class AionContract extends ContractBase {
      */
     public BigInteger decimals() throws Exception {
         Function function = buildViewFunction("decimals", List.of(new TypeReference<Uint8>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     /**
@@ -108,11 +415,11 @@ public class AionContract extends ContractBase {
      */
     public BigInteger totalSupply() throws Exception {
         Function function = buildViewFunction("totalSupply", List.of(new TypeReference<Uint256>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     /**
@@ -128,11 +435,11 @@ public class AionContract extends ContractBase {
                 List.of(address(account)),
                 List.of(new TypeReference<Uint256>() {})
         );
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     /**
@@ -149,11 +456,11 @@ public class AionContract extends ContractBase {
                 List.of(address(owner), address(spender)),
                 List.of(new TypeReference<Uint256>() {})
         );
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     /**
@@ -164,11 +471,11 @@ public class AionContract extends ContractBase {
      */
     public String owner() throws Exception {
         Function function = buildViewFunction("owner", List.of(new TypeReference<Address>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return outputs.get(0).getValue().toString();
+        return outputs.getFirst().getValue().toString();
     }
 
     /**
@@ -179,11 +486,11 @@ public class AionContract extends ContractBase {
      */
     public String admin() throws Exception {
         Function function = buildViewFunction("admin", List.of(new TypeReference<Address>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return outputs.get(0).getValue().toString();
+        return outputs.getFirst().getValue().toString();
     }
 
     /**
@@ -194,11 +501,11 @@ public class AionContract extends ContractBase {
      */
     public String community() throws Exception {
         Function function = buildViewFunction("community", List.of(new TypeReference<Address>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return outputs.get(0).getValue().toString();
+        return outputs.getFirst().getValue().toString();
     }
 
     /**
@@ -209,11 +516,11 @@ public class AionContract extends ContractBase {
      */
     public BigInteger cap() throws Exception {
         Function function = buildViewFunction("CAP", List.of(new TypeReference<Uint256>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     /**
@@ -224,11 +531,11 @@ public class AionContract extends ContractBase {
      */
     public BigInteger miningStart() throws Exception {
         Function function = buildViewFunction("miningStart", List.of(new TypeReference<Uint256>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     /**
@@ -239,11 +546,11 @@ public class AionContract extends ContractBase {
      */
     public BigInteger lastSettledYear() throws Exception {
         Function function = buildViewFunction("lastSettledYear", List.of(new TypeReference<Uint256>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     /**
@@ -254,11 +561,11 @@ public class AionContract extends ContractBase {
      */
     public BigInteger yearBudget() throws Exception {
         Function function = buildViewFunction("yearBudget", List.of(new TypeReference<Uint256>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     /**
@@ -269,11 +576,11 @@ public class AionContract extends ContractBase {
      */
     public BigInteger yearMinted() throws Exception {
         Function function = buildViewFunction("yearMinted", List.of(new TypeReference<Uint256>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     /**
@@ -284,11 +591,11 @@ public class AionContract extends ContractBase {
      */
     public BigInteger remainingCap() throws Exception {
         Function function = buildViewFunction("remainingCap", List.of(new TypeReference<Uint256>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     /**
@@ -299,11 +606,11 @@ public class AionContract extends ContractBase {
      */
     public BigInteger yearStartTs() throws Exception {
         Function function = buildViewFunction("yearStartTs", List.of(new TypeReference<Uint256>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     /**
@@ -314,11 +621,11 @@ public class AionContract extends ContractBase {
      */
     public BigInteger getMaxScanLimit() throws Exception {
         Function function = buildViewFunction("getMaxScanLimit", List.of(new TypeReference<Uint256>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     /**
@@ -328,6 +635,8 @@ public class AionContract extends ContractBase {
      * @param fixedGas     固定 gas
      * @return 建议最大条数
      *         返回类型：BigInteger
+     *         错误码：
+     *         - INVALID_GAS_PARAM：预估参数非法（如 0）
      */
     public BigInteger estimateMaxCount(BigInteger perRecordGas, BigInteger fixedGas) throws Exception {
         Function function = new Function(
@@ -335,11 +644,11 @@ public class AionContract extends ContractBase {
                 List.of(uint256(perRecordGas), uint256(fixedGas)),
                 List.of(new TypeReference<Uint256>() {})
         );
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     /**
@@ -347,14 +656,16 @@ public class AionContract extends ContractBase {
      *
      * @return 今日最大发行量
      *         返回类型：BigInteger
+     *         错误码：
+     *         - MINING_NOT_STARTED：挖矿未启动
      */
     public BigInteger getTodayMintable() throws Exception {
         Function function = buildViewFunction("getTodayMintable", List.of(new TypeReference<Uint256>() {}));
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (BigInteger) outputs.get(0).getValue();
+        return (BigInteger) outputs.getFirst().getValue();
     }
 
     // ===================== 锁仓/订单查询 =====================
@@ -366,6 +677,9 @@ public class AionContract extends ContractBase {
      * @param lockType 仓位类型（1/2/3）
      * @return 锁仓统计
      *         返回类型：LockStats（结构体）
+     *         错误码：
+     *         - MINING_NOT_STARTED：挖矿未启动
+     *         - INVALID_LOCK_TYPE：仓位参数非法（非 1/2/3）
      */
     public LockStats getLockStats(String user, int lockType) throws Exception {
         Function function = new Function(
@@ -373,11 +687,11 @@ public class AionContract extends ContractBase {
                 List.of(address(user), uint8(lockType)),
                 List.of(new TypeReference<LockStats>() {})
         );
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (LockStats) outputs.get(0);
+        return (LockStats) outputs.getFirst();
     }
 
     /**
@@ -388,6 +702,9 @@ public class AionContract extends ContractBase {
      * @param cursor 游标
      * @return 分页统计结果
      *         返回类型：LockStatsPaged
+     *         错误码：
+     *         - MINING_NOT_STARTED：挖矿未启动
+     *         - INVALID_LOCK_TYPE：仓位参数非法（非 1/2/3）
      */
     public LockStatsPaged getLockStatsPaged(String user, int lockType, BigInteger cursor) throws Exception {
         Function function = new Function(
@@ -400,7 +717,7 @@ public class AionContract extends ContractBase {
                         new TypeReference<Bool>() {}
                 )
         );
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.size() < 4) {
             return null;
         }
@@ -418,6 +735,9 @@ public class AionContract extends ContractBase {
      * @param lockType 仓位类型（1/2/3）
      * @return 预览结果
      *         返回类型：PreviewClaimable（结构体）
+     *         错误码：
+     *         - MINING_NOT_STARTED：挖矿未启动
+     *         - INVALID_LOCK_TYPE：仓位参数非法（非 1/2/3）
      */
     public PreviewClaimable previewClaimable(String user, int lockType) throws Exception {
         Function function = new Function(
@@ -425,11 +745,11 @@ public class AionContract extends ContractBase {
                 List.of(address(user), uint8(lockType)),
                 List.of(new TypeReference<PreviewClaimable>() {})
         );
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (PreviewClaimable) outputs.get(0);
+        return (PreviewClaimable) outputs.getFirst();
     }
 
     /**
@@ -439,6 +759,9 @@ public class AionContract extends ContractBase {
      * @param orderId 订单号
      * @return 订单记录
      *         返回类型：OrderRecord（结构体）
+     *         错误码：
+     *         - MINING_NOT_STARTED：挖矿未启动
+     *         - ORDER_NOT_FOUND：订单不存在
      */
     public OrderRecord getOrder(String user, BigInteger orderId) throws Exception {
         Function function = new Function(
@@ -446,11 +769,11 @@ public class AionContract extends ContractBase {
                 List.of(address(user), uint256(orderId)),
                 List.of(new TypeReference<OrderRecord>() {})
         );
-        List<Type> outputs = callFunction(getAddress(), function);
+        List<Type<?>> outputs = callViewFunction(function);
         if (outputs.isEmpty()) {
             return null;
         }
-        return (OrderRecord) outputs.get(0);
+        return (OrderRecord) outputs.getFirst();
     }
 
     // ===================== 写操作 =====================
@@ -460,10 +783,12 @@ public class AionContract extends ContractBase {
      *
      * @return 交易回执
      *         返回类型：TransactionReceipt
+     *         错误码：
+     *         - NOT_ADMIN：非管理员调用
      */
     public TransactionReceipt startMining() throws Exception {
         Function function = new Function("startMining", List.of(), List.of());
-        return sendTransaction(getAddress(), function);
+        return sendAionTransaction(function);
     }
 
     /**
@@ -471,10 +796,12 @@ public class AionContract extends ContractBase {
      *
      * @return 交易回执
      *         返回类型：TransactionReceipt
+     *         错误码：
+     *         - MINING_NOT_STARTED：挖矿未启动
      */
     public TransactionReceipt settleToCurrentYear() throws Exception {
         Function function = new Function("settleToCurrentYear", List.of(), List.of());
-        return sendTransaction(getAddress(), function);
+        return sendAionTransaction(function);
     }
 
     /**
@@ -487,6 +814,15 @@ public class AionContract extends ContractBase {
      * @param orderId 订单号
      * @return 交易回执
      *         返回类型：TransactionReceipt
+     *         错误码：
+     *         - NOT_ADMIN：非管理员调用
+     *         - MINING_NOT_STARTED：挖矿未启动
+     *         - INVALID_LOCK_TYPE：仓位非法
+     *         - INVALID_DIST_TYPE：分发类型非法
+     *         - ORDER_ID_DUPLICATE：订单号重复
+     *         - ANNUAL_BUDGET_EXCEEDED：年度额度不足
+     *         - ZERO_AMOUNT：数量为 0
+     *         - CAP_EXCEEDED：超出总量上限
      */
     public TransactionReceipt allocateEmissionToLocks(
             String to,
@@ -500,7 +836,7 @@ public class AionContract extends ContractBase {
                 List.of(address(to), uint256(amount), uint8(lockType), uint8(distType), uint256(orderId)),
                 List.of()
         );
-        return sendTransaction(getAddress(), function);
+        return sendAionTransaction(function);
     }
 
     /**
@@ -511,6 +847,14 @@ public class AionContract extends ContractBase {
      * @param orderId 订单号
      * @return 交易回执
      *         返回类型：TransactionReceipt
+     *         错误码：
+     *         - NOT_ADMIN：非管理员调用
+     *         - MINING_NOT_STARTED：挖矿未启动
+     *         - INVALID_LOCK_TYPE：仓位非法
+     *         - ORDER_ID_DUPLICATE：订单号重复
+     *         - NO_CLAIMABLE：本次无可领取数量
+     *         - NOT_AUTHORIZED：未获得用户授权
+     *         - CAP_EXCEEDED：超出总量上限
      */
     public TransactionReceipt claimAll(String user, int lockType, BigInteger orderId) throws Exception {
         Function function = new Function(
@@ -518,7 +862,7 @@ public class AionContract extends ContractBase {
                 List.of(address(user), uint8(lockType), uint256(orderId)),
                 List.of()
         );
-        return sendTransaction(getAddress(), function);
+        return sendAionTransaction(function);
     }
 
     /**
@@ -530,6 +874,14 @@ public class AionContract extends ContractBase {
      * @param orderId 订单号
      * @return 交易回执
      *         返回类型：TransactionReceipt
+     *         错误码：
+     *         - NOT_ADMIN：非管理员调用
+     *         - MINING_NOT_STARTED：挖矿未启动
+     *         - INVALID_LOCK_TYPE：仓位非法
+     *         - ORDER_ID_DUPLICATE：订单号重复
+     *         - EXCHANGE_TARGET_NOT_MET：可兑换数量不足 target
+     *         - NOT_AUTHORIZED：未获得用户授权
+     *         - CAP_EXCEEDED：超出总量上限
      */
     public TransactionReceipt exchangeLockedFragment(
             String user,
@@ -542,7 +894,7 @@ public class AionContract extends ContractBase {
                 List.of(address(user), uint8(lockType), uint256(targetAmount), uint256(orderId)),
                 List.of()
         );
-        return sendTransaction(getAddress(), function);
+        return sendAionTransaction(function);
     }
 
     /**
@@ -554,6 +906,14 @@ public class AionContract extends ContractBase {
      * @param orderId 订单号
      * @return 交易回执
      *         返回类型：TransactionReceipt
+     *         错误码：
+     *         - NOT_ADMIN：非管理员调用
+     *         - MINING_NOT_STARTED：挖矿未启动
+     *         - INVALID_LOCK_TYPE：仓位非法
+     *         - ORDER_ID_DUPLICATE：订单号重复
+     *         - EXCHANGE_TARGET_NOT_MET：可兑换数量不足 target
+     *         - NOT_AUTHORIZED：未获得用户授权
+     *         - CAP_EXCEEDED：超出总量上限
      */
     public TransactionReceipt exchangeUnlockedFragment(
             String user,
@@ -566,7 +926,7 @@ public class AionContract extends ContractBase {
                 List.of(address(user), uint8(lockType), uint256(targetAmount), uint256(orderId)),
                 List.of()
         );
-        return sendTransaction(getAddress(), function);
+        return sendAionTransaction(function);
     }
 
     /**
@@ -576,6 +936,8 @@ public class AionContract extends ContractBase {
      * @param approved 是否授权
      * @return 交易回执
      *         返回类型：TransactionReceipt
+     *         错误码：
+     *         - 文档未定义业务错误码（如需校验参数可新增）
      */
     public TransactionReceipt approveOperator(String operator, boolean approved) throws Exception {
         Function function = new Function(
@@ -583,7 +945,7 @@ public class AionContract extends ContractBase {
                 List.of(address(operator), new Bool(approved)),
                 List.of()
         );
-        return sendTransaction(getAddress(), function);
+        return sendAionTransaction(function);
     }
 
     /**
@@ -592,6 +954,9 @@ public class AionContract extends ContractBase {
      * @param newAdmin 新管理员地址
      * @return 交易回执
      *         返回类型：TransactionReceipt
+     *         错误码：
+     *         - NOT_ADMIN：非部署者调用
+     *         - INVALID_ADDRESS：新管理员为零地址
      */
     public TransactionReceipt setAdmin(String newAdmin) throws Exception {
         Function function = new Function(
@@ -599,7 +964,7 @@ public class AionContract extends ContractBase {
                 List.of(address(newAdmin)),
                 List.of()
         );
-        return sendTransaction(getAddress(), function);
+        return sendAionTransaction(function);
     }
 
     /**
@@ -608,6 +973,8 @@ public class AionContract extends ContractBase {
      * @param limit 扫描上限
      * @return 交易回执
      *         返回类型：TransactionReceipt
+     *         错误码：
+     *         - NOT_ADMIN：非管理员调用
      */
     public TransactionReceipt setMaxScanLimit(BigInteger limit) throws Exception {
         Function function = new Function(
@@ -615,7 +982,7 @@ public class AionContract extends ContractBase {
                 List.of(uint256(limit)),
                 List.of()
         );
-        return sendTransaction(getAddress(), function);
+        return sendAionTransaction(function);
     }
 
     /**
@@ -632,7 +999,7 @@ public class AionContract extends ContractBase {
                 List.of(address(spender), uint256(amount)),
                 List.of()
         );
-        return sendTransaction(getAddress(), function);
+        return sendAionTransaction(function);
     }
 
     /**
@@ -649,7 +1016,7 @@ public class AionContract extends ContractBase {
                 List.of(address(to), uint256(amount)),
                 List.of()
         );
-        return sendTransaction(getAddress(), function);
+        return sendAionTransaction(function);
     }
 
     /**
@@ -667,7 +1034,7 @@ public class AionContract extends ContractBase {
                 List.of(address(from), address(to), uint256(amount)),
                 List.of()
         );
-        return sendTransaction(getAddress(), function);
+        return sendAionTransaction(function);
     }
 
     // ===================== 结构体定义 =====================
@@ -994,47 +1361,17 @@ public class AionContract extends ContractBase {
 
     /**
      * 锁仓统计分页结果
+     *
+     * @param stats      -- GETTER --
+     *                   锁仓统计
+     * @param nextCursor -- GETTER --
+     *                   下次游标
+     * @param processed  -- GETTER --
+     *                   本次处理条数
+     * @param finished   -- GETTER --
+     *                   是否完成
      */
-    public static class LockStatsPaged {
+        public record LockStatsPaged(LockStats stats, BigInteger nextCursor, BigInteger processed, Boolean finished) {
 
-        private final LockStats stats;
-        private final BigInteger nextCursor;
-        private final BigInteger processed;
-        private final Boolean finished;
-
-        public LockStatsPaged(LockStats stats, BigInteger nextCursor, BigInteger processed, Boolean finished) {
-            this.stats = stats;
-            this.nextCursor = nextCursor;
-            this.processed = processed;
-            this.finished = finished;
-        }
-
-        /**
-         * @return 锁仓统计
-         */
-        public LockStats getStats() {
-            return stats;
-        }
-
-        /**
-         * @return 下次游标
-         */
-        public BigInteger getNextCursor() {
-            return nextCursor;
-        }
-
-        /**
-         * @return 本次处理条数
-         */
-        public BigInteger getProcessed() {
-            return processed;
-        }
-
-        /**
-         * @return 是否完成
-         */
-        public Boolean getFinished() {
-            return finished;
-        }
     }
 }
