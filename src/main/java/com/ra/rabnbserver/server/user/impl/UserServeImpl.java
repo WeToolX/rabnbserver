@@ -58,9 +58,6 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
             if (parent == null) {
                 throw new BusinessException("邀请人地址无效，请核对后重试");
             }
-            if (walletAddress.equalsIgnoreCase(referrerWalletAddress)) {
-                throw new BusinessException("不能邀请自己");
-            }
         }
 
         // 2. 初始化用户数据
