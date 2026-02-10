@@ -33,6 +33,14 @@ public class MinerQueryDTO {
      */
     private String minerId;
 
+    /**
+     * 到期状态筛选
+     * 1: 已到期 (超过30天未缴费)
+     * 2: 未到期 (剩余时间 > 5天)
+     * 3: 即将到期 (剩余时间 <= 5天 且 未过期)
+     */
+    private Integer expiryStatus;
+
     // 时间范围筛选（针对矿机创建时间）
     private String startTime;
     private String endTime;

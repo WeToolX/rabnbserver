@@ -1,13 +1,16 @@
 package com.ra.rabnbserver.pojo;
 
+import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.ra.rabnbserver.annotation.ColumnComment;
 import com.ra.rabnbserver.annotation.ColumnType;
 import com.ra.rabnbserver.exception.Abnormal.model.AbnormalBaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @EqualsAndHashCode(callSuper = true)
 @Data
@@ -103,4 +106,12 @@ public class MinerProfitRecord extends AbnormalBaseEntity {
     @TableField("actual_order_id")
     @ColumnComment("实际生成的订单号(传给合约)")
     private Long actualOrderId;
+
+    /**
+     * 实际收益发放成功时间
+     */
+    @TableField("payout_time")
+    @ColumnComment("实际收益发放成功时间")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime payoutTime;
 }

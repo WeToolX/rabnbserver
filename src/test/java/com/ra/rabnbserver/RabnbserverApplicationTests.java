@@ -10,11 +10,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.web3j.protocol.core.methods.response.TransactionReceipt;
 import org.web3j.utils.Numeric;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.security.SecureRandom;
+import java.sql.BatchUpdateException;
 import java.util.List;
 
 @SpringBootTest
@@ -426,7 +428,7 @@ class RabnbserverApplicationTests {
 
 
     /**
-     * 方法作用：结构化压力测试 - 900 条数据单笔发送
+     * 方法作用：结构化压力测试 - 900 条数据批量发送（适配新版 BatchData 结构）
      * 结构：地址(大循环) -> 类型(中循环) -> 条数(小循环)
      */
     @Test
@@ -438,55 +440,99 @@ class RabnbserverApplicationTests {
                 "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF"
         );
         int[] lockTypes = {1, 2, 3};
-        int countPerConfig = 80; // 小循环条数
-        int distType = 1;         // 1=入仓
+        int countPerConfig = 40; // 调低此数值以测试界限 (例如 50 * 9 = 450 条)
 
-        BigDecimal amountPerRecord = new BigDecimal("10"); // 每条分发的 AION 数量
-        BigInteger rawAmount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.AION, amountPerRecord);
+        BigDecimal amountPerRecord = new BigDecimal("10");
+        BigInteger unitDivisor = BigInteger.valueOf(10).pow(15);
+        BigInteger rawAmountWei = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.AION, amountPerRecord);
+        BigInteger chainAmount = rawAmountWei.divide(unitDivisor);
 
-        // 2. 构造数据列表 (三层循环)
-        List<AionContract.BatchItem> allItems = new java.util.ArrayList<>();
+        // 2. 构造数据列表
+        List<String> tos = new java.util.ArrayList<>();
+        List<AionContract.BatchData> dataList = new java.util.ArrayList<>();
 
-        log.info("开始构造数据包...");
+        log.info("开始构造新版 BatchData 数据包...");
 
-        // 第一层：地址大循环
         for (String address : targetAddresses) {
-            log.info("  -> 大循环：处理地址 {}", address);
-
-            // 第二层：类型中循环
             for (int lockType : lockTypes) {
-                log.info("    -> 中循环：处理仓位类型 {}", lockType);
-
-                // 第三层：写入数据小循环
                 for (int i = 0; i < countPerConfig; i++) {
-                    // 构造并添加单条分发数据
-                    allItems.add(new AionContract.BatchItem(
-                            address,         // 地址
-                            lockType,        // 类型
-                            distType,        // 分发方式
-                            rawAmount,       // 数量
-                            generateOrderId()// 唯一订单号
+                    String originalOrderId = String.valueOf(System.nanoTime() + i);
+                    String md5Hex = cn.hutool.crypto.SecureUtil.md5(originalOrderId);
+                    BigInteger chainOrderId = new BigInteger(md5Hex.substring(0, 8), 16);
+
+                    BigInteger l1Amt = BigInteger.ZERO, l1Id = BigInteger.ZERO;
+                    BigInteger l2Amt = BigInteger.ZERO, l2Id = BigInteger.ZERO;
+                    BigInteger l3Amt = BigInteger.ZERO, l3Id = BigInteger.ZERO;
+                    BigInteger directAmt = BigInteger.ZERO, directId = BigInteger.ZERO;
+
+                    switch (lockType) {
+                        case 1 -> { l1Amt = chainAmount; l1Id = chainOrderId; }
+                        case 2 -> { l2Amt = chainAmount; l2Id = chainOrderId; }
+                        case 3 -> { l3Amt = chainAmount; l3Id = chainOrderId; }
+                        case 0 -> { directAmt = chainAmount; directId = chainOrderId; }
+                    }
+
+                    tos.add(address);
+                    dataList.add(new AionContract.BatchData(
+                            l1Amt, l1Id, l2Amt, l2Id, l3Amt, l3Id, directAmt, directId
                     ));
                 }
             }
         }
 
-        log.info("数据构造完成，总条数: {}", allItems.size());
+        log.info("数据构造完成，待发送地址数: {}, BatchData数: {}", tos.size(), dataList.size());
 
-        // 3. 发送单笔交易
+        // ==========================================
+        // 【新增】字节长度校验逻辑
+        // ==========================================
         try {
-            log.info("正在发送批量分发交易...");
+            // 手动构造 Web3j Function 对象以模拟编码
+            org.web3j.abi.datatypes.Function function = new org.web3j.abi.datatypes.Function(
+                    "allocateEmissionToLocksBatch",
+                    java.util.Arrays.asList(
+                            new org.web3j.abi.datatypes.DynamicArray<>(
+                                    org.web3j.abi.datatypes.Address.class,
+                                    tos.stream().map(org.web3j.abi.datatypes.Address::new).collect(java.util.stream.Collectors.toList())
+                            ),
+                            new org.web3j.abi.datatypes.DynamicArray<>(
+                                    AionContract.BatchData.class,
+                                    dataList
+                            )
+                    ),
+                    java.util.Collections.emptyList()
+            );
 
-            var receipt = aionContract.allocateEmissionToLocksBatch(allItems);
+            String encodedFunction = org.web3j.abi.FunctionEncoder.encode(function);
+            int txSizeBytes = (encodedFunction.length() - 2) / 2; // 除去 0x，每两个 hex 字符为一个字节
+            int limit = 131072; // 节点硬限制 128KB
 
-            if (receipt.isStatusOK()) {
+            log.info("【字节校验】当前交易预估大小: {} bytes, 限制: {} bytes", txSizeBytes, limit);
+
+            if (txSizeBytes > limit) {
+                log.error("【拦截】交易数据量过大 ({} bytes)，将导致 Oversized Data 错误！请调小 countPerConfig。", txSizeBytes);
+                return; // 直接结束测试，不调用链上接口
+            }
+        } catch (Exception e) {
+            log.warn("【字节校验】编码计算失败，跳过校验继续执行。Reason: {}", e.getMessage());
+        }
+        // ==========================================
+
+        // 3. 发送交易
+        try {
+            log.info("正在发送新版批量分发交易...");
+            TransactionReceipt receipt = aionContract.allocateEmissionToLocksBatch(tos, dataList);
+
+            if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
                 log.info("【成功】批量分发完成！Hash: {}", receipt.getTransactionHash());
                 log.info("总计消耗 Gas: {}", receipt.getGasUsed());
             } else {
-                log.error("【失败】交易执行回滚。Hash: {}", receipt.getTransactionHash());
+                String reason = receipt != null ? receipt.getRevertReason() : "No Receipt";
+                log.error("【失败】交易执行回退。Reason: {}", reason);
             }
+        } catch (AionContractException e) {
+            log.error("【合约异常】Code: {}, Name: {}, Detail: {}", e.getErrorCode(), e.getErrorName(), e.getDecodedDetail());
         } catch (Exception e) {
-            log.error("【异常】执行批量分发时发生错误: {}", e.getMessage());
+            log.error("【系统异常】", e);
         }
     }
 

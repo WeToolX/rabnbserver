@@ -25,9 +25,9 @@ import java.math.BigInteger;
         statusField = "payout_status", // 监控这个业务状态
         successValue = "1",
         failValue = "0",
-        minIntervalSeconds = 120,
-        timeoutSeconds = 1800,
-        maxRetryCount = 5,
+        minIntervalSeconds = 60,
+        timeoutSeconds = 600,
+        maxRetryCount = 10,
         manualRemindIntervalSeconds = 10
 )
 public class MinerProfitRetryServeImpl extends AbstractAbnormalRetryService {

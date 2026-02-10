@@ -18,7 +18,7 @@ import java.math.BigInteger;
         table = "user_miner",
         serviceName = "矿机购买卡牌销毁",
         idField = "id",
-        userField = "walletAddress",
+        userField = "wallet_address",
         statusField = "nft_burn_status", // 监控这个业务状态
         successValue = "1",
         failValue = "0",
