@@ -5,6 +5,7 @@ import com.ra.rabnbserver.exception.AionContractException;
 import com.ra.rabnbserver.exception.ChainCallException;
 import com.ra.rabnbserver.contract.support.ContractAddressProperties;
 import com.ra.rabnbserver.contract.support.ContractBase;
+import com.ra.rabnbserver.contract.support.ContractTypeUtils;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ import org.web3j.abi.datatypes.Function;
 import org.web3j.abi.datatypes.StaticStruct;
 import org.web3j.abi.datatypes.Type;
 import org.web3j.abi.datatypes.Utf8String;
+import org.web3j.abi.datatypes.generated.StaticArray2;
 import org.web3j.abi.datatypes.generated.Uint256;
 import org.web3j.abi.datatypes.generated.Uint8;
 import org.web3j.crypto.Hash;
@@ -161,7 +163,11 @@ public class AionContract extends ContractBase {
         /**
          * 批量参数为空
          */
-        EMPTY_BATCH(18, "EMPTY_BATCH", "批量参数为空");
+        EMPTY_BATCH(18, "EMPTY_BATCH", "批量参数为空"),
+        /**
+         * 数组长度不一致
+         */
+        LENGTH_MISMATCH(19, "LENGTH_MISMATCH", "数组长度不一致");
 
         /**
          * 错误码值（链上返回的 code）
@@ -962,37 +968,44 @@ public class AionContract extends ContractBase {
     /**
      * 批量分发额度（入仓/直接分发）
      *
-     * @param items 批量分发数据
+     * @param tos 地址列表
+     * @param dataList 批量数据列表（与地址一一对应）
      * @return 交易回执
      *         返回类型：TransactionReceipt
      *         错误码：
      *         - NOT_ADMIN：非管理员调用
      *         - MINING_NOT_STARTED：挖矿未启动
-     *         - INVALID_LOCK_TYPE：仓位非法
-     *         - INVALID_DIST_TYPE：分发类型非法
      *         - ORDER_ID_DUPLICATE：订单号重复
      *         - ANNUAL_BUDGET_EXCEEDED：年度额度不足
      *         - ZERO_AMOUNT：数量为 0
      *         - INVALID_ADDRESS：地址非法（零地址）
      *         - EMPTY_BATCH：批量参数为空
      *         - BATCH_LIMIT_EXCEEDED：批量条数超过上限
+     *         - LENGTH_MISMATCH：数组长度不一致
      *         - CAP_EXCEEDED：超出总量上限
      */
-    public TransactionReceipt allocateEmissionToLocksBatch(List<BatchItem> items) throws Exception {
-        if (items == null || items.isEmpty()) {
+    public TransactionReceipt allocateEmissionToLocksBatch(List<String> tos, List<BatchData> dataList) throws Exception {
+        if (tos == null || tos.isEmpty() || dataList == null || dataList.isEmpty()) {
             throw new IllegalArgumentException("批量分发参数为空");
+        }
+        if (tos.size() != dataList.size()) {
+            throw new IllegalArgumentException("批量分发数组长度不一致: tos=" + tos.size() + ", dataList=" + dataList.size());
         }
         BigInteger maxBatchLimit = getMaxBatchLimit();
         if (maxBatchLimit != null && maxBatchLimit.signum() > 0) {
-            BigInteger batchSize = BigInteger.valueOf(items.size());
+            BigInteger batchSize = BigInteger.valueOf(tos.size());
             if (batchSize.compareTo(maxBatchLimit) > 0) {
                 throw new IllegalArgumentException("批量条数超过上限: 当前=" + batchSize + ", 上限=" + maxBatchLimit);
             }
         }
-        DynamicArray<BatchItem> batchItems = new DynamicArray<>(BatchItem.class, items);
+        List<Address> toAddresses = tos.stream()
+                .map(ContractTypeUtils::address)
+                .toList();
+        DynamicArray<Address> toArray = new DynamicArray<>(Address.class, toAddresses);
+        DynamicArray<BatchData> batchDataArray = new DynamicArray<>(BatchData.class, dataList);
         Function function = new Function(
                 "allocateEmissionToLocksBatch",
-                List.of(batchItems),
+                List.of(toArray, batchDataArray),
                 List.of()
         );
         return sendAionTransaction(function);
@@ -1255,62 +1268,85 @@ public class AionContract extends ContractBase {
     }
 
     /**
-     * 批量分发入参
+     * 批量分发入参（每个用户固定 4 组：L1/L2/L3/Direct）
      */
-    public static class BatchItem extends StaticStruct {
+    public static class BatchData extends StaticStruct {
 
-        private final Address to;
-        private final Uint8 lockType;
-        private final Uint8 distType;
-        private final Uint256 amount;
-        private final Uint256 orderId;
+        private final StaticArray2<Uint256> l1;
+        private final StaticArray2<Uint256> l2;
+        private final StaticArray2<Uint256> l3;
+        private final StaticArray2<Uint256> direct;
 
-        public BatchItem(Address to, Uint8 lockType, Uint8 distType, Uint256 amount, Uint256 orderId) {
-            super(to, lockType, distType, amount, orderId);
-            this.to = to;
-            this.lockType = lockType;
-            this.distType = distType;
-            this.amount = amount;
-            this.orderId = orderId;
+        public BatchData(
+                StaticArray2<Uint256> l1,
+                StaticArray2<Uint256> l2,
+                StaticArray2<Uint256> l3,
+                StaticArray2<Uint256> direct
+        ) {
+            super(l1, l2, l3, direct);
+            this.l1 = l1;
+            this.l2 = l2;
+            this.l3 = l3;
+            this.direct = direct;
         }
 
-        public BatchItem(String to, int lockType, int distType, BigInteger amount, BigInteger orderId) {
-            this(address(to), uint8(lockType), uint8(distType), uint256(amount), uint256(orderId));
-        }
-
-        /**
-         * @return 接收地址
-         */
-        public String getTo() {
-            return to.getValue();
-        }
-
-        /**
-         * @return 仓位类型（distType=1 时为 1/2/3；distType=2 时必须为 0）
-         */
-        public BigInteger getLockType() {
-            return lockType.getValue();
-        }
-
-        /**
-         * @return 分发类型（1=入仓，2=直接分发）
-         */
-        public BigInteger getDistType() {
-            return distType.getValue();
+        public BatchData(
+                BigInteger l1Amount,
+                BigInteger l1OrderId,
+                BigInteger l2Amount,
+                BigInteger l2OrderId,
+                BigInteger l3Amount,
+                BigInteger l3OrderId,
+                BigInteger directAmount,
+                BigInteger directOrderId
+        ) {
+            this(
+                    buildPair(l1Amount, l1OrderId),
+                    buildPair(l2Amount, l2OrderId),
+                    buildPair(l3Amount, l3OrderId),
+                    buildPair(directAmount, directOrderId)
+            );
         }
 
         /**
-         * @return 分发数量（最小单位）
+         * @return L1 分发数据（[amount, orderId]，amount 为三位小数整数）
          */
-        public BigInteger getAmount() {
-            return amount.getValue();
+        public StaticArray2<Uint256> getL1() {
+            return l1;
         }
 
         /**
-         * @return 订单号
+         * @return L2 分发数据（[amount, orderId]，amount 为三位小数整数）
          */
-        public BigInteger getOrderId() {
-            return orderId.getValue();
+        public StaticArray2<Uint256> getL2() {
+            return l2;
+        }
+
+        /**
+         * @return L3 分发数据（[amount, orderId]，amount 为三位小数整数）
+         */
+        public StaticArray2<Uint256> getL3() {
+            return l3;
+        }
+
+        /**
+         * @return Direct 分发数据（[amount, orderId]，amount 为三位小数整数）
+         */
+        public StaticArray2<Uint256> getDirect() {
+            return direct;
+        }
+
+        /**
+         * 构建二元组（[amount, orderId]）
+         *
+         * @param amount 数量（三位小数整数）
+         * @param orderId 订单号
+         * @return 固定长度数组
+         */
+        private static StaticArray2<Uint256> buildPair(BigInteger amount, BigInteger orderId) {
+            BigInteger safeAmount = amount == null ? BigInteger.ZERO : amount;
+            BigInteger safeOrderId = orderId == null ? BigInteger.ZERO : orderId;
+            return new StaticArray2<>(new Uint256(safeAmount), new Uint256(safeOrderId));
         }
     }
 

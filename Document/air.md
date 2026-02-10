@@ -623,8 +623,9 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
 * 管理员可设置 `maxScanLimit`
 * `estimateMaxCount(perRecordGas, fixedGas)` 返回理论建议值
 15. 批量分发上限可配置：
-* 管理员可设置 `maxBatchLimit`（默认 100）
+* 管理员可设置 `maxBatchLimit`（默认 1000）
 * 批量入参不能为空（空数组报错）
+* 上限按 `tos[]` 数组长度统计
 
 ## 九点四、执行细节补充
 
@@ -650,9 +651,20 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
    * 用户调用 `approveOperator(operator, approved)` 设置授权
    * 管理员调用 `exchange*` 时校验 `approved == true`
 7. 批量分发 `allocateEmissionToLocksBatch`：
+   * 入参为并行数组：`tos[]` 与 `data[]`，长度必须一致
+   * `data[i]` 固定包含 4 组：`l1/l2/l3/direct`
+      * `l1` 对应 `lockType=1, distType=1`
+      * `l2` 对应 `lockType=2, distType=1`
+      * `l3` 对应 `lockType=3, distType=1`
+      * `direct` 对应 `lockType=0, distType=2`
+   * 每组为 `[amount, orderId]`，`amount=0 且 orderId=0` 视为“空占位”
+   * `amount` 采用**三位小数的整数表示**：
+      * 传参示例：`1.234` 需传 `1234`
+      * 合约内部会将 `amount * 10^(18-3)` 转为 18 位最小单位
+      * 订单记录中的 `amount/executedAmount` 保存**18 位最小单位**
+   * 注意：仅批量分发使用三位小数整数，其它方法仍按 18 位最小单位传参
    * 每条记录独立订单号
    * 任意一条失败则整批回滚
-   * 同一批可混合 `distType=1/2`
 
 
 # 第八部分：字段 & 方法完整对照表
@@ -685,7 +697,7 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
 | getTodayMintable         | 今日最大发行量 | 无          | uint256 |
 | getCurrentYearRemaining  | 当前年度剩余额度 | 无          | (yearRemaining, budget, minted) |
 | allocateEmissionToLocks  | 分发额度（入仓/直接） | to, amount, lockType, distType, orderId | 无       |
-| allocateEmissionToLocksBatch | 批量分发额度（入仓/直接） | items | 无 |
+| allocateEmissionToLocksBatch | 批量分发额度（入仓/直接） | toList, dataList | 无 |
 | claimAll                 | 管理员代用户领取（指定仓位，含 L1/L2 销毁规则） | user, lockType, orderId | uint256 |
 | exchangeLockedFragment   | 管理员代用户兑换未解锁碎片（指定仓位） | user, lockType, target, orderId | uint256 |
 | exchangeUnlockedFragment | 管理员代用户兑换已解锁碎片（指定仓位） | user, lockType, target, orderId | uint256 |
@@ -741,7 +753,7 @@ function getCurrentYearRemaining() external view returns (uint256 yearRemaining,
 function allocateEmissionToLocks(address to, uint256 amount, uint8 lockType, uint8 distType, uint256 orderId) external;
 
 // 仅管理员：批量分发额度（入仓/直接）
-function allocateEmissionToLocksBatch(BatchItem[] calldata items) external;
+function allocateEmissionToLocksBatch(address[] calldata tos, BatchData[] calldata data) external;
 
 // 仅管理员：代用户一键领取（指定仓位，返回净到账数量）
 // 注意：需要用户授权
@@ -827,13 +839,12 @@ struct LockRecord {
     bool fragmentStatus;     // 是否已兑换碎片
 }
 
-// 批量分发入参
-struct BatchItem {
-    address to;         // 接收用户
-    uint8 lockType;     // 仓位（distType=1 时为 1/2/3；distType=2 时必须为 0）
-    uint8 distType;     // 分发类型（1=入仓，2=直接分发）
-    uint256 amount;     // 分发数量
-    uint256 orderId;    // 订单号
+// 批量分发入参（每个用户固定 4 组：L1/L2/L3/Direct）
+struct BatchData {
+    uint256[2] l1;      // [amount, orderId]（amount 为三位小数整数）
+    uint256[2] l2;      // [amount, orderId]（amount 为三位小数整数）
+    uint256[2] l3;      // [amount, orderId]（amount 为三位小数整数）
+    uint256[2] direct;  // [amount, orderId]（amount 为三位小数整数，direct=distType 2）
 }
 
 // 锁仓统计返回
@@ -962,6 +973,7 @@ error BizError(uint8 code);
 | 16 | INSUFFICIENT_ALLOWANCE | 授权额度不足 |
 | 17 | BATCH_LIMIT_EXCEEDED | 批量条数超过上限 |
 | 18 | EMPTY_BATCH | 批量参数为空 |
+| 19 | LENGTH_MISMATCH | 数组长度不一致 |
 
 ---
 
@@ -1000,16 +1012,17 @@ error BizError(uint8 code);
 * `CAP_EXCEEDED`：超出总量上限
 
 ### allocateEmissionToLocksBatch
+> `BatchData` 中的 `amount` 为三位小数整数（例如 1.234 传 1234），合约内部会乘以 `10^(18-3)` 转为最小单位保存。
+
 * `NOT_ADMIN`：非管理员调用
 * `MINING_NOT_STARTED`：挖矿未启动
-* `INVALID_LOCK_TYPE`：仓位非法
-* `INVALID_DIST_TYPE`：分发类型非法
 * `ORDER_ID_DUPLICATE`：订单号重复
 * `ANNUAL_BUDGET_EXCEEDED`：年度额度不足
 * `ZERO_AMOUNT`：数量为 0
 * `INVALID_ADDRESS`：地址非法（零地址）
 * `EMPTY_BATCH`：批量参数为空
 * `BATCH_LIMIT_EXCEEDED`：批量条数超过上限
+* `LENGTH_MISMATCH`：数组长度不一致
 * `CAP_EXCEEDED`：超出总量上限
 
 ### claimAll

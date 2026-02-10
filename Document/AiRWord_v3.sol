@@ -15,6 +15,7 @@ contract AiRWord_v3 {
     // 时间常量
     uint256 private constant MONTH = 1 minutes;
     uint256 private constant YEAR = 1 hours;
+    uint256 private constant AMOUNT_SCALE = 10 ** 15; // 批量分发金额：三位小数 -> 18 位最小单位
 
     // =========================
     // 错误码（BizError）
@@ -39,6 +40,7 @@ contract AiRWord_v3 {
     uint8 private constant INSUFFICIENT_ALLOWANCE = 16;
     uint8 private constant BATCH_LIMIT_EXCEEDED = 17;
     uint8 private constant EMPTY_BATCH = 18;
+    uint8 private constant LENGTH_MISMATCH = 19;
 
     // =========================
     // 角色与权限
@@ -74,7 +76,7 @@ contract AiRWord_v3 {
     // 扫描上限
     // =========================
     uint256 public maxScanLimit = 100;
-    uint256 public maxBatchLimit = 100;
+    uint256 public maxBatchLimit = 1000;
 
     // =========================
     // 数据结构
@@ -94,13 +96,12 @@ contract AiRWord_v3 {
         uint256 claimable;   // 本次可领取总额
     }
 
-    // 批量分发入参
-    struct BatchItem {
-        address to;         // 接收用户
-        uint8 lockType;     // 仓位（distType=1 时为 1/2/3；distType=2 时必须为 0）
-        uint8 distType;     // 分发类型（1=入仓，2=直接分发）
-        uint256 amount;     // 分发数量
-        uint256 orderId;    // 订单号
+    // 批量分发入参（每个用户固定 4 组：L1/L2/L3/Direct）
+    struct BatchData {
+        uint256[2] l1;      // [amount, orderId]
+        uint256[2] l2;      // [amount, orderId]
+        uint256[2] l3;      // [amount, orderId]
+        uint256[2] direct;  // [amount, orderId]（direct=distType 2）
     }
 
     struct LockStats {
@@ -374,9 +375,9 @@ contract AiRWord_v3 {
     // 当前年度剩余额度（只读）
     // =========================
     function getCurrentYearRemaining()
-        external
-        view
-        returns (uint256 yearRemaining, uint256 budget, uint256 minted)
+    external
+    view
+    returns (uint256 yearRemaining, uint256 budget, uint256 minted)
     {
         _requireStartedView();
         (uint256 b, uint256 m, ) = _simulateToCurrentYear();
@@ -450,64 +451,31 @@ contract AiRWord_v3 {
     // =========================
     // 批量分发额度（入仓/直接）
     // =========================
-    function allocateEmissionToLocksBatch(BatchItem[] calldata items) external onlyAdmin {
+    function allocateEmissionToLocksBatch(address[] calldata tos, BatchData[] calldata data) external onlyAdmin {
         _requireStarted();
-        if (items.length == 0) {
+        if (tos.length != data.length) {
+            revert BizError(LENGTH_MISMATCH);
+        }
+        if (tos.length == 0) {
             revert BizError(EMPTY_BATCH);
         }
-        if (items.length > maxBatchLimit) {
+        if (tos.length > maxBatchLimit) {
             revert BizError(BATCH_LIMIT_EXCEEDED);
         }
 
         settleToCurrentYear();
 
-        for (uint256 i = 0; i < items.length; i++) {
-            BatchItem calldata it = items[i];
-
-            if (it.to == address(0)) {
+        for (uint256 i = 0; i < tos.length; i++) {
+            address to = tos[i];
+            if (to == address(0)) {
                 revert BizError(INVALID_ADDRESS);
             }
-            if (it.amount == 0) {
-                revert BizError(ZERO_AMOUNT);
-            }
-            if (it.distType != 1 && it.distType != 2) {
-                revert BizError(INVALID_DIST_TYPE);
-            }
-            if (it.distType == 2) {
-                if (it.lockType != 0) {
-                    revert BizError(INVALID_LOCK_TYPE);
-                }
-            } else {
-                if (!_isValidLockType(it.lockType)) {
-                    revert BizError(INVALID_LOCK_TYPE);
-                }
-            }
-            _requireOrderNotExists(it.to, it.orderId);
 
-            if (yearMinted + it.amount > yearBudget) {
-                revert BizError(ANNUAL_BUDGET_EXCEEDED);
-            }
-            yearMinted += it.amount;
-            remainingCap -= it.amount;
-
-            if (it.distType == 1) {
-                _pushLock(it.to, it.lockType, it.amount);
-            } else {
-                _mint(it.to, it.amount);
-                emit DirectDistributed(it.to, it.amount, it.orderId, block.timestamp);
-            }
-
-            OrderRecord storage r = _orders[it.to][it.orderId];
-            r.methodType = OrderMethodType.ALLOCATE;
-            r.user = it.to;
-            r.lockType = it.lockType;
-            r.amount = it.amount;
-            r.executedAmount = it.amount;
-            r.netAmount = (it.distType == 2) ? it.amount : 0;
-            r.burnAmount = 0;
-            r.timestamp = block.timestamp;
-            r.status = 0;
-            _orderExists[it.to][it.orderId] = true;
+            BatchData calldata d = data[i];
+            _handleBatchItem(to, 1, 1, d.l1);
+            _handleBatchItem(to, 2, 1, d.l2);
+            _handleBatchItem(to, 3, 1, d.l3);
+            _handleBatchItem(to, 0, 2, d.direct);
         }
     }
 
@@ -883,9 +851,9 @@ contract AiRWord_v3 {
         uint8 lockType,
         uint256 cursor
     )
-        external
-        view
-        returns (LockStats memory stats, uint256 nextCursor, uint256 processed, bool finished)
+    external
+    view
+    returns (LockStats memory stats, uint256 nextCursor, uint256 processed, bool finished)
     {
         _requireStartedView();
         if (!_isValidLockType(lockType)) {
@@ -967,6 +935,53 @@ contract AiRWord_v3 {
         return (who == admin || who == owner);
     }
 
+    function _handleBatchItem(
+        address to,
+        uint8 lockType,
+        uint8 distType,
+        uint256[2] calldata pair
+    ) private {
+        uint256 rawAmount = pair[0];
+        uint256 orderId = pair[1];
+
+        // 空占位：amount=0 且 orderId=0
+        if (rawAmount == 0) {
+            if (orderId == 0) {
+                return;
+            }
+            revert BizError(ZERO_AMOUNT);
+        }
+
+        uint256 amount = rawAmount * AMOUNT_SCALE;
+
+        _requireOrderNotExists(to, orderId);
+
+        if (yearMinted + amount > yearBudget) {
+            revert BizError(ANNUAL_BUDGET_EXCEEDED);
+        }
+        yearMinted += amount;
+        remainingCap -= amount;
+
+        if (distType == 1) {
+            _pushLock(to, lockType, amount);
+        } else {
+            _mint(to, amount);
+            emit DirectDistributed(to, amount, orderId, block.timestamp);
+        }
+
+        OrderRecord storage r = _orders[to][orderId];
+        r.methodType = OrderMethodType.ALLOCATE;
+        r.user = to;
+        r.lockType = lockType;
+        r.amount = amount;
+        r.executedAmount = amount;
+        r.netAmount = (distType == 2) ? amount : 0;
+        r.burnAmount = 0;
+        r.timestamp = block.timestamp;
+        r.status = 0;
+        _orderExists[to][orderId] = true;
+    }
+
     function _requireStarted() private view {
         if (miningStart == 0) {
             revert BizError(MINING_NOT_STARTED);
@@ -995,9 +1010,9 @@ contract AiRWord_v3 {
 
     // 仅用于 view 的年度模拟结算
     function _simulateToCurrentYear()
-        private
-        view
-        returns (uint256 budget, uint256 minted, uint256 startTs)
+    private
+    view
+    returns (uint256 budget, uint256 minted, uint256 startTs)
     {
         uint256 tempRemaining = remainingCap;
         uint256 tempBudget = yearBudget;

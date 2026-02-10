@@ -401,16 +401,26 @@ class RabnbserverApplicationTests {
     @Test
     void testAionAllocateEmissionToLocksBatch() throws Exception {
         String to = requireTodoString("AION batch to", "TODO:填写地址");
-        BigDecimal amountHuman = requireTodoAmount("AION batch amount", null);
-        int lockType = 1; // TODO: 1/2/3（测试合约为 1/2/4 分钟）
-        int distType = 1; // TODO: 1=入仓 2=直接分发
-        BigInteger orderId = generateOrderId();
-        BigInteger amount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.AION, amountHuman);
-        List<AionContract.BatchItem> items = List.of(
-                new AionContract.BatchItem(to, lockType, distType, amount, orderId)
+        BigInteger l1Amount = requireTodoRaw("AION 批量 L1 数量(三位小数整数)", null);
+        BigInteger l1OrderId = requireTodoRaw("AION 批量 L1 订单号", null);
+        BigInteger l2Amount = BigInteger.ZERO; // 为空则填 0
+        BigInteger l2OrderId = BigInteger.ZERO;
+        BigInteger l3Amount = BigInteger.ZERO;
+        BigInteger l3OrderId = BigInteger.ZERO;
+        BigInteger directAmount = requireTodoRaw("AION 批量 Direct 数量(三位小数整数)", null);
+        BigInteger directOrderId = requireTodoRaw("AION 批量 Direct 订单号", null);
+
+        List<String> tos = List.of(to);
+        List<AionContract.BatchData> dataList = List.of(
+                new AionContract.BatchData(
+                        l1Amount, l1OrderId,
+                        l2Amount, l2OrderId,
+                        l3Amount, l3OrderId,
+                        directAmount, directOrderId
+                )
         );
-        log.info("批量分发 AION，数量: {}, 订单号: {}", amount, orderId);
-        var receipt = aionContract.allocateEmissionToLocksBatch(items);
+        log.info("批量分发 AION，L1数量: {}, Direct数量: {}", l1Amount, directAmount);
+        var receipt = aionContract.allocateEmissionToLocksBatch(tos, dataList);
         log.info("批量分发结果: {}", receipt);
     }
 
