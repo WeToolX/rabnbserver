@@ -526,9 +526,10 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             TransactionReceipt receipt = aionContract.claimAll(user.getUserWalletAddress(), dto.getLockType(), BigInteger.valueOf(orderId));
             if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
                 AionContract.OrderRecord order = aionContract.getOrder(user.getUserWalletAddress(), BigInteger.valueOf(orderId));
+                BigDecimal netAmount = new BigDecimal(order.getNetAmount()).movePointLeft(18);
                 userBillServe.createBillAndUpdateBalance(
                         userId,
-                        new BigDecimal(order.getNetAmount()),
+                        netAmount,
                         BillType.ON_CHAIN,
                         FundType.INCOME,
                         TransactionType.PROFIT,
