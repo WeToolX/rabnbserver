@@ -88,7 +88,15 @@ public class UserBillRetryServeImpl extends AbstractAbnormalRetryService {
             // NFT分发类业务支持由后端执行器代为补发
             if (TransactionType.PURCHASE.equals(bill.getTransactionType()) || TransactionType.REWARD.equals(bill.getTransactionType())) {
                 if (bill.getNum() == null || bill.getNum() <= 0) return false;
-                TransactionReceipt receipt = cardNftContract.distribute(bill.getUserWalletAddress(), BigInteger.valueOf(bill.getNum()));
+                if (bill.getCardId() == null) {
+                    log.error("补发NFT失败：账单缺少卡牌ID，账单ID={}", dataId);
+                    return false;
+                }
+                TransactionReceipt receipt = cardNftContract.distribute(
+                        bill.getUserWalletAddress(),
+                        BigInteger.valueOf(bill.getCardId()),
+                        BigInteger.valueOf(bill.getNum())
+                );
                 if (receipt != null && "0x1".equals(receipt.getStatus())) {
                     updateToSuccess(bill, receipt, "重试机制补发成功 x" + bill.getNum());
                     return true;

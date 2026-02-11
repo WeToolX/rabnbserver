@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.ra.rabnbserver.annotation.ColumnComment;
+import com.ra.rabnbserver.annotation.ColumnType;
 import com.ra.rabnbserver.annotation.DefaultValue;
 import com.ra.rabnbserver.exception.Abnormal.model.AbnormalBaseEntity;
 import lombok.Data;
@@ -50,6 +51,24 @@ public class UserMiner extends AbnormalBaseEntity {
     @ColumnComment("卡牌NFT销毁状态 0:未销毁, 1:已销毁")
     @DefaultValue("0")
     private Integer nftBurnStatus;
+
+    /**
+     * 购买矿机时使用的卡牌ID
+     */
+    @TableField("nft_card_id")
+    @ColumnComment("购买矿机使用的卡牌ID（1-铜/2-银/3-金）")
+    @ColumnType("INT")
+    private Integer nftCardId;
+
+    /**
+     * 卡牌销毁订单号（用于链上 burnWithOrder）
+     * 合约升级后必须带订单号，便于链上对账与重试补偿
+     * 说明：调用合约时会对该订单号做 keccak256 转 bytes32
+     */
+    @TableField("nft_burn_order_id")
+    @ColumnComment("卡牌销毁订单号（用于链上burnWithOrder）")
+    @ColumnType("VARCHAR(100)")
+    private String nftBurnOrderId;
 
     /**
      * 是否已交电费 (0: 否, 1: 是)

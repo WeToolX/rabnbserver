@@ -112,8 +112,12 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
      * 处理购买NFT卡牌业务
      */
     @Override
-    public void purchaseNftCard(Long userId, int quantity) {
+    public void purchaseNftCard(Long userId, int quantity, Integer cardId) {
         User user = validateUserAndCheckLock(userId);
+        // 关键变更：新增卡牌ID参数，避免默认卡牌导致分发错误
+        if (cardId == null) {
+            throw new BusinessException("卡牌ID不能为空");
+        }
         ETFCard currentBatch = etfCardServe.getActiveAndEnabledBatch();
         if (currentBatch == null) {
             throw new BusinessException("当前无可用卡牌批次");
@@ -136,8 +140,10 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                         .setSql("sold_count = sold_count + " + quantity));
                 if (!stockOk) throw new BusinessException("本地库存不足");
 
+                CreateUserBillVO vo = new CreateUserBillVO();
+                vo.setCardId(cardId);
                 createBillAndUpdateBalance(userId, totalCost, BillType.PLATFORM, FundType.EXPENSE,
-                        TransactionType.PURCHASE, "购买NFT卡牌 x" + quantity, orderId, null, null, quantity,null);
+                        TransactionType.PURCHASE, "购买NFT卡牌 x" + quantity, orderId, null, null, quantity, vo);
             } catch (Exception e) {
                 status.setRollbackOnly();
                 throw e;
@@ -150,7 +156,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
 
         try {
             log.info("发起NFT链上分发，用户：{}，数量：{}", user.getUserWalletAddress(), quantity);
-            receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(quantity));
+            receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(cardId), BigInteger.valueOf(quantity));
         } catch (Exception e) {
             log.error("NFT分发执行异常", e);
             nftError = e.getMessage();
@@ -173,11 +179,15 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
      * 处理管理员分发NFT业务 - 增加库存校验与扣减
      */
     @Override
-    public void distributeNftByAdmin(Long userId, Integer amount) {
+    public void distributeNftByAdmin(Long userId, Integer amount, Integer cardId) {
         // 基础验证
         User user = validateUserAndCheckLock(userId);
         if (amount == null || amount <= 0) {
             throw new BusinessException("分发数量必须大于0");
+        }
+        // 关键变更：新增卡牌ID参数，避免默认卡牌导致分发错误
+        if (cardId == null) {
+            throw new BusinessException("卡牌ID不能为空");
         }
         // 获取当前可用批次并校验本地库存
         ETFCard currentBatch = etfCardServe.getActiveAndEnabledBatch();
@@ -198,8 +208,10 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                     throw new BusinessException("本地库存不足，当前剩余：" + currentBatch.getInventory());
                 }
                 // 创建账单记录（分发通常是系统赠送，amount 传 0）
+                CreateUserBillVO vo = new CreateUserBillVO();
+                vo.setCardId(cardId);
                 createBillAndUpdateBalance(userId, BigDecimal.ZERO, BillType.ON_CHAIN, FundType.INCOME,
-                        TransactionType.REWARD, "系统管理员手动分发 x" + amount, orderId, null, null, amount, null);
+                        TransactionType.REWARD, "系统管理员手动分发 x" + amount, orderId, null, null, amount, vo);
             } catch (Exception e) {
                 status.setRollbackOnly();
                 throw e;
@@ -212,7 +224,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         try {
             log.info("管理员发起NFT链上分发，用户：{}，数量：{}", user.getUserWalletAddress(), amount);
             // 调用合约分发
-            receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(amount));
+            receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(cardId), BigInteger.valueOf(amount));
         } catch (Exception e) {
             log.error("管理员分发链上执行异常", e);
             adminErr = e.getMessage();
@@ -234,19 +246,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (user == null) throw new BusinessException("用户不存在");
         billRetryServe.checkUserErr(String.valueOf(userId));
         return user;
-    }
-
-    private BigInteger syncChainInventory(Long batchId) {
-        try {
-            BigInteger remaining = cardNftContract.remainingMintable();
-            etfCardServe.update(new LambdaUpdateWrapper<ETFCard>()
-                    .eq(ETFCard::getId, batchId)
-                    .set(ETFCard::getInventory, remaining.intValue()));
-            return remaining;
-        } catch (Exception e) {
-            log.error("链上库存获取失败", e);
-            throw new BusinessException("获取链上库存失败");
-        }
     }
 
     private Long getBillIdByOrder(String orderId) {
@@ -343,6 +342,10 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         bill.setTransactionTime(LocalDateTime.now());
         bill.setStatus(TransactionStatus.SUCCESS);
         bill.setChainResponse(res);
+        // 关键变更：卡牌类账单需要记录卡牌ID，便于后续链上补发/对账
+        if (createUserBillVO != null && createUserBillVO.getCardId() != null) {
+            bill.setCardId(createUserBillVO.getCardId());
+        }
 
         // 定义快照变量（用于记录账单变动前后的快照）
         BigDecimal balanceBefore = BigDecimal.ZERO;

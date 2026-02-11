@@ -5,6 +5,7 @@ import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -118,8 +119,12 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
      */
     @Transactional(rollbackFor = Exception.class)
     @Override
-    public void buyMinerBatch(Long userId, String minerType, int quantity) {
+    public void buyMinerBatch(Long userId, String minerType, int quantity, Integer cardId) {
         if (quantity <= 0) throw new BusinessException("数量不合法");
+        // 关键变更：新增卡牌ID参数，避免默认卡牌导致销毁错误
+        if (cardId == null) {
+            throw new BusinessException("卡牌ID不能为空");
+        }
         User user = userMapper.selectById(userId);
         if(user == null){
             throw new BusinessException(0,"用户不存在");
@@ -136,7 +141,12 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
 //            if (isApproved == null || !isApproved) {
 //                throw new BusinessException("检测到未授权卡牌操作，请先在页面完成授权");
 //            }
-            BigInteger balance = cardNftContract.balanceOf(walletAddress);
+            String adminWallet = cardNftContract.getAdminAddress();
+            Boolean isApproved = cardNftContract.isApprovedForAll(walletAddress, adminWallet);
+            if (isApproved == null || !isApproved) {
+                throw new BusinessException("检测到未授权卡牌操作，请先在页面完成授权");
+            }
+            BigInteger balance = cardNftContract.balanceOf(walletAddress, BigInteger.valueOf(cardId));
             if (balance == null || balance.compareTo(BigInteger.valueOf(quantity)) < 0) {
                 throw new BusinessException("卡牌余额不足，当前拥有: " + (balance == null ? 0 : balance));
             }
@@ -158,6 +168,10 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             miner.setMinerId(safeMinerType);
             miner.setMinerType(safeMinerType);
             miner.setNftBurnStatus(0);
+            miner.setNftCardId(cardId);
+            // 关键变更：为每条记录生成独立业务订单号（可读字符串）
+            // 合约调用时会对该订单号做 keccak256 转 bytes32
+            miner.setNftBurnOrderId("NFT_BURN_" + userId + "_" + IdWorker.getIdStr());
             miner.setStatus(0);
             miner.setEligibleDate(LocalDateTime.now().plusDays(15));
             this.save(miner);
@@ -166,7 +180,12 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         // 执行销毁逻辑（遍历执行，失败则进入重试框架）
         for (UserMiner miner : createdMiners) {
             try {
-                TransactionReceipt receipt = cardNftContract.burnUser(walletAddress, BigInteger.ONE);
+                TransactionReceipt receipt = cardNftContract.burnWithOrder(
+                        walletAddress,
+                        BigInteger.valueOf(cardId),
+                        BigInteger.ONE,
+                        miner.getNftBurnOrderId()
+                );
                 // 合约调用未抛异常且 receipt 不为空，视为成功
                 if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
                     boolean success = this.lambdaUpdate()
@@ -583,6 +602,10 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     @Transactional(rollbackFor = Exception.class)
     @Override
     public void buyNftWithFragments(Long userId, FragmentExchangeNftDTO dto) throws Exception {
+        // 关键变更：新增卡牌ID参数，避免默认卡牌导致分发错误
+        if (dto.getCardId() == null) {
+            throw new BusinessException("卡牌ID不能为空");
+        }
         MinerSettings settings = getSettings();
         BigDecimal rate = settings.getFragmentToCardRate();
         if (rate == null || rate.compareTo(BigDecimal.ZERO) <= 0) {
@@ -594,6 +617,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
 
         CreateUserBillVO vo = new CreateUserBillVO();
         vo.setNum(totalNeed.toPlainString());
+        vo.setCardId(dto.getCardId());
 
         userBillServe.createBillAndUpdateBalance(
                 userId,
@@ -609,7 +633,11 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 vo
         );
 
-        TransactionReceipt receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(dto.getQuantity()));
+        TransactionReceipt receipt = cardNftContract.distribute(
+                user.getUserWalletAddress(),
+                BigInteger.valueOf(dto.getCardId()),
+                BigInteger.valueOf(dto.getQuantity())
+        );
         if (receipt == null || !"0x1".equalsIgnoreCase(receipt.getStatus())) {
             throw new BusinessException("链上发放卡牌失败，请稍后重试");
         }

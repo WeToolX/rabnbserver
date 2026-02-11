@@ -173,11 +173,12 @@ public class AdminUserController {
      * 查询特定用户在链上的卡牌余额
      */
     @GetMapping("/chain-nft-balance")
-    public String getChainBalance(@RequestParam Long userId) throws Exception {
+    public String getChainBalance(@RequestParam Long userId, @RequestParam Integer cardId) throws Exception {
         User user = userService.getById(userId);
         if (user == null) return ApiResponse.error("用户不存在");
+        if (cardId == null) return ApiResponse.error("卡牌ID不能为空");
 
-        BigInteger balance = cardNftContract.balanceOf(user.getUserWalletAddress());
+        BigInteger balance = cardNftContract.balanceOf(user.getUserWalletAddress(), BigInteger.valueOf(cardId));
         return ApiResponse.success(balance);
     }
 
@@ -186,7 +187,7 @@ public class AdminUserController {
      */
     @PostMapping("/distribute-nft")
     public String distributeNft(@RequestBody DistributeNftDTO dto) {
-        userBillServer.distributeNftByAdmin(dto.getUserId(), dto.getAmount());
+        userBillServer.distributeNftByAdmin(dto.getUserId(), dto.getAmount(), dto.getCardId());
         return ApiResponse.success("分发指令已执行");
     }
 

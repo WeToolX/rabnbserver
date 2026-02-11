@@ -17,7 +17,7 @@ public interface MinerServe extends IService<UserMiner> {
 
     IPage<UserMiner> getUserMinerPage(Long userId, MinerQueryDTO query);
 
-    void buyMinerBatch(Long userId, String minerType, int quantity);
+    void buyMinerBatch(Long userId, String minerType, int quantity, Integer cardId);
 
     @Transactional(rollbackFor = Exception.class)
     void payElectricity(Long userId, MinerElectricityDTO dto);

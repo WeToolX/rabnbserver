@@ -39,7 +39,7 @@ public interface UserBillServe extends IService<UserBill> {
 
     void rechargeFromChain(Long userId, BigDecimal amount) throws Exception;
 
-    void purchaseNftCard(Long userId, int quantity);
+    void purchaseNftCard(Long userId, int quantity, Integer cardId);
 
     void createBillAndUpdateBalance(
             Long userId,
@@ -61,5 +61,5 @@ public interface UserBillServe extends IService<UserBill> {
 
     PaymentUsdtMetaVO getPaymentUsdtMeta() throws Exception;
 
-    void distributeNftByAdmin(Long userId, Integer amount);
+    void distributeNftByAdmin(Long userId, Integer amount, Integer cardId);
 }

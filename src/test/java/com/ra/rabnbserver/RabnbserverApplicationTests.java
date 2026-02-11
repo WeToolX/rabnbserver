@@ -789,19 +789,27 @@ class RabnbserverApplicationTests {
     // ===================== CardNftContract（只读）=====================
 
     /**
-     * 方法作用：查询卡牌 ID
+     * 方法作用：查询铜卡ID
      */
     @Test
-    void testCardNftCardId() throws Exception {
-        log.info("CardNFT CARD_ID: {}", cardNftContract.cardId());
+    void testCardNftCopperId() throws Exception {
+        log.info("CardNFT COPPER_ID: {}", cardNftContract.copperId());
     }
 
     /**
-     * 方法作用：查询最大供应量
+     * 方法作用：查询银卡ID
      */
     @Test
-    void testCardNftMaxSupply() throws Exception {
-        log.info("CardNFT MAX_SUPPLY: {}", cardNftContract.maxSupply());
+    void testCardNftSilverId() throws Exception {
+        log.info("CardNFT SILVER_ID: {}", cardNftContract.silverId());
+    }
+
+    /**
+     * 方法作用：查询金卡ID
+     */
+    @Test
+    void testCardNftGoldId() throws Exception {
+        log.info("CardNFT GOLD_ID: {}", cardNftContract.goldId());
     }
 
     /**
@@ -826,7 +834,8 @@ class RabnbserverApplicationTests {
     @Test
     void testCardNftBalanceOf() throws Exception {
         String user = "0xa068802D54d2Aca1AD8cE6F2300eee02e3B50113";
-        log.info("CardNFT balanceOf({}): {}", user, cardNftContract.balanceOf(user));
+        BigInteger cardId = cardNftContract.copperId();
+        log.info("CardNFT balanceOf({}, {}): {}", user, cardId, cardNftContract.balanceOf(user, cardId));
     }
 
     /**
@@ -835,15 +844,8 @@ class RabnbserverApplicationTests {
     @Test
     void testCardNftBurnedAmount() throws Exception {
         String user = "0xa068802D54d2Aca1AD8cE6F2300eee02e3B50113";
-        log.info("CardNFT burnedAmount({}): {}", user, cardNftContract.burnedAmount(user));
-    }
-
-    /**
-     * 方法作用：查询历史已分发数量
-     */
-    @Test
-    void testCardNftTotalMinted() throws Exception {
-        log.info("CardNFT totalMinted: {}", cardNftContract.totalMinted());
+        BigInteger cardId = cardNftContract.copperId();
+        log.info("CardNFT burnedAmount({}, {}): {}", user, cardId, cardNftContract.burnedAmount(user, cardId));
     }
 
     /**
@@ -851,15 +853,17 @@ class RabnbserverApplicationTests {
      */
     @Test
     void testCardNftTotalSupply() throws Exception {
-        log.info("CardNFT totalSupply: {}", cardNftContract.totalSupply());
+        BigInteger cardId = cardNftContract.copperId();
+        log.info("CardNFT totalSupply({}): {}", cardId, cardNftContract.totalSupply(cardId));
     }
 
     /**
-     * 方法作用：查询剩余未分发数量
+     * 方法作用：查询卡牌URI
      */
     @Test
-    void testCardNftRemainingMintable() throws Exception {
-        log.info("CardNFT remainingMintable: {}", cardNftContract.remainingMintable());
+    void testCardNftUri() throws Exception {
+        BigInteger cardId = cardNftContract.copperId();
+        log.info("CardNFT uri({}): {}", cardId, cardNftContract.uri(cardId));
     }
 
     /**
@@ -872,6 +876,24 @@ class RabnbserverApplicationTests {
         log.info("CardNFT isApprovedForAll({}, {}): {}", user, admin, cardNftContract.isApprovedForAll(user, admin));
     }
 
+    /**
+     * 方法作用：查询订单是否已使用
+     */
+    @Test
+    void testCardNftOrderUsed() throws Exception {
+        String orderId = requireTodoString("CardNFT orderUsed 订单号", "TODO:填写业务订单号（将自动keccak）");
+        log.info("CardNFT orderUsed({}): {}", orderId, cardNftContract.isOrderUsed(orderId));
+    }
+
+    /**
+     * 方法作用：查询订单详情
+     */
+    @Test
+    void testCardNftGetOrder() throws Exception {
+        String orderId = requireTodoString("CardNFT getOrder 订单号", "TODO:填写业务订单号（将自动keccak）");
+        log.info("CardNFT getOrder({}): {}", orderId, cardNftContract.getOrder(orderId));
+    }
+
     // ===================== CardNftContract（写操作）=====================
 
     /**
@@ -880,20 +902,23 @@ class RabnbserverApplicationTests {
     @Test
     void testCardNftDistribute() throws Exception {
         String to = "0xa068802D54d2Aca1AD8cE6F2300eee02e3B50113";
+        BigInteger cardId = cardNftContract.copperId();
         BigInteger amount = BigInteger.TEN;
-        var receipt = cardNftContract.distribute(to, amount);
+        var receipt = cardNftContract.distribute(to, cardId, amount);
         log.info("distribute 结果: {}", receipt);
     }
 
     /**
-     * 方法作用：销毁用户卡牌
+     * 方法作用：管理员代用户销毁卡牌
      */
     @Test
-    void testCardNftBurnUser() throws Exception {
+    void testCardNftBurnWithOrder() throws Exception {
         String user = "0xa068802D54d2Aca1AD8cE6F2300eee02e3B50113";
+        BigInteger cardId = cardNftContract.copperId();
         BigInteger amount = BigInteger.TWO;
-        var receipt = cardNftContract.burnUser(user, amount);
-        log.info("burn 结果: {}", receipt);
+        String orderId = requireTodoString("CardNFT burnWithOrder 订单号", "TODO:填写业务订单号（将自动keccak）");
+        var receipt = cardNftContract.burnWithOrder(user, cardId, amount, orderId);
+        log.info("burnWithOrder 结果: {}", receipt);
     }
 
     /**
@@ -907,13 +932,4 @@ class RabnbserverApplicationTests {
         log.info("setAdmin 结果: {}", receipt);
     }
 
-    /**
-     * 方法作用：设置 URI
-     */
-    @Test
-    void testCardNftSetUri() throws Exception {
-        String uri = requireTodoString("CardNFT setURI", "TODO:填写URI");
-        var receipt = cardNftContract.setUri(uri);
-        log.info("setURI 结果: {}", receipt);
-    }
 }

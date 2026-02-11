@@ -143,6 +143,15 @@ public class UserBill extends AbnormalBaseEntity {
     @TableField("num")
     @DefaultValue("0")
     private Integer num;
+
+    /**
+     * 卡牌ID（1-铜/2-银/3-金）
+     * 合约升级为多卡牌ID，账单需要记录具体卡牌类型
+     */
+    @ColumnComment("卡牌ID（1-铜/2-银/3-金）")
+    @TableField("card_id")
+    @ColumnType("INT")
+    private Integer cardId;
     /**
      * 交易状态
      * 0-处理中, 1-成功, 2-失败

@@ -140,7 +140,7 @@ rabnbserver
 - 合约调用：合约类在 contract 包，依赖基座与配置在 contract/support
 - AION：AiRword 新版合约，支持 startMining/年度结算、锁仓统计、领取/碎片兑换、订单查询与扫描上限配置
 - AION 错误解析：自动解析 BizError(uint8) 与 Error(string) 的 revert 原因，抛出中文原因提示
-- CardNFT：单 ID（id=1）合约，提供余额/销毁/供应量查询与分发、销毁校验流程
+- CardNFT：单合约多卡牌ID（1-铜/2-银/3-金），支持 balanceOf/burnedAmount/totalSupply/uri，分发 distribute 与代烧 burnWithOrder（订单号推荐业务字符串，调用时自动 keccak256 转 bytes32；也可直接传 bytes32）
 - 回执轮询：使用 blockchain.tx-poll-interval-ms 与 blockchain.tx-timeout-ms 控制轮询间隔与超时
 - 主币符号：blockchain.currency-symbol 用于前端展示（如 tBNB）
 - 合约地址校验：contract.address.* 启动时校验 0x 地址格式并打印配置
@@ -149,6 +149,7 @@ rabnbserver
 - 测试策略：Maven 默认跳过测试（skipTests=true），如需执行请用 -DskipTests=false；IDE 手动运行不受影响
 - USDT 精度：统一使用 18 位（AmountConvertUtils.Currency.USDT=18）
 - PaymentUSDT：minAmount 可配置（链上读取 minAmount()）
+- 账单/矿机扩展：UserBill.card_id 记录卡牌类型；UserMiner.nft_card_id/nft_burn_order_id 记录销毁卡牌与订单号
 - 异常重试框架：扫描 @AbnormalRetryConfig，自动补齐异常字段并定时轮询，行锁使用 FOR UPDATE SKIP LOCKED，支持自动重试/人工通知/err_manual_notify_count，超时或达上限会升级人工并持续通知直至人工处理成功（人工提醒间隔线性递增）
 - 人工处理回调：业务服务必须重写 manualSuccessRoute() 配置路由，框架自动注册接口并回调 manualSuccessExample()
 - 异常管理接口：/api/admin/abnormal/list 支持分页与 serviceName/err_status 筛选，返回服务名列表

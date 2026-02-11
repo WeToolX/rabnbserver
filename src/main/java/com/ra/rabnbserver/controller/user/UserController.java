@@ -380,6 +380,10 @@ public class UserController {
         }
 
         // 1. 获取并解析参数
+        Integer cardId = nftPurchaseDTO.getCardId();
+        if (cardId == null) {
+            return ApiResponse.error("卡牌ID不能为空");
+        }
         Object quantityObj = nftPurchaseDTO.getNumber();
         if (quantityObj == null) {
             return ApiResponse.error("请输入购买数量");
@@ -392,11 +396,11 @@ public class UserController {
             return ApiResponse.error("数量格式不正确");
         }
 
-        log.info("用户 {} 请求购买 {} 张 NFT 卡牌", userId, quantity);
+        log.info("用户 {} 请求购买 {} 张 NFT 卡牌，卡牌ID={}", userId, quantity, cardId);
 
         try {
             // 2. 调用服务层逻辑
-            billService.purchaseNftCard(userId, quantity);
+            billService.purchaseNftCard(userId, quantity, cardId);
             return ApiResponse.success("购买成功，卡牌已发放到您的钱包");
         } catch (BusinessException e) {
             log.warn("购买 NFT 失败: {}", e.getMessage());

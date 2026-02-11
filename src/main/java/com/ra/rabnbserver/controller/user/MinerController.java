@@ -63,7 +63,10 @@ public class MinerController {
         if (StrUtil.isBlank(dto.getMinerType()) || dto.getQuantity() == null || dto.getQuantity() <= 0) {
             return ApiResponse.error("参数错误");
         }
-        minerServe.buyMinerBatch(userId, dto.getMinerType(), dto.getQuantity());
+        if (dto.getCardId() == null) {
+            return ApiResponse.error("卡牌ID不能为空");
+        }
+        minerServe.buyMinerBatch(userId, dto.getMinerType(), dto.getQuantity(), dto.getCardId());
         return ApiResponse.success("购买申请提交成功");
     }
 
@@ -129,6 +132,9 @@ public class MinerController {
         Long userId = getFormalUserId();
         if (dto.getQuantity() == null || dto.getQuantity() <= 0) {
             return ApiResponse.error("兑换数量不合法");
+        }
+        if (dto.getCardId() == null) {
+            return ApiResponse.error("卡牌ID不能为空");
         }
         try {
             minerServe.buyNftWithFragments(userId, dto);
