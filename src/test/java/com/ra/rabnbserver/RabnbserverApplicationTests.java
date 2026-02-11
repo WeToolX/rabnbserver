@@ -250,8 +250,8 @@ class RabnbserverApplicationTests {
         log.info("AION 锁仓统计-未到期额度: {}", stats.getUnmaturedAmount());
         log.info("AION 锁仓统计-已领取记录数: {}", stats.getClaimedCount());
         log.info("AION 锁仓统计-已领取额度: {}", stats.getClaimedAmount());
-        log.info("AION 锁仓统计-已兑换碎片记录数: {}", stats.getFragmentedCount());
-        log.info("AION 锁仓统计-已兑换碎片额度: {}", stats.getFragmentedAmount());
+        log.info("AION 锁仓统计-已完全兑换碎片记录数: {}", stats.getFragmentedCount());
+        log.info("AION 锁仓统计-已兑换碎片额度(含部分兑换): {}", stats.getFragmentedAmount());
         log.info("AION 锁仓统计-最近可解锁时间: {}", stats.getEarliestUnlockTime());
         log.info("AION 锁仓统计-最晚解锁时间: {}", stats.getLatestUnlockTime());
         log.info("AION 锁仓统计-最后索引: {}", stats.getLastIndex());
@@ -319,7 +319,7 @@ class RabnbserverApplicationTests {
     @Test
     void testAionGetOrder() throws Exception {
         try {
-            String user = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
+            String user = "2021510293573603330";
             BigInteger orderId = new BigInteger("123");
             AionContract.OrderRecord record = aionContract.getOrder(user, orderId);
             if (record == null) {
@@ -344,8 +344,8 @@ class RabnbserverApplicationTests {
      */
     @Test
     void testAionIsOperatorApproved() throws Exception {
-        String user = requireTodoString("AION isOperatorApproved user", "TODO:填写地址");
-        String operator = requireTodoString("AION isOperatorApproved operator", "TODO:填写地址");
+        String user = "0xE7229d10B5E6014cA8F586963eF6E0784F7735B2";
+        String operator = "0xa068802D54d2Aca1AD8cE6F2300eee02e3B50113";
         log.info("AION 是否授权({}, {}): {}", user, operator, aionContract.isOperatorApproved(user, operator));
     }
 
@@ -642,7 +642,7 @@ class RabnbserverApplicationTests {
 
     // ===================== AionService ======================
 
-    /**
+    /**长期
      * 方法作用：查询可流通量
      */
     @Test

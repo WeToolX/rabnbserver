@@ -1075,6 +1075,7 @@ public class AionContract extends ContractBase {
      * @param orderId 订单号
      * @return 交易回执
      *         返回类型：TransactionReceipt
+     *         说明：仅领取剩余部分（amount - exchangedAmount）
      *         错误码：
      *         - NOT_ADMIN：非管理员调用
      *         - MINING_NOT_STARTED：挖矿未启动
@@ -1102,6 +1103,7 @@ public class AionContract extends ContractBase {
      * @param orderId 订单号
      * @return 交易回执
      *         返回类型：TransactionReceipt
+     *         说明：支持部分兑换，按剩余数量逐条扣减，完全兑换后标记 fragmentStatus=true
      *         错误码：
      *         - NOT_ADMIN：非管理员调用
      *         - MINING_NOT_STARTED：挖矿未启动
@@ -1134,6 +1136,7 @@ public class AionContract extends ContractBase {
      * @param orderId 订单号
      * @return 交易回执
      *         返回类型：TransactionReceipt
+     *         说明：支持部分兑换，按剩余数量逐条扣减，完全兑换后标记 fragmentStatus=true
      *         错误码：
      *         - NOT_ADMIN：非管理员调用
      *         - MINING_NOT_STARTED：挖矿未启动
@@ -1412,6 +1415,68 @@ public class AionContract extends ContractBase {
     }
 
     /**
+     * 锁仓记录
+     */
+    public static class LockRecord extends StaticStruct {
+
+        private final Uint256 time;
+        private final Uint256 amount;
+        private final Uint256 exchangedAmount;
+        private final Bool claimStatus;
+        private final Bool fragmentStatus;
+
+        public LockRecord(
+                Uint256 time,
+                Uint256 amount,
+                Uint256 exchangedAmount,
+                Bool claimStatus,
+                Bool fragmentStatus
+        ) {
+            super(time, amount, exchangedAmount, claimStatus, fragmentStatus);
+            this.time = time;
+            this.amount = amount;
+            this.exchangedAmount = exchangedAmount;
+            this.claimStatus = claimStatus;
+            this.fragmentStatus = fragmentStatus;
+        }
+
+        /**
+         * @return 解锁时间
+         */
+        public BigInteger getTime() {
+            return time.getValue();
+        }
+
+        /**
+         * @return 锁仓额度
+         */
+        public BigInteger getAmount() {
+            return amount.getValue();
+        }
+
+        /**
+         * @return 已兑换数量（允许部分兑换）
+         */
+        public BigInteger getExchangedAmount() {
+            return exchangedAmount.getValue();
+        }
+
+        /**
+         * @return 是否已领取
+         */
+        public Boolean getClaimStatus() {
+            return claimStatus.getValue();
+        }
+
+        /**
+         * @return 是否已完全兑换碎片
+         */
+        public Boolean getFragmentStatus() {
+            return fragmentStatus.getValue();
+        }
+    }
+
+    /**
      * 锁仓统计
      */
     public static class LockStats extends StaticStruct {
@@ -1532,14 +1597,14 @@ public class AionContract extends ContractBase {
         }
 
         /**
-         * @return 已兑换碎片记录数
+         * @return 已完全兑换碎片记录数
          */
         public BigInteger getFragmentedCount() {
             return fragmentedCount.getValue();
         }
 
         /**
-         * @return 已兑换碎片额度
+         * @return 已兑换碎片额度（包含部分兑换）
          */
         public BigInteger getFragmentedAmount() {
             return fragmentedAmount.getValue();

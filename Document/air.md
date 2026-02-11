@@ -346,12 +346,12 @@ remainingCap -= amount
 ```
 
 4. 校验分发类型：
-    * `distType` 必须为 `1/2`
-    * 若 `distType = 2`，`lockType` 必须为 `0`
+   * `distType` 必须为 `1/2`
+   * 若 `distType = 2`，`lockType` 必须为 `0`
 5. 校验订单号：`orderId` 在 `to` 地址下不得重复
 6. 根据 `distType` 执行：
-    * `distType = 1` → 按 `lockType` 写入指定锁仓
-    * `distType = 2` → **直接 `_mint` 给用户**（不写入锁仓记录）
+   * `distType = 1` → 按 `lockType` 写入指定锁仓
+   * `distType = 2` → **直接 `_mint` 给用户**（不写入锁仓记录）
 
 * 1 → L1：now + 1 month
 * 2 → L2：now + 2 month
@@ -386,16 +386,18 @@ flowchart TD
 LockRecord {
   time            // 解锁时间戳
   amount          // 额度
-  claimStatus     // 是否已领取
-  fragmentStatus  // 是否已兑换碎片
+  exchangedAmount // 已兑换数量（允许部分兑换）
+  claimStatus     // 是否已领取（领取剩余）
+  fragmentStatus  // 是否已完全兑换碎片
 }
 ```
 
 ### 状态不变量
 
 ```text
+exchangedAmount <= amount
+fragmentStatus == true → exchangedAmount == amount 且 claimStatus == false
 claimStatus == true → fragmentStatus == false
-fragmentStatus == true → claimStatus == false
 ```
 
 ---
@@ -406,10 +408,10 @@ fragmentStatus == true → claimStatus == false
 
 | 统计项 | 含义                    |
 | --- | --------------------- |
-| 可领取 | time <= now 且未领取未兑换   |
-| 未到期 | time > now 且未兑换       |
-| 已领取 | claimStatus = true    |
-| 已兑换 | fragmentStatus = true |
+| 可领取 | time <= now 且剩余 > 0 且未领取未完全兑换 |
+| 未到期 | time > now 且剩余 > 0 且未完全兑换 |
+| 已领取 | claimStatus = true（领取剩余） |
+| 已兑换 | fragmentStatus = true（完全兑换） |
 
 ---
 
@@ -419,10 +421,10 @@ fragmentStatus == true → claimStatus == false
 flowchart TD
     A["遍历仓 Lx"] --> B{"time <= now ?"}
     B -- "是" --> C{"claim / fragment ?"}
-    C -- "否" --> D["计入：可领取"]
+    C -- "否" --> D["计入：可领取（剩余=amount-exchangedAmount）"]
     C -- "是" --> E["忽略"]
     B -- "否" --> F{"fragmentStatus ?"}
-    F -- "否" --> G["计入：未到期"]
+    F -- "否" --> G["计入：未到期（剩余=amount-exchangedAmount）"]
     F -- "是" --> E
 ```
 
@@ -457,7 +459,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     A["开始扫描\n选择仓 Lx\n选择模式 mode\n从合约存储游标开始\n每次最多处理 maxScanLimit 条"] 
-      --> B["读取记录 r = Lx[i]\n字段：time / amount / claimStatus / fragmentStatus"] 
+      --> B["读取记录 r = Lx[i]\n字段：time / amount / exchangedAmount / claimStatus / fragmentStatus"] 
       --> C{"是否未到期？\n r.time > now"}
 
     %% ================= 未到期 =================
@@ -472,11 +474,11 @@ flowchart TD
     %% --- FRAG_LOCKED ---
     C1 -- "mode = FRAG_LOCKED" --> D1{"是否已兑换碎片？\nfragmentStatus == true"}
 
-    D1 -- "是（已兑换）" --> Y1["continue\n跳过已兑换记录\n继续找后续可兑换的未解锁记录"]
+    D1 -- "是（已兑换）" --> Y1["continue\n跳过已处理记录\n继续找后续可兑换记录"]
     D1 -- "否（未兑换）" --> D2{"是否已领取？\nclaimStatus == true"}
 
-    D2 -- "是（已领取）" --> X3["break\n已领取是不可跨越断点"]
-    D2 -- "否（未领取）" --> P1["执行兑换碎片\nfragmentStatus = true\nsum += amount\ni++"]
+    D2 -- "是（已领取）" --> Y1
+    D2 -- "否（未领取）" --> P1["执行兑换碎片（支持部分）\nexchangedAmount += take\nsum += take\n若满额则 fragmentStatus = true\n若未满且已达目标则停留"]
 
     P1 --> T1{"sum >= targetAmount ?"}
     T1 -- "是" --> X6["break\n达到目标兑换数量"]
@@ -489,8 +491,8 @@ flowchart TD
     E -- "是（已领取）" --> E1{"当前 mode 是什么？"}
 
     E1 -- "mode = CLAIM" --> Y2["continue\n已领取不可再领\n跳过继续扫描"]
-    E1 -- "mode = FRAG_LOCKED" --> X4["break\n未解锁碎片模式：\n遇已领取视为断点"]
-    E1 -- "mode = FRAG_UNLOCKED" --> X5["break\n已解锁碎片模式：\n遇已领取视为断点"]
+    E1 -- "mode = FRAG_LOCKED" --> Y1
+    E1 -- "mode = FRAG_UNLOCKED" --> Y1
 
     %% --- 未领取 ---
     E -- "否（未领取）" --> F{"是否已兑换碎片？\nfragmentStatus == true"}
@@ -500,13 +502,13 @@ flowchart TD
 
     F1 -- "mode = CLAIM" --> Y3["continue\n已兑换不可领取\n跳过继续扫描"]
     F1 -- "mode = FRAG_LOCKED" --> Y4["continue\n未解锁碎片模式：\n已解锁记录直接跳过"]
-    F1 -- "mode = FRAG_UNLOCKED" --> X5
+    F1 -- "mode = FRAG_UNLOCKED" --> Y1
 
     %% --- 可处理记录 ---
     F -- "否（未兑换）" --> G{"根据 mode 执行动作"}
 
     %% CLAIM 动作
-    G -- "mode = CLAIM" --> P2["执行领取\nclaimStatus = true\nsum += amount\ni++"]
+    G -- "mode = CLAIM" --> P2["执行领取（仅领取剩余）\nclaimStatus = true\nsum += (amount-exchangedAmount)\ni++"]
     P2 --> A
 
     %% FRAG_LOCKED：已到期记录
@@ -514,7 +516,7 @@ flowchart TD
     Y5 --> A
 
     %% FRAG_UNLOCKED：已解锁未领取
-    G -- "mode = FRAG_UNLOCKED" --> P3["执行兑换碎片\nfragmentStatus = true\nsum += amount\ni++"]
+    G -- "mode = FRAG_UNLOCKED" --> P3["执行兑换碎片（支持部分）\nexchangedAmount += take\nsum += take\n若满额则 fragmentStatus = true\n若未满且已达目标则停留"]
     P3 --> T2{"sum >= targetAmount ?"}
     T2 -- "是" --> X6
     T2 -- "否" --> A
@@ -525,7 +527,7 @@ flowchart TD
 ## 九点一、一键领取销毁规则（仅 CLAIM 模式生效）
 
 > 仅作用于 **CLAIM（一键领取）**，对 **FRAG_LOCKED / FRAG_UNLOCKED** 无影响。
-> 领取完成后，必须将对应锁仓记录的 `claimStatus` 标记为已领取，防止后续重复领取或兑换。
+> 领取完成后，必须将对应锁仓记录的 `claimStatus` 标记为已领取；若该记录存在部分兑换，则领取额度仅为 `amount - exchangedAmount`。
 
 ### 规则说明（按选择仓统计）
 
@@ -546,15 +548,15 @@ flowchart TD
 1. 管理员代用户执行，校验用户授权
 2. 选择仓类型 `Lx`（L1 / L2 / L3）
 3. 校验订单号：`orderId` 在用户地址下不得重复
-4. 仅扫描 `Lx` 内所有**已到期且未领取/未兑换**的记录
+4. 仅扫描 `Lx` 内所有**已到期且剩余 > 0 且未领取/未完全兑换**的记录
 5. 累计 `claimableLx`
 6. 先 `_mint` 全量 `claimableLx` 到合约自身
 7. 按仓类型执行 `burn`（只对当前 `Lx` 生效）：
-    * 若 `Lx = L1`，`burnLx = claimableLx * 75%`
-    * 若 `Lx = L2`，`burnLx = claimableLx * 50%`
-    * 若 `Lx = L3`，`burnLx = 0`
+   * 若 `Lx = L1`，`burnLx = claimableLx * 75%`
+   * 若 `Lx = L2`，`burnLx = claimableLx * 50%`
+   * 若 `Lx = L3`，`burnLx = 0`
 8. 实际到账：
-    * `netLx = claimableLx - burnLx`
+   * `netLx = claimableLx - burnLx`
 9. 将 `netLx` 转账给用户
 10. 将本次领取到的 `Lx` 记录逐条 `claimStatus = true`
 11. 写入订单记录（含 `amount/burnAmount/netAmount/timestamp`）
@@ -576,7 +578,7 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
 
 * 仅用于 CLAIM 领取预览，不用于兑换
 * 仅扫描**合约当前游标位置之后最多 maxScanLimit 条**
-    * 游标键：`user + lockType + CLAIM`
+   * 游标键：`user + lockType + CLAIM`
 * 返回本次“实际可领取的最大数量”（与 `claimAll` 同口径）
 
 ## 九点三、关键实现约定（已确认）
@@ -586,29 +588,29 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
 1. `startMining` 仅允许调用一次；重复调用**忽略**（不改变任何状态）。
 2. `exchangeLockedFragment / exchangeUnlockedFragment`：先计算可兑换数量，若 `< targetAmount` 则**不执行任何状态变更并返回错误**。
 3. 时间常量说明：
-    * 正式版：`month = 30 days`，`year = 365 days`
-    * 测试版：`month = 1 minutes`，`year = 1 hours`
+   * 正式版：`month = 30 days`，`year = 365 days`
+   * 测试版：`month = 1 minutes`，`year = 1 hours`
 4. 兑换碎片时执行顺序：**先 `_mint` 再 `_burn`**（碎片不需要独立载体，`_mint/_burn` 均为本币；**不转账给用户**，执行完成返回本次执行数量，后端自行记账）。
 5. `getLockStats` 返回结构体/元组（不返回 JSON 字符串）。
 6. 第一年初始化建议方案确定为：
-    * `startMining` 设置 `yearBudget = remainingCap / 2`、`yearMinted = 0`、`yearStartTs = miningStart`、`lastSettledYear = 0`
-    * `settleToCurrentYear` 只结算**已结束的年度**：
-      `while (lastSettledYear + 1 < currentYear) { ... }`
+   * `startMining` 设置 `yearBudget = remainingCap / 2`、`yearMinted = 0`、`yearStartTs = miningStart`、`lastSettledYear = 0`
+   * `settleToCurrentYear` 只结算**已结束的年度**：
+     `while (lastSettledYear + 1 < currentYear) { ... }`
 7. 扫描类接口使用**合约存储游标**，每次最多遍历 **maxScanLimit** 条（可配置，默认 100，不作为入参），且**不提供重置游标**功能。
-    * 游标键：`user + lockType + mode` 独立存储。
-    * 遇到“未到期 break”时，游标停留在**未到期记录的位置**（前序已处理完）。
+   * 游标键：`user + lockType + mode` 独立存储。
+   * 遇到“未到期 break”时，游标停留在**未到期记录的位置**（前序已处理完）。
 8. L1/L2 领取与兑换碎片时的执行方式：
-    * 领取（CLAIM）：合约先 `_mint` 到自身 → `burn` 销毁比例部分 → `transfer` 净额给用户
-    * 兑换碎片：合约先 `_mint` 到自身 → **全量** `burn`（不转账）
+   * 领取（CLAIM）：合约先 `_mint` 到自身 → `burn` 销毁比例部分 → `transfer` 净额给用户
+   * 兑换碎片：合约先 `_mint` 到自身 → **全量** `burn`（不转账）
 9. 新增 `previewClaimable(user, lockType)`：只查看**当前合约游标之后最多 maxScanLimit 条**记录，返回“本次可实际领取的最大数量”（不支持兑换预览）。
 10. `getLockStats` 允许**一次性全量遍历**该仓全部记录，建议仅用于 `view` 调用（链上调用可能超出 gas）。
-    * 若数据量很大，使用 `getLockStatsPaged` 分页统计。
-    * `getLockStatsPaged` 的 `stats` 为**本页统计值**，不是全量值，前端需自行累加汇总。
+   * 若数据量很大，使用 `getLockStatsPaged` 分页统计。
+   * `getLockStatsPaged` 的 `stats` 为**本页统计值**，不是全量值，前端需自行累加汇总。
 11. 权限控制：`startMining`、`allocateEmissionToLocks`、矿机分发相关入口需**管理员**权限。
-    * `exchangeLockedFragment / exchangeUnlockedFragment` 也需**管理员**调用，并要求**用户授权**（链上授权表）。
-    * 授权方式：用户调用 `approveOperator(operator, approved)`，合约校验 `operator` 是否被授权。
-    * 合约部署者拥有所有权限（**唯一可调用 `setAdmin`**），管理员不具备设置管理员权限。
-    * `claimAll` 需**管理员**调用，并要求**用户授权**。
+   * `exchangeLockedFragment / exchangeUnlockedFragment` 也需**管理员**调用，并要求**用户授权**（链上授权表）。
+   * 授权方式：用户调用 `approveOperator(operator, approved)`，合约校验 `operator` 是否被授权。
+   * 合约部署者拥有所有权限（**唯一可调用 `setAdmin`**），管理员不具备设置管理员权限。
+   * `claimAll` 需**管理员**调用，并要求**用户授权**。
 12. 返回值口径：
 * `claimAll` 返回**净到账数量**
 * `exchangeLockedFragment / exchangeUnlockedFragment` 返回**本次执行数量**
@@ -633,45 +635,45 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
 2. 兑换碎片不转账本币，执行流程为“合约 `_mint` → 全量 `_burn` → 返回执行数量”。
 3. `previewClaimable` 返回字段确认：`claimable / burnAmount / netAmount / processed / nextCursor`。
 4. 订单记录写入：
-    * 仅在执行成功后写入订单记录；若订单号重复则直接报错，不写入。
-    * `amount` 口径：`allocate=amount`，`exchange=targetAmount`，`claim=0`。
-    * `executedAmount` 口径：`allocate=amount`，`claim=claimableLx`，`exchange=本次执行数量`。
-    * `distType=2（直接分发）` 时：
-        * `methodType=ALLOCATE`（不新增类型）
-        * `amount=amount`
-        * `executedAmount=amount`
-        * `netAmount=amount`
-        * `burnAmount=0`
-    * `netAmount` 仅 `claim` 与 `distType=2` 有意义，其它方法为 `0`。
-    * `claimAll` 若本次仅跳过已领取/已兑换记录（游标前进但无可领取），仍会写入订单记录，`executedAmount=0`，并返回 `0`。
-    * 订单记录不再保存 `user/status` 字段，用户由 `getOrder(user, orderId)` 的 `user` 入参确定。
+   * 仅在执行成功后写入订单记录；若订单号重复则直接报错，不写入。
+   * `amount` 口径：`allocate=amount`，`exchange=targetAmount`，`claim=0`。
+   * `executedAmount` 口径：`allocate=amount`，`claim=claimableLx`，`exchange=本次执行数量`。
+   * `distType=2（直接分发）` 时：
+      * `methodType=ALLOCATE`（不新增类型）
+      * `amount=amount`
+      * `executedAmount=amount`
+      * `netAmount=amount`
+      * `burnAmount=0`
+   * `netAmount` 仅 `claim` 与 `distType=2` 有意义，其它方法为 `0`。
+   * `claimAll` 若本次仅跳过已领取/已兑换记录（游标前进但无可领取），仍会写入订单记录，`executedAmount=0`，并返回 `0`。
+   * 订单记录不再保存 `user/status` 字段，用户由 `getOrder(user, orderId)` 的 `user` 入参确定。
 5. `exchangeLockedFragment / exchangeUnlockedFragment` 为**管理员调用**，需校验**用户授权**（链上授权表）。
 6. 授权机制（链上授权表）建议：
-    * `mapping(user => mapping(operator => bool))`
-    * 用户调用 `approveOperator(operator, approved)` 设置授权
-    * 管理员调用 `exchange*` 时校验 `approved == true`
+   * `mapping(user => mapping(operator => bool))`
+   * 用户调用 `approveOperator(operator, approved)` 设置授权
+   * 管理员调用 `exchange*` 时校验 `approved == true`
 7. 批量分发 `allocateEmissionToLocksBatch`：
-    * 入参为并行数组：`tos[]` 与 `data[]`，长度必须一致
-    * `data[i]` 包含 `orderId` 与 4 组数量：`l1/l2/l3/direct`
-        * `l1` 对应 `lockType=1, distType=1`
-        * `l2` 对应 `lockType=2, distType=1`
-        * `l3` 对应 `lockType=3, distType=1`
-        * `direct` 对应 `lockType=0, distType=2`
-    * `orderId` 为该用户本次批量的唯一订单号（按用户唯一）
-    * `l1/l2/l3/direct` 为**三位小数的整数表示**：
-        * 传参示例：`1.234` 需传 `1234`
-        * 合约内部会将 `amount * 10^(18-3)` 转为 18 位最小单位
-        * 订单记录中的 `amount/executedAmount` 保存**18 位最小单位**
-    * 注意：仅批量分发使用三位小数整数，其它方法仍按 18 位最小单位传参
-    * 若 `l1/l2/l3/direct` 全部为 0，则该用户不产生订单记录
-    * 每用户一个订单号（`orderId` 按用户唯一）
-    * 订单记录仅写一条汇总：
-        * `lockType=0`
-        * `amount/executedAmount=四组总和`
-        * `netAmount=directAmount`
-        * `burnAmount=0`
-    * 分发明细通过事件 `AllocateDetail` 记录
-    * 任意一条失败则整批回滚
+   * 入参为并行数组：`tos[]` 与 `data[]`，长度必须一致
+   * `data[i]` 包含 `orderId` 与 4 组数量：`l1/l2/l3/direct`
+      * `l1` 对应 `lockType=1, distType=1`
+      * `l2` 对应 `lockType=2, distType=1`
+      * `l3` 对应 `lockType=3, distType=1`
+      * `direct` 对应 `lockType=0, distType=2`
+   * `orderId` 为该用户本次批量的唯一订单号（按用户唯一）
+   * `l1/l2/l3/direct` 为**三位小数的整数表示**：
+      * 传参示例：`1.234` 需传 `1234`
+      * 合约内部会将 `amount * 10^(18-3)` 转为 18 位最小单位
+      * 订单记录中的 `amount/executedAmount` 保存**18 位最小单位**
+   * 注意：仅批量分发使用三位小数整数，其它方法仍按 18 位最小单位传参
+   * 若 `l1/l2/l3/direct` 全部为 0，则该用户不产生订单记录
+   * 每用户一个订单号（`orderId` 按用户唯一）
+   * 订单记录仅写一条汇总：
+      * `lockType=0`
+      * `amount/executedAmount=四组总和`
+      * `netAmount=directAmount`
+      * `burnAmount=0`
+   * 分发明细通过事件 `AllocateDetail` 记录
+   * 任意一条失败则整批回滚
 
 
 # 第八部分：字段 & 方法完整对照表
@@ -690,8 +692,9 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
 | maxBatchLimit     | 批量分发上限 |
 | LockRecord.time   | 解锁时间   |
 | LockRecord.amount | 锁仓额度   |
+| LockRecord.exchangedAmount | 已兑换数量 |
 | claimStatus       | 是否已领取  |
-| fragmentStatus    | 是否已兑换  |
+| fragmentStatus    | 是否已完全兑换 |
 
 ---
 
@@ -731,14 +734,14 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
 | --- | --- |
 | totalCount | 该仓总记录数 |
 | totalAmount | 该仓总额度 |
-| claimableCount | 可领取记录数（已到期且未领取未兑换） |
+| claimableCount | 可领取记录数（已到期且剩余 > 0 且未领取未完全兑换） |
 | claimableAmount | 可领取额度 |
 | unmaturedCount | 未到期记录数 |
 | unmaturedAmount | 未到期额度 |
 | claimedCount | 已领取记录数 |
 | claimedAmount | 已领取额度 |
-| fragmentedCount | 已兑换碎片记录数 |
-| fragmentedAmount | 已兑换碎片额度 |
+| fragmentedCount | 已完全兑换记录数 |
+| fragmentedAmount | 已兑换碎片额度（包含部分兑换） |
 | earliestUnlockTime | 最近一次可解锁时间（用于前端倒计时） |
 | latestUnlockTime | 最晚解锁时间 |
 | lastIndex | 最后一条记录索引（便于分页） |
@@ -844,8 +847,9 @@ constructor(address admin, address communityAddress) {
 struct LockRecord {
     uint256 time;            // 解锁时间戳
     uint256 amount;          // 额度
+    uint256 exchangedAmount; // 已兑换数量（允许部分兑换）
     bool claimStatus;        // 是否已领取
-    bool fragmentStatus;     // 是否已兑换碎片
+    bool fragmentStatus;     // 是否已完全兑换碎片
 }
 
 // 批量分发入参（每个用户一个 orderId，固定 4 组：L1/L2/L3/Direct）
@@ -861,14 +865,14 @@ struct BatchData {
 struct LockStats {
     uint256 totalCount;         // 该仓总记录数
     uint256 totalAmount;        // 该仓总额度
-    uint256 claimableCount;     // 可领取记录数（已到期且未领取未兑换）
+    uint256 claimableCount;     // 可领取记录数（已到期且剩余 > 0 且未领取未完全兑换）
     uint256 claimableAmount;    // 可领取额度
     uint256 unmaturedCount;     // 未到期记录数
     uint256 unmaturedAmount;    // 未到期额度
     uint256 claimedCount;       // 已领取记录数
-    uint256 claimedAmount;      // 已领取额度
-    uint256 fragmentedCount;    // 已兑换碎片记录数
-    uint256 fragmentedAmount;   // 已兑换碎片额度
+    uint256 claimedAmount;      // 已领取额度（仅剩余部分）
+    uint256 fragmentedCount;    // 已完全兑换记录数
+    uint256 fragmentedAmount;   // 已兑换碎片额度（包含部分兑换）
     uint256 earliestUnlockTime; // 最近一次可解锁时间（用于前端倒计时）
     uint256 latestUnlockTime;   // 最晚解锁时间
     uint256 lastIndex;          // 最后一条记录索引（便于分页）
@@ -1042,6 +1046,8 @@ error BizError(uint8 code);
 
 ### exchangeLockedFragment / exchangeUnlockedFragment
 > `targetAmount` 为最小单位（需乘以 `10^decimals`）。例如 100 个币需传 `100 * 10^18`。
+> 支持部分兑换：单条记录会按 `remaining = amount - exchangedAmount` 参与兑换，仅扣减需要的数量。
+> 当 `exchangedAmount == amount` 时该记录视为**完全兑换**（`fragmentStatus = true`）。
 
 * `NOT_ADMIN`：非管理员调用
 * `MINING_NOT_STARTED`：挖矿未启动
