@@ -65,7 +65,7 @@ public class AbnormalRetryManager {
                 continue;
             }
             AbnormalContext context = new AbnormalContext(config, handler, targetClass);
-            ensureTableFields(config.table());
+            ensureTableFields(config);
             tableContextMap.put(config.table(), context);
             classContextMap.put(targetClass, context);
             log.info("异常重试服务已注册：服务={}, 表={}", config.serviceName(), config.table());
@@ -141,10 +141,16 @@ public class AbnormalRetryManager {
         }
 
         // 2) 业务状态已成功但 err_status 未同步时自动修复
+        if (successValue instanceof String && isNumericColumn(config.table(), config.statusField())) {
+            log.warn("异常框架自动修复已跳过，业务状态值与字段类型不匹配：服务={}, 字段={}, 成功值={}",
+                    config.serviceName(), config.statusField(), successValue);
+            return;
+        }
         String fixSuccessSql = "UPDATE " + wrapTable(config.table()) + " SET "
                 + wrapColumn("err_status") + " = ? "
                 + "WHERE " + wrapColumn(config.statusField()) + " = ?"
-                + " AND (" + wrapColumn("err_status") + " IS NULL OR " + wrapColumn("err_status") + " NOT IN (?, ?))";
+                + " AND " + wrapColumn("err_status") + " IS NOT NULL"
+                + " AND " + wrapColumn("err_status") + " NOT IN (?, ?)";
         int fixed = jdbcTemplate.update(fixSuccessSql,
                 AbnormalStatus.AUTO_SUCCESS.getCode(),
                 successValue,
@@ -512,7 +518,8 @@ public class AbnormalRetryManager {
         }
     }
 
-    private void ensureTableFields(String tableName) {
+    private void ensureTableFields(AbnormalRetryConfig config) {
+        String tableName = config.table();
         List<String> requiredColumns = List.of(
                 "err_status",
                 "err_start_time",
@@ -536,6 +543,178 @@ public class AbnormalRetryManager {
                 }
             }
         }
+        existing = getExistingColumns(tableName);
+        ensureErrStatusDefault(tableName);
+        fillNullErrStatus(tableName);
+        ensureTableIndexes(tableName, existing, config.statusField());
+    }
+
+    /**
+     * 确保 err_status 默认值与非空约束
+     *
+     * @param tableName 表名
+     */
+    private void ensureErrStatusDefault(String tableName) {
+        String sql = "SELECT COLUMN_TYPE, COLUMN_DEFAULT, IS_NULLABLE FROM information_schema.COLUMNS "
+                + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'err_status'";
+        Map<String, Object> row;
+        try {
+            row = jdbcTemplate.queryForMap(sql, tableName);
+        } catch (Exception e) {
+            log.warn("异常框架读取 err_status 元数据失败，表={}, 原因={}", tableName, e.getMessage());
+            return;
+        }
+        String columnType = row.get("COLUMN_TYPE") == null ? "INT" : row.get("COLUMN_TYPE").toString();
+        String columnDefault = row.get("COLUMN_DEFAULT") == null ? null : row.get("COLUMN_DEFAULT").toString();
+        String isNullable = row.get("IS_NULLABLE") == null ? null : row.get("IS_NULLABLE").toString();
+        boolean needAlter = !"NO".equalsIgnoreCase(isNullable)
+                || !String.valueOf(AbnormalStatus.NORMAL.getCode()).equals(columnDefault);
+        if (!needAlter) {
+            return;
+        }
+        String alterSql = "ALTER TABLE " + wrapTable(tableName) + " MODIFY COLUMN " + wrapColumn("err_status")
+                + " " + columnType + " NOT NULL DEFAULT " + AbnormalStatus.NORMAL.getCode()
+                + " COMMENT '异常主状态'";
+        try {
+            jdbcTemplate.execute(alterSql);
+            log.info("异常框架修正 err_status 默认值成功：表={}", tableName);
+        } catch (Exception e) {
+            log.error("异常框架修正 err_status 默认值失败：表={}, 原因={}", tableName, e.getMessage());
+        }
+    }
+
+    /**
+     * 将 err_status 为空的数据补为正常状态
+     *
+     * @param tableName 表名
+     */
+    private void fillNullErrStatus(String tableName) {
+        String sql = "UPDATE " + wrapTable(tableName) + " SET "
+                + wrapColumn("err_status") + " = ? WHERE " + wrapColumn("err_status") + " IS NULL";
+        int updated = jdbcTemplate.update(sql, AbnormalStatus.NORMAL.getCode());
+        if (updated > 0) {
+            log.info("异常框架已补齐 err_status 为空的数据：表={}, 数量={}", tableName, updated);
+        }
+    }
+
+    /**
+     * 确保异常框架核心索引存在
+     *
+     * @param tableName 表名
+     * @param existingColumns 已存在字段集合
+     * @param statusField 业务状态字段
+     */
+    private void ensureTableIndexes(String tableName, Set<String> existingColumns, String statusField) {
+        Map<String, List<String>> indexMap = loadIndexColumns(tableName);
+        ensureIndex(tableName, existingColumns, indexMap,
+                "idx_abnormal_err_status_start",
+                List.of("err_status", "err_start_time"));
+        if (StringUtils.hasText(statusField)) {
+            ensureIndex(tableName, existingColumns, indexMap,
+                    "idx_abnormal_status_err",
+                    List.of(statusField, "err_status"));
+        }
+    }
+
+    private void ensureIndex(String tableName,
+                             Set<String> existingColumns,
+                             Map<String, List<String>> indexMap,
+                             String indexName,
+                             List<String> columns) {
+        List<String> normalized = new ArrayList<>();
+        for (String column : columns) {
+            if (!StringUtils.hasText(column)) {
+                return;
+            }
+            normalized.add(column.toLowerCase());
+        }
+        for (String column : normalized) {
+            if (!existingColumns.contains(column)) {
+                log.warn("异常框架索引跳过，字段不存在：表={}, 索引={}, 字段={}", tableName, indexName, column);
+                return;
+            }
+        }
+        if (indexWithColumnsExists(indexMap, normalized)) {
+            return;
+        }
+        StringBuilder sql = new StringBuilder();
+        sql.append("CREATE INDEX ").append(wrapIndex(indexName))
+                .append(" ON ").append(wrapTable(tableName)).append(" (");
+        for (int i = 0; i < columns.size(); i++) {
+            if (i > 0) {
+                sql.append(", ");
+            }
+            sql.append(wrapColumn(columns.get(i)));
+        }
+        sql.append(")");
+        try {
+            jdbcTemplate.execute(sql.toString());
+            log.info("异常框架索引创建成功：表={}, 索引={}", tableName, indexName);
+            indexMap.put(indexName.toLowerCase(), normalized);
+        } catch (Exception e) {
+            log.error("异常框架索引创建失败：表={}, 索引={}, 原因={}", tableName, indexName, e.getMessage());
+        }
+    }
+
+    private Map<String, List<String>> loadIndexColumns(String tableName) {
+        String sql = "SELECT INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX FROM information_schema.STATISTICS "
+                + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY INDEX_NAME, SEQ_IN_INDEX";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, tableName);
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object indexName = row.get("INDEX_NAME");
+            Object columnName = row.get("COLUMN_NAME");
+            if (indexName == null || columnName == null) {
+                continue;
+            }
+            String idx = indexName.toString();
+            if ("PRIMARY".equalsIgnoreCase(idx)) {
+                continue;
+            }
+            result.computeIfAbsent(idx.toLowerCase(), key -> new ArrayList<>())
+                    .add(columnName.toString().toLowerCase());
+        }
+        return result;
+    }
+
+    private boolean indexWithColumnsExists(Map<String, List<String>> indexMap, List<String> columns) {
+        for (List<String> existing : indexMap.values()) {
+            if (existing.equals(columns)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断字段是否为数值类型
+     *
+     * @param tableName 表名
+     * @param columnName 字段名
+     * @return true 为数值类型
+     */
+    private boolean isNumericColumn(String tableName, String columnName) {
+        if (!StringUtils.hasText(columnName)) {
+            return false;
+        }
+        String sql = "SELECT DATA_TYPE FROM information_schema.COLUMNS "
+                + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?";
+        String dataType;
+        try {
+            dataType = jdbcTemplate.queryForObject(sql, String.class, tableName, columnName);
+        } catch (Exception e) {
+            log.warn("异常框架读取字段类型失败，表={}, 字段={}, 原因={}", tableName, columnName, e.getMessage());
+            return false;
+        }
+        if (dataType == null) {
+            return false;
+        }
+        String normalized = dataType.toLowerCase(Locale.ROOT);
+        return normalized.contains("int")
+                || normalized.contains("decimal")
+                || normalized.contains("numeric")
+                || normalized.contains("float")
+                || normalized.contains("double");
     }
 
     private Set<String> getExistingColumns(String tableName) {
@@ -720,6 +899,10 @@ public class AbnormalRetryManager {
 
     private String wrapColumn(String column) {
         return "`" + column + "`";
+    }
+
+    private String wrapIndex(String index) {
+        return "`" + index + "`";
     }
 
     private Object parseValue(String value) {

@@ -1,10 +1,12 @@
 package com.ra.rabnbserver.exception.Abnormal.model;
 
+import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.ra.rabnbserver.annotation.ColumnComment;
 import com.ra.rabnbserver.annotation.ColumnType;
 import com.ra.rabnbserver.annotation.DefaultValue;
 import com.ra.rabnbserver.common.BaseEntity;
+import com.ra.rabnbserver.enums.AbnormalStatus;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -20,17 +22,16 @@ public abstract class AbnormalBaseEntity extends BaseEntity {
     /**
      * 异常主状态
      */
-    @TableField("err_status")
+    @TableField(value = "err_status", fill = FieldFill.INSERT)
     @ColumnComment("异常主状态")
     @ColumnType("INT")
-    // 默认值 2000，对应 AbnormalStatus.NORMAL
     @DefaultValue("2000")
-    private Integer errStatus;
+    private Integer errStatus = AbnormalStatus.NORMAL.getCode();
 
     /**
      * 首次异常时间
      */
-    @TableField("err_start_time")
+    @TableField(value = "err_start_time", fill = FieldFill.INSERT)
     @ColumnComment("首次异常时间")
     @ColumnType("DATETIME")
     private LocalDateTime errStartTime;

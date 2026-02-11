@@ -1,6 +1,7 @@
 package com.ra.rabnbserver.config;
 
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
+import com.ra.rabnbserver.enums.AbnormalStatus;
 import org.apache.ibatis.reflection.MetaObject;
 import org.springframework.stereotype.Component;
 
@@ -19,6 +20,14 @@ public class MyMetaObjectHandler implements MetaObjectHandler {
         // 这样数据库中 create_time 和 update_time 都有值，且初始值一致
         this.strictInsertFill(metaObject, "createTime", LocalDateTime.class, beijingTime);
         this.strictInsertFill(metaObject, "updateTime", LocalDateTime.class, beijingTime);
+
+        // 3. 异常框架字段兜底：errStatus 为空则补 2000，errStartTime 为空则补当前时间
+        if (metaObject.hasSetter("errStatus") && metaObject.getValue("errStatus") == null) {
+            metaObject.setValue("errStatus", AbnormalStatus.NORMAL.getCode());
+        }
+        if (metaObject.hasSetter("errStartTime") && metaObject.getValue("errStartTime") == null) {
+            metaObject.setValue("errStartTime", beijingTime);
+        }
     }
 
     @Override
