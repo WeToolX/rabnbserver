@@ -152,12 +152,12 @@ public class UserController {
         String walletAddress = loginDataDTO.getUserWalletAddress();
         String referrer = loginDataDTO.getCode();
 
-        // 1. 校验：钱包地址不能为空 (Code: 4001)
+        // 校验：钱包地址不能为空 (Code: 1001)
         if (StrUtil.isBlank(walletAddress)) {
             return ApiResponse.error(1001, "钱包地址不能为空");
         }
 
-        // 2. 检查用户是否存在
+        // 检查用户是否存在
         User user = userService.getByWalletAddress(walletAddress);
         if (user != null) {
             // 只要地址存在，直接登录 (Code: 200)
@@ -165,13 +165,13 @@ public class UserController {
             return ApiResponse.success("登录成功", user);
         }
 
-        // 3. 用户不存在，准备注册
-        // 3.1 校验：未注册地址必须传入推荐人 (Code: 4002)
+        // 用户不存在，准备注册
+        // 校验：未注册地址必须传入推荐人 (Code: 1002)
         if (StrUtil.isBlank(referrer)) {
             return ApiResponse.error(1002, "用户未注册，请提供邀请人地址");
         }
 
-        // 3.2 校验：不能邀请自己 (Code: 4004)
+        // 校验：不能邀请自己 (Code: 1003)
         if (walletAddress.equalsIgnoreCase(referrer)) {
             return ApiResponse.error(1003, "无效的邀请地址（不能邀请自己）");
         }
@@ -182,7 +182,7 @@ public class UserController {
             upgradeToUserSession(newUser.getId().toString());
             return ApiResponse.success("注册成功", newUser);
         } catch (BusinessException e) {
-            // 推荐人无效等业务异常 (Code: 4003)邀请人地址无效，请核对后重试
+            // 推荐人无效等业务异常 (Code: 1004)邀请人地址无效，请核对后重试
             return ApiResponse.error(1004, e.getMessage());
         } catch (Exception e) {
             log.error("系统注册异常", e);
@@ -378,8 +378,7 @@ public class UserController {
         } catch (BusinessException e) {
             return ApiResponse.error(402,"操作失败：需登录正式账号");
         }
-
-        // 1. 获取并解析参数
+        // 获取并解析参数
         Integer cardId = nftPurchaseDTO.getCardId();
         if (cardId == null) {
             return ApiResponse.error("卡牌ID不能为空");
@@ -388,18 +387,15 @@ public class UserController {
         if (quantityObj == null) {
             return ApiResponse.error("请输入购买数量");
         }
-
         int quantity;
         try {
             quantity = Integer.parseInt(quantityObj.toString());
         } catch (NumberFormatException e) {
             return ApiResponse.error("数量格式不正确");
         }
-
         log.info("用户 {} 请求购买 {} 张 NFT 卡牌，卡牌ID={}", userId, quantity, cardId);
-
         try {
-            // 2. 调用服务层逻辑
+            // 调用服务层逻辑
             billService.purchaseNftCard(userId, quantity, cardId);
             return ApiResponse.success("购买成功，卡牌已发放到您的钱包");
         } catch (BusinessException e) {
@@ -411,16 +407,8 @@ public class UserController {
         }
     }
 
-//    /**
-//     * 管理员人工核销账单（补发成功）
-//     */
-//    @PostMapping("/admin/manual-bill-success")
-//    public String manualBillSuccess(@RequestParam("billId") Long billId) {
-//        log.info("管理员人工干预账单成功，ID: {}", billId);
-//        billRetryServe.ProcessingSuccessful(billId);
-//        return ApiResponse.success("核销成功");
-//    }
 
-
-
+    public UserBillRetryServeImpl getBillRetryServe() {
+        return billRetryServe;
+    }
 }

@@ -109,4 +109,12 @@ public class UserMiner extends AbnormalBaseEntity {
     @ColumnComment("是否已购买加速包 0:否, 1:是")
     @DefaultValue("0")
     private Integer isAccelerated;
+
+    /**
+     * 上次收益产生时间
+     */
+    @TableField("last_reward_time")
+    @ColumnComment("上次收益产生时间")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime lastRewardTime;
 }

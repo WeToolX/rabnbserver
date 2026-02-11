@@ -2,6 +2,7 @@ package com.ra.rabnbserver.server.miner;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.ra.rabnbserver.VO.GetAdminClaimVO;
 import com.ra.rabnbserver.dto.MinerAccelerationDTO;
 import com.ra.rabnbserver.dto.MinerElectricityDTO;
 import com.ra.rabnbserver.dto.MinerQueryDTO;
@@ -28,7 +29,9 @@ public interface MinerServe extends IService<UserMiner> {
     void processDailyProfit() throws Exception;
 
     /** 管理员代领取 */
-    String adminClaimAll(AdminMinerActionDTO dto) throws Exception;
+//    String adminClaimAll(AdminMinerActionDTO dto) throws Exception;
+
+    String adminClaimAll(GetAdminClaimVO dto) throws Exception;
 
     /** 管理员代兑换未解锁碎片 */
     String adminExchangeLocked(AdminMinerActionDTO dto) throws Exception;
