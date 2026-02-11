@@ -4,6 +4,7 @@ import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.ra.rabnbserver.VO.GetAdminClaimVO;
 import com.ra.rabnbserver.dto.*;
 import com.ra.rabnbserver.dto.adminMinerAction.AdminMinerActionDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.FragmentExchangeNftDTO;
@@ -28,7 +29,6 @@ import java.math.BigDecimal;
 @RequestMapping("/api/user/miner")
 @RequiredArgsConstructor
 public class MinerController {
-
     private final MinerServe minerServe;
     private  final MinerProfitRecordServe minerProfitRecordServe;
     private final SystemConfigServe systemConfigServe;
@@ -76,9 +76,10 @@ public class MinerController {
      */
     @SaCheckLogin
     @PostMapping("/claim-tokens")
-    public String adminClaim(@RequestBody AdminMinerActionDTO dto) {
-        if (dto.getAmount() == null || dto.getAddress() == null || dto.getLockType() == null) {
-            return ApiResponse.error("参数缺失");
+    public String adminClaim(@RequestBody GetAdminClaimVO dto) {
+        Long userId = getFormalUserId();
+        if ( dto.getLockType() == null) {
+            return ApiResponse.error("仓类参数缺失");
         }
         try {
             String txId = minerServe.adminClaimAll(dto);
@@ -94,6 +95,7 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/exchange-locked")
     public String adminExchangeLocked(@RequestBody AdminMinerActionDTO dto) {
+        Long userId = getFormalUserId();
         if (dto.getAmount() == null || dto.getAddress() == null || dto.getLockType() == null) {
             return ApiResponse.error("参数缺失");
         }
@@ -111,6 +113,7 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/exchange-unlocked")
     public String adminExchangeUnlocked(@RequestBody AdminMinerActionDTO dto) {
+        Long userId = getFormalUserId();
         if (dto.getAmount() == null || dto.getAddress() == null || dto.getLockType() == null) {
             return ApiResponse.error("参数缺失");
         }
@@ -197,6 +200,7 @@ public class MinerController {
      */
     @GetMapping("/config/{key}")
     public String getValueByKey(@PathVariable String key) {
+        Long userId = getFormalUserId();
         String  KEY = "";
         if (key.equals("1")) {
             KEY = "MINER_SYSTEM_SETTINGS";

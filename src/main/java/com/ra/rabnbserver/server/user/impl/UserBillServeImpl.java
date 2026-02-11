@@ -47,7 +47,6 @@ import java.util.regex.Pattern;
 @Slf4j
 @RequiredArgsConstructor
 public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> implements UserBillServe {
-
     private final UserMapper userMapper;
     private final TransactionTemplate transactionTemplate;
     private final EtfCardServe etfCardServe;
@@ -72,14 +71,11 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         User user = validateUserAndCheckLock(userId);
         String orderId = "0x" + IdWorker.get32UUID();
         BigInteger rawAmount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.USDT, amount);
-
         // 验证链上授权额度与余额
         checkChainAllowanceAndBalance(user.getUserWalletAddress(), rawAmount);
-
         TransactionReceipt receipt = null;
         String systemErrorMsg = null;
-
-        // 1. 仅针对合约调用/网络请求进行 Try-Catch
+        // 仅针对合约调用/网络请求进行 Try-Catch
         try {
             log.info("发起链上充值请求，用户：{}，金额：{}", user.getUserWalletAddress(), amount);
             receipt = paymentUsdtContract.deposit(orderId, user.getUserWalletAddress(), rawAmount);
@@ -87,7 +83,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             log.error("充值合约调用发生系统异常", e);
             systemErrorMsg = e.getMessage();
         }
-        // 2. 统一处理结果（确保只执行一次记账操作）
+        // 统一处理结果（确保只执行一次记账操作）
         if (receipt != null && "0x1".equals(receipt.getStatus())) {
             // 情况 A: 链上执行成功
             createBillAndUpdateBalance(userId, amount, BillType.PLATFORM, FundType.INCOME,
@@ -114,7 +110,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
     @Override
     public void purchaseNftCard(Long userId, int quantity, Integer cardId) {
         User user = validateUserAndCheckLock(userId);
-        // 关键变更：新增卡牌ID参数，避免默认卡牌导致分发错误
+        // 新增卡牌ID参数，避免默认卡牌导致分发错误
         if (cardId == null) {
             throw new BusinessException("卡牌ID不能为空");
         }
@@ -122,7 +118,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (currentBatch == null) {
             throw new BusinessException("当前无可用卡牌批次");
         }
-
 //        BigInteger remaining = syncChainInventory(currentBatch.getId());
 //        if (remaining.compareTo(BigInteger.valueOf(quantity)) < 0) {
 //            throw new BusinessException("链上库存不足，剩余数量：" + remaining);
@@ -130,7 +125,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
 
         BigDecimal totalCost = currentBatch.getUnitPrice().multiply(new BigDecimal(quantity));
         String orderId = "NFT_BUY_" + IdWorker.getIdStr();
-
         transactionTemplate.executeWithoutResult(status -> {
             try {
                 boolean stockOk = etfCardServe.update(new LambdaUpdateWrapper<ETFCard>()
@@ -149,11 +143,9 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                 throw e;
             }
         });
-
         Long billId = getBillIdByOrder(orderId);
         TransactionReceipt receipt = null;
         String nftError = null;
-
         try {
             log.info("发起NFT链上分发，用户：{}，数量：{}", user.getUserWalletAddress(), quantity);
             receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(cardId), BigInteger.valueOf(quantity));
@@ -161,7 +153,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             log.error("NFT分发执行异常", e);
             nftError = e.getMessage();
         }
-
         if (receipt != null && "0x1".equals(receipt.getStatus())) {
             updateBillReceipt(billId, receipt, "购买NFT卡牌成功 x" + quantity);
             billRetryServe.ProcessingSuccessful(billId);
