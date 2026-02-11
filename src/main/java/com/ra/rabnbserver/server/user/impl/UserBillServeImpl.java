@@ -287,6 +287,11 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
     }
 
     /**
+     * 18位精度常量，用于链上单位转换（Wei to Unit）
+     */
+    private static final int ON_CHAIN_PRECISION = 18;
+
+    /**
      * 统一创建账单并更新余额（支持平台余额与碎片余额）
      *
      * @param userId           用户ID
@@ -298,8 +303,8 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
      * @param orderId          业务订单号
      * @param txId             链上哈希
      * @param res              链上响应结果
-     * @param num              变动数量（基本整型参数）
-     * @param createUserBillVO 扩展参数对象（主要用于传递字符串格式的高精度碎片数量）
+     * @param num              变动数量（整型参数，若提供VO则优先使用VO）
+     * @param createUserBillVO 扩展参数对象（主要用于传递字符串格式的高精度碎片数量：如 "1000000000000000000"）
      */
     @Override
     public void createBillAndUpdateBalance(
@@ -315,11 +320,11 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             int num,
             CreateUserBillVO createUserBillVO
     ) {
+        log.info("开始创建账单并更新余额: userId={}, billType={}, fundType={}", userId, billType, fundType);
         // 生成或校验订单号
         if (StringUtils.isBlank(orderId)) {
             orderId = "BILL_" + IdWorker.getIdStr();
         }
-
         // 锁行并获取用户信息，确保余额更新的原子性
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getId, userId)
@@ -327,7 +332,6 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
-
         // 初始化账单记录对象
         UserBill bill = new UserBill();
         bill.setUserId(userId);
@@ -346,20 +350,20 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (createUserBillVO != null && createUserBillVO.getCardId() != null) {
             bill.setCardId(createUserBillVO.getCardId());
         }
-
-        // 定义快照变量（用于记录账单变动前后的快照）
+        // 定义快照变量（用于记录账单变动前后的数值快照）
         BigDecimal balanceBefore = BigDecimal.ZERO;
         BigDecimal balanceAfter = BigDecimal.ZERO;
-
-        // 根据账单类型分发逻辑
+        // 根据账单类型分发核心逻辑
         switch (billType) {
             case FRAGMENT:
-                // --- 碎片逻辑处理 ---
-                // 确定变动数量：优先取 VO 中的字符串（支持高精度），若为空则取 int 类型的 num
-                String changeStr = (createUserBillVO != null && StringUtils.isNotBlank(createUserBillVO.getNum()))
+                // --- 碎片逻辑处理 (解析链上18位精度字符串) ---
+                // 获取原始变动字符串：优先从 VO 获取，因为 int num 无法承载 18 位精度的数字
+                String rawChangeStr = (createUserBillVO != null && StringUtils.isNotBlank(createUserBillVO.getNum()))
                         ? createUserBillVO.getNum() : String.valueOf(num);
-                BigDecimal fragChangeAmount = new BigDecimal(changeStr);
-                // 获取当前碎片余额快照（String -> BigDecimal）
+                // 解析逻辑：将链上带18位0的字符串转换为实际 BigDecimal 数量
+                // 例如："1500000000000000000" -> 1.5
+                BigDecimal fragChangeAmount = new BigDecimal(rawChangeStr).movePointLeft(ON_CHAIN_PRECISION);
+                // 获取当前碎片余额快照
                 String currentFragStr = user.getFragmentBalance();
                 balanceBefore = StringUtils.isNotBlank(currentFragStr) ? new BigDecimal(currentFragStr) : BigDecimal.ZERO;
                 // 计算变动后余额
@@ -372,31 +376,27 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                 if (balanceAfter.compareTo(BigDecimal.ZERO) < 0) {
                     throw new BusinessException("碎片余额不足");
                 }
-
-                // 更新用户表碎片字段（BigDecimal -> String，使用 toPlainString 避免科学计数法）
+                // 更新用户表碎片字段（使用 toPlainString 避免科学计数法）
                 String balanceAfterStr = balanceAfter.toPlainString();
                 userMapper.update(null, new LambdaUpdateWrapper<User>()
                         .eq(User::getId, userId)
                         .set(User::getFragmentBalance, balanceAfterStr));
                 // 设置账单特有字段
-                bill.setAmount(BigDecimal.ZERO);      // 碎片账单金额记录为0
-                bill.setFragmentNum(balanceAfterStr); // 记录碎片变动后的数量快照
+                bill.setAmount(BigDecimal.ZERO);      // 碎片账单的主金额字段记录为0
+                bill.setFragmentNum(balanceAfterStr); // 记录碎片余额快照
                 break;
-
             case PLATFORM:
                 // --- 平台余额逻辑处理 ---
                 balanceBefore = (user.getBalance() == null) ? BigDecimal.ZERO : user.getBalance();
-                // 计算变动后余额
                 if (FundType.EXPENSE.equals(fundType)) {
                     balanceAfter = balanceBefore.subtract(amount);
                 } else {
                     balanceAfter = balanceBefore.add(amount);
                 }
-                // 校验余额是否合法
                 if (balanceAfter.compareTo(BigDecimal.ZERO) < 0) {
                     throw new BusinessException("账户余额不足");
                 }
-                // 只有当金额不为0时才执行数据库更新，减少无效IO
+                // 更新余额
                 if (amount.compareTo(BigDecimal.ZERO) != 0) {
                     userMapper.update(null, new LambdaUpdateWrapper<User>()
                             .eq(User::getId, userId)
@@ -404,24 +404,27 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                 }
                 bill.setAmount(amount);
                 break;
-
             case ON_CHAIN:
             case ERROR_ORDER:
                 // --- 链上流水或异常订单逻辑 ---
-                // 此类账单通常只做流水记录，不直接操作本地缓存余额
+                // 此类账单仅做记录，不改变本地缓存余额
                 balanceBefore = (user.getBalance() == null) ? BigDecimal.ZERO : user.getBalance();
-                balanceAfter = balanceBefore; // 余额无变动
+                balanceAfter = balanceBefore;
                 bill.setAmount(amount);
                 break;
+
             default:
                 throw new BusinessException("未知的账单类型: " + billType);
         }
-
-        // 统一设置通用快照字段并持久化账单
-        // 即使是碎片类型，balanceBefore/After 也会存储数值，方便管理后台通用列表展示
+        // 统一设置通用快照字段并持久化
+        // 碎片类型的 balanceBefore/After 也存储对应的碎片数值，便于后台列表排序展示
         bill.setBalanceBefore(balanceBefore);
         bill.setBalanceAfter(balanceAfter);
-        this.save(bill);
+        boolean saveResult = this.save(bill);
+        if (!saveResult) {
+            throw new BusinessException("保存账单失败");
+        }
+        log.info("账单创建成功: billId={}, userId={}, orderId={}", bill.getId(), userId, orderId);
     }
 
     @Override

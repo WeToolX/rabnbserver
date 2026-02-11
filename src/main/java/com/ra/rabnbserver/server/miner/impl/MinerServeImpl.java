@@ -1,5 +1,6 @@
 package com.ra.rabnbserver.server.miner.impl;
 
+import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.StrUtil;
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -31,6 +32,8 @@ import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.*;
 import com.ra.rabnbserver.server.miner.MinerServe;
 import com.ra.rabnbserver.server.user.UserBillServe;
+import com.ra.rabnbserver.server.user.UserServe;
+import io.micrometer.common.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -307,6 +310,11 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 .update();
     }
 
+    /**
+     * 购买加速包
+     * @param userId
+     * @param dto
+     */
     @Transactional(rollbackFor = Exception.class)
     @Override
     public void buyAccelerationPack(Long userId, MinerAccelerationDTO dto) {
@@ -484,18 +492,23 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     }
 
 
+    private final UserServe userService;
+
     /**
      * 管理员代领取代币 (CLAIM)
      */
-    @Transactional(rollbackFor = Exception.class)
     @Override
     public String adminClaimAll(AdminMinerActionDTO dto) throws Exception {
+        Long orderId = IdWorker.getId();
+        Long userId = getFormalUserId();
+        User user = userService.getById(userId);
+        if (user != null) {
+            dto.setAddress(user.getUserWalletAddress());
+        }
         try {
-            TransactionReceipt receipt = aionContract.claimAll(dto.getAddress(), dto.getLockType(), BigInteger.valueOf(dto.getOrderId()));
+            TransactionReceipt receipt = aionContract.claimAll(dto.getAddress(), dto.getLockType(), BigInteger.valueOf(orderId));
             if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
-                AionContract.OrderRecord order = aionContract.getOrder(dto.getAddress(), BigInteger.valueOf(dto.getOrderId()));
-                Long userId = getUserIdByAddress(dto.getAddress());
-
+                AionContract.OrderRecord order = aionContract.getOrder(dto.getAddress(), BigInteger.valueOf(orderId));
                 userBillServe.createBillAndUpdateBalance(
                         userId,
                         new BigDecimal(order.getNetAmount()),
@@ -503,7 +516,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                         FundType.INCOME,
                         TransactionType.PROFIT,
                         "收益领取成功(已按仓位销毁部分额度)",
-                        dto.getOrderId().toString(),
+                        orderId.toString(),
                         receipt.getTransactionHash(),
                         JSON.toJSONString(receipt),
                         0,
@@ -521,20 +534,43 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     /**
      * 3. 管理员代兑换未解锁碎片
      */
-    @Transactional(rollbackFor = Exception.class)
     @Override
     public String adminExchangeLocked(AdminMinerActionDTO dto) throws Exception {
+        Long userId = getFormalUserId();
+        User user = userService.getById(userId);
+        if (user != null) {
+            dto.setAddress(user.getUserWalletAddress());
+        }
+        log.info("管理员代兑换未解锁碎片.请求参数：{}", dto);
+
+        // 1. 将前端传来的正常数量转换为链上18位精度的 BigInteger
+        // 例如：1.5 -> 1500000000000000000
+        BigInteger chainAmount = dto.getAmount()
+                .multiply(new BigDecimal("1000000000000000000"))
+                .toBigInteger();
+
+        Long orderId = IdWorker.getId();
         try {
+            // 使用转换后的 chainAmount 调用合约
             TransactionReceipt receipt = aionContract.exchangeLockedFragment(
-                    dto.getAddress(), dto.getLockType(), dto.getAmount().toBigInteger(), BigInteger.valueOf(dto.getOrderId()));
+                    dto.getAddress(),
+                    dto.getLockType(),
+                    chainAmount,
+                    BigInteger.valueOf(orderId)
+            );
+
+            log.info("管理员代兑换未解锁碎片.链上返回数据：{}", receipt);
 
             if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
-                AionContract.OrderRecord order = aionContract.getOrder(dto.getAddress(), BigInteger.valueOf(dto.getOrderId()));
-                Long userId = getUserIdByAddress(dto.getAddress());
+                AionContract.OrderRecord order = aionContract.getOrder(dto.getAddress(), BigInteger.valueOf(orderId));
+                log.info("获取订单详情：{}", order);
 
+
+                // 这里的 order.getExecutedAmount() 依然是链上的带18位0的 BigInteger
                 CreateUserBillVO vo = new CreateUserBillVO();
                 vo.setNum(order.getExecutedAmount().toString());
 
+                // createBillAndUpdateBalance 内部会处理 movePointLeft(18) 还原回正常数字
                 userBillServe.createBillAndUpdateBalance(
                         userId,
                         BigDecimal.ZERO,
@@ -542,7 +578,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                         FundType.INCOME,
                         TransactionType.EXCHANGE,
                         "收益兑换碎片(未解锁部分)",
-                        dto.getOrderId().toString(),
+                        orderId.toString(),
                         receipt.getTransactionHash(),
                         JSON.toJSONString(receipt),
                         0,
@@ -550,6 +586,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 );
                 return receipt.getTransactionHash();
             }
+            log.info("未解锁碎片兑换执行失败");
             throw new BusinessException("未解锁碎片兑换执行失败");
         } catch (AionContractException e) {
             log.error("兑换未解锁碎片失败: {}", e.getDecodedDetail());
@@ -560,20 +597,36 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     /**
      * 4. 管理员代兑换已解锁碎片
      */
-    @Transactional(rollbackFor = Exception.class)
     @Override
     public String adminExchangeUnlocked(AdminMinerActionDTO dto) throws Exception {
+        log.info("管理员代兑换已解锁碎片.请求参数：{}", dto);
+        Long userId = getFormalUserId();
+        User user = userService.getById(userId);
+        if (user != null) {
+            dto.setAddress(user.getUserWalletAddress());
+        }
+        // 将前端传来的正常数量转换为链上18位精度的 BigInteger
+        BigInteger chainAmount = dto.getAmount()
+                .multiply(new BigDecimal("1000000000000000000"))
+                .toBigInteger();
+
         try {
+            Long orderId = IdWorker.getId();
+            // 使用转换后的 chainAmount 调用合约
             TransactionReceipt receipt = aionContract.exchangeUnlockedFragment(
-                    dto.getAddress(), dto.getLockType(), dto.getAmount().toBigInteger(), BigInteger.valueOf(dto.getOrderId()));
+                    dto.getAddress(),
+                    dto.getLockType(),
+                    chainAmount,
+                    BigInteger.valueOf(orderId)
+            );
+
+            log.info("管理员代兑换已解锁碎片.链上返回数据：{}", receipt);
 
             if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
-                AionContract.OrderRecord order = aionContract.getOrder(dto.getAddress(), BigInteger.valueOf(dto.getOrderId()));
-                Long userId = getUserIdByAddress(dto.getAddress());
-
+                AionContract.OrderRecord order = aionContract.getOrder(dto.getAddress(), BigInteger.valueOf(orderId));
+                log.info("获取订单详情：{}", order.toString());
                 CreateUserBillVO vo = new CreateUserBillVO();
                 vo.setNum(order.getExecutedAmount().toString());
-
                 userBillServe.createBillAndUpdateBalance(
                         userId,
                         BigDecimal.ZERO,
@@ -581,7 +634,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                         FundType.INCOME,
                         TransactionType.EXCHANGE,
                         "收益兑换碎片(已解锁部分)",
-                        dto.getOrderId().toString(),
+                        orderId.toString(),
                         receipt.getTransactionHash(),
                         JSON.toJSONString(receipt),
                         0,
@@ -589,17 +642,23 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 );
                 return receipt.getTransactionHash();
             }
+            log.info("已解锁碎片兑换执行失败");
             throw new BusinessException("已解锁碎片兑换执行失败");
         } catch (AionContractException e) {
             log.error("兑换已解锁碎片失败: {}", e.getDecodedDetail());
             throw new BusinessException("兑换失败: " + e.getErrorMessage());
+        } catch (BusinessException e) {
+            log.error("兑换已解锁碎片业务逻辑失败: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("创建账单系统异常，关键参数：address={}, error={}", dto.getAddress(), e.getMessage(), e);
+            throw new BusinessException("系统处理失败，请检查账单日志");
         }
     }
 
     /**
-     * 5. 碎片兑换卡牌 NFT
+     * 碎片兑换卡牌 NFT
      */
-    @Transactional(rollbackFor = Exception.class)
     @Override
     public void buyNftWithFragments(Long userId, FragmentExchangeNftDTO dto) throws Exception {
         // 关键变更：新增卡牌ID参数，避免默认卡牌导致分发错误
@@ -611,14 +670,11 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         if (rate == null || rate.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException("碎片换卡比例未配置，请联系系统管理员");
         }
-
         BigDecimal totalNeed = rate.multiply(new BigDecimal(dto.getQuantity()));
         User user = userMapper.selectById(userId);
-
         CreateUserBillVO vo = new CreateUserBillVO();
         vo.setNum(totalNeed.toPlainString());
         vo.setCardId(dto.getCardId());
-
         userBillServe.createBillAndUpdateBalance(
                 userId,
                 BigDecimal.ZERO,
@@ -632,7 +688,6 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 0,
                 vo
         );
-
         TransactionReceipt receipt = cardNftContract.distribute(
                 user.getUserWalletAddress(),
                 BigInteger.valueOf(dto.getCardId()),
@@ -645,7 +700,10 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
 
     private Long getUserIdByAddress(String address) {
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUserWalletAddress, address));
-        return user != null ? user.getId() : 0L;
+        if (user == null) {
+            throw new  BusinessException("用户对应的地址不存在");
+        }
+        return user.getId();
     }
 
     /**
@@ -806,4 +864,19 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             return null;
         }
     }
+
+    /**
+     * 获取当前登录的正式用户ID
+     * @return 成功则返回Long类型的UserId，如果是临时会话或未登录则抛出异常
+     */
+    private Long getFormalUserId() {
+        StpUtil.checkLogin();
+        String loginId = StpUtil.getLoginIdAsString();
+        if (!StrUtil.isNumeric(loginId)) {
+            log.warn("检测到临时会话访问受限接口: {}", loginId);
+            throw new BusinessException("请先完成登录或注册");
+        }
+        return Long.parseLong(loginId);
+    }
+
 }

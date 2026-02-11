@@ -12,8 +12,7 @@ import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.UserMiner;
 import com.ra.rabnbserver.server.miner.MinerProfitRecordServe;
 import com.ra.rabnbserver.server.miner.MinerServe;
-import com.ra.rabnbserver.server.miner.impl.MinerPurchaseRetryServeImpl;
-import com.ra.rabnbserver.server.miner.impl.MinerProfitRetryServeImpl;
+import com.ra.rabnbserver.server.sys.SystemConfigServe;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -31,9 +30,9 @@ import java.math.BigDecimal;
 public class MinerController {
 
     private final MinerServe minerServe;
-    private final MinerPurchaseRetryServeImpl purchaseRetryServe;
-    private final MinerProfitRetryServeImpl profitRetryServe;
     private  final MinerProfitRecordServe minerProfitRecordServe;
+    private final SystemConfigServe systemConfigServe;
+
 
     /**
      * 分页查询我的矿机列表
@@ -78,7 +77,7 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/claim-tokens")
     public String adminClaim(@RequestBody AdminMinerActionDTO dto) {
-        if (dto.getOrderId() == null || dto.getLockType() == null) {
+        if (dto.getAmount() == null || dto.getAddress() == null || dto.getLockType() == null) {
             return ApiResponse.error("参数缺失");
         }
         try {
@@ -95,7 +94,7 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/exchange-locked")
     public String adminExchangeLocked(@RequestBody AdminMinerActionDTO dto) {
-        if (dto.getAmount() == null || dto.getOrderId() == null) {
+        if (dto.getAmount() == null || dto.getAddress() == null || dto.getLockType() == null) {
             return ApiResponse.error("参数缺失");
         }
         try {
@@ -112,7 +111,7 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/exchange-unlocked")
     public String adminExchangeUnlocked(@RequestBody AdminMinerActionDTO dto) {
-        if (dto.getAmount() == null || dto.getOrderId() == null) {
+        if (dto.getAmount() == null || dto.getAddress() == null || dto.getLockType() == null) {
             return ApiResponse.error("参数缺失");
         }
         try {
@@ -191,6 +190,18 @@ public class MinerController {
         Long userId = getFormalUserId();
         queryDTO.setUserId(userId);
         return ApiResponse.success(minerProfitRecordServe.findPage(queryDTO));
+    }
+
+    /**
+     * 根据 Key 直接查询配置值
+     */
+    @GetMapping("/config/{key}")
+    public String getValueByKey(@PathVariable String key) {
+        String  KEY = "";
+        if (key.equals("1")) {
+            KEY = "MINER_SYSTEM_SETTINGS";
+        }
+        return ApiResponse.success(systemConfigServe.getValueByKey(KEY));
     }
 
     private Long getFormalUserId() {

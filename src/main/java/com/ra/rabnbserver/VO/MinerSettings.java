@@ -15,7 +15,7 @@ public class MinerSettings {
     private BigDecimal accelerationFee = new BigDecimal("50.00"); // 加速包价格
     private Map<Integer, BigDecimal> distributionRatios = new HashMap<>(); // 分销比例
     private List<RewardTier> tiers; // 阶梯比例
-    private BigDecimal fragmentToCardRate; //多少张碎片兑换一张卡牌
+    private BigDecimal fragmentToCardRate = new BigDecimal("100"); //多少张碎片兑换一张卡牌
 
     @Data
     public static class RewardTier {
