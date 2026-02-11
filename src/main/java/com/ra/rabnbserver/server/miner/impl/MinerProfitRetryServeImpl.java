@@ -94,7 +94,7 @@ public class MinerProfitRetryServeImpl extends AbstractAbnormalRetryService {
             AionContract.OrderRecord order = aionContract.getOrder(record.getWalletAddress(), BigInteger.valueOf(record.getActualOrderId()));
 
             // 若未抛异常且 order 正常返回，说明订单已在链上
-            if (order != null && order.getStatus().intValue() == 0) {
+            if (order != null) {
                 profitRecordMapper.update(null, new LambdaUpdateWrapper<MinerProfitRecord>()
                         .eq(MinerProfitRecord::getId, dataId)
                         .set(MinerProfitRecord::getPayoutStatus, 1));
@@ -125,15 +125,21 @@ public class MinerProfitRetryServeImpl extends AbstractAbnormalRetryService {
 
             if (orderIdToUse != null) {
                 try {
-                    AionContract.OrderRecord oldOrder = aionContract.getOrder(record.getWalletAddress(), BigInteger.valueOf(orderIdToUse));
-                    // 订单存在但状态非0（失败），需要换新单号重发
-                    if (oldOrder.getStatus().intValue() != 0) {
-                        needNewId = true;
+                    AionContract.OrderRecord oldOrder = aionContract.getOrder(
+                            record.getWalletAddress(),
+                            BigInteger.valueOf(orderIdToUse)
+                    );
+                    // 订单已存在，直接标记成功，避免重复分发
+                    if (oldOrder != null) {
+                        profitRecordMapper.update(null, new LambdaUpdateWrapper<MinerProfitRecord>()
+                                .eq(MinerProfitRecord::getId, dataId)
+                                .set(MinerProfitRecord::getPayoutStatus, 1));
+                        return true;
                     }
                 } catch (AionContractException e) {
-                    // 若订单不存在（Code 8），直接沿用旧单号即可
+                    // 若订单不存在（Code 8），继续走重发流程
                     if (!Integer.valueOf(8).equals(e.getErrorCode())) {
-                        needNewId = true; // 其他异常也换号尝试
+                        needNewId = true; // 其他异常换号尝试
                     }
                 }
             } else {

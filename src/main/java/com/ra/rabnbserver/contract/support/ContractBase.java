@@ -133,7 +133,10 @@ public abstract class ContractBase {
         );
         EthEstimateGas estimateGas = web3j.ethEstimateGas(transaction).send();
         if (estimateGas.hasError()) {
-            log.warn("Gas 估算失败，使用默认值: {}", estimateGas.getError().getMessage());
+            String reason = estimateGas.getError().getMessage();
+            int dataLen = data == null ? 0 : data.length();
+            log.warn("Gas 估算失败，使用默认值: 原因={}, 合约={}, 发起地址={}, dataLen={}, data={}",
+                    reason, contractAddress, from, dataLen, data);
             return blockchainProperties.getGasLimitDefault();
         }
         BigInteger gasUsed = estimateGas.getAmountUsed();

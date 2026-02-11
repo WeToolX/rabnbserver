@@ -378,11 +378,10 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                         Map<String, List<UserMiner>> byType = userMiners.stream()
                                 .collect(Collectors.groupingBy(UserMiner::getMinerType));
 
-                        // 定义四个槽位的金额和订单号（初始化为0，实现自动占位）
+                        // 定义四个槽位的金额（初始化为0，实现自动占位）
                         BigInteger[] slotAmounts = new BigInteger[4]; // 0:L1, 1:L2, 2:L3, 3:Direct
-                        BigInteger[] slotOrderIds = new BigInteger[4];
                         Arrays.fill(slotAmounts, BigInteger.ZERO);
-                        Arrays.fill(slotOrderIds, BigInteger.ZERO);
+                        Long userOrderId = null;
 
                         // 遍历可能的矿机类型：0, 1, 2, 3
                         for (int typeIdx = 0; typeIdx <= 3; typeIdx++) {
@@ -408,9 +407,12 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
 
                                 profitRecordService.saveBatch(groupRecords);
 
-                                // B. 生成业务订单号并持久化
+                                // B. 生成业务订单号并持久化（每用户一个 orderId）
+                                if (userOrderId == null) {
+                                    userOrderId = Long.parseLong(groupRecords.get(0).getId() + "" + timeSuffix);
+                                }
                                 for (MinerProfitRecord r : groupRecords) {
-                                    r.setActualOrderId(Long.parseLong(r.getId() + "" + timeSuffix));
+                                    r.setActualOrderId(userOrderId);
                                 }
                                 profitRecordService.updateBatchById(groupRecords);
                                 allRecordsInBatch.addAll(groupRecords);
@@ -420,23 +422,19 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                                 BigInteger groupTotalWei = perMinerAmountWei.multiply(BigInteger.valueOf(minersOfThisType.size()));
                                 BigInteger chainAmount = groupTotalWei.divide(unitDivisor);
 
-                                // 订单号 MD5 截取 32位 (前8位16进制)
-                                Long repOrderId = groupRecords.get(0).getActualOrderId();
-                                String md5Hex = cn.hutool.crypto.SecureUtil.md5(String.valueOf(repOrderId));
-                                BigInteger chainOrderId = new BigInteger(md5Hex.substring(0, 8), 16);
-
                                 slotAmounts[typeIdx] = chainAmount;
-                                slotOrderIds[typeIdx] = chainOrderId;
                             }
                         }
 
                         // 将用户地址和对应的 BatchData 放入列表（下标严格对应）
+                        BigInteger chainOrderId = userOrderId == null ? BigInteger.ZERO : BigInteger.valueOf(userOrderId);
                         tos.add(wallet);
                         dataList.add(new AionContract.BatchData(
-                                slotAmounts[0], slotOrderIds[0], // L1
-                                slotAmounts[1], slotOrderIds[1], // L2
-                                slotAmounts[2], slotOrderIds[2], // L3
-                                slotAmounts[3], slotOrderIds[3]  // Direct
+                                chainOrderId,
+                                slotAmounts[0], // L1
+                                slotAmounts[1], // L2
+                                slotAmounts[2], // L3
+                                slotAmounts[3]  // Direct
                         ));
                     }
 

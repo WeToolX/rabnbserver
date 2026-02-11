@@ -1,25 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-/// @title AiRword Aion (AiRWord_v3)
-/// @notice 依据 air.md 文档实现的合约（中文注释与中文日志）
 contract AiRWord_v3 {
-    // =========================
-    // 基础常量与元数据
-    // =========================
+
     string public constant NAME = "AiRword Aion";
     string public constant SYMBOL = "AiRword";
     uint8 public constant DECIMALS = 18;
     uint256 public constant CAP = 210_000_000 * 10 ** uint256(DECIMALS);
 
-    // 时间常量
     uint256 private constant MONTH = 1 minutes;
     uint256 private constant YEAR = 1 hours;
-    uint256 private constant AMOUNT_SCALE = 10 ** 15; // 批量分发金额：三位小数 -> 18 位最小单位
+    uint256 private constant AMOUNT_SCALE = 10 ** 15;
 
-    // =========================
-    // 错误码（BizError）
-    // =========================
     error BizError(uint8 code);
 
     uint8 private constant NOT_ADMIN = 1;
@@ -42,142 +34,107 @@ contract AiRWord_v3 {
     uint8 private constant EMPTY_BATCH = 18;
     uint8 private constant LENGTH_MISMATCH = 19;
 
-    // =========================
-    // 角色与权限
-    // =========================
-    address public immutable owner; // 合约部署者（超级管理员）
-    address public admin; // 管理员（由部署者设置）
-    address public immutable community; // 社区地址
+    address public immutable owner;
+    address public admin;
+    address public immutable community;
 
-    // =========================
-    // ERC20 存储
-    // =========================
-    // 代币总供应量（最小单位）
     uint256 private _totalSupply;
 
-    // 账户余额映射：地址 => 余额
     mapping(address => uint256) private _balances;
 
-    // 授权额度映射：授权人 => 被授权人 => 授权额度
     mapping(address => mapping(address => uint256)) private _allowances;
 
+    uint256 public miningStart;
+    uint256 public lastSettledYear;
+    uint256 public yearBudget;
+    uint256 public yearMinted;
+    uint256 public remainingCap;
+    uint256 public yearStartTs;
 
-    // =========================
-    // 挖矿与发行状态
-    // =========================
-    uint256 public miningStart;     // 挖矿起始时间
-    uint256 public lastSettledYear; // 已完成结算的最后一年
-    uint256 public yearBudget;      // 当前年度最大发行额度
-    uint256 public yearMinted;      // 当前年度已分发额度
-    uint256 public remainingCap;    // 剩余可挖额度（全局总量，不是当年额度）
-    uint256 public yearStartTs;     // 当前年度起始时间
-
-    // =========================
-    // 扫描上限
-    // =========================
     uint256 public maxScanLimit = 100;
     uint256 public maxBatchLimit = 1000;
 
-    // =========================
-    // 数据结构
-    // =========================
     struct LockRecord {
-        uint256 time;           // 解锁时间戳
-        uint256 amount;         // 额度
-        bool claimStatus;       // 是否已领取
-        bool fragmentStatus;    // 是否已兑换碎片
+        uint256 time;
+        uint256 amount;
+        bool claimStatus;
+        bool fragmentStatus;
     }
 
-    // claimAll 计算过程内使用
     struct ClaimAllState {
-        uint256 cursorStart; // 起始游标
-        uint256 i;           // 当前扫描位置
-        uint256 processed;   // 本次处理条数
-        uint256 claimable;   // 本次可领取总额
+        uint256 cursorStart;
+        uint256 i;
+        uint256 processed;
+        uint256 claimable;
     }
 
-    // 批量分发入参（每个用户固定 4 组：L1/L2/L3/Direct）
     struct BatchData {
-        uint256[2] l1;      // [amount, orderId]
-        uint256[2] l2;      // [amount, orderId]
-        uint256[2] l3;      // [amount, orderId]
-        uint256[2] direct;  // [amount, orderId]（direct=distType 2）
+        uint256 orderId;
+        uint256 l1;
+        uint256 l2;
+        uint256 l3;
+        uint256 direct;
     }
 
     struct LockStats {
-        uint256 totalCount;         // 该仓总记录数
-        uint256 totalAmount;        // 该仓总额度
-        uint256 claimableCount;     // 可领取记录数（已到期且未领取未兑换）
-        uint256 claimableAmount;    // 可领取额度
-        uint256 unmaturedCount;     // 未到期记录数
-        uint256 unmaturedAmount;    // 未到期额度
-        uint256 claimedCount;       // 已领取记录数
-        uint256 claimedAmount;      // 已领取额度
-        uint256 fragmentedCount;    // 已兑换碎片记录数
-        uint256 fragmentedAmount;   // 已兑换碎片额度
-        uint256 earliestUnlockTime; // 最近一次可解锁时间（用于前端倒计时）
-        uint256 latestUnlockTime;   // 最晚解锁时间
-        uint256 lastIndex;          // 最后一条记录索引（便于分页）
+        uint256 totalCount;
+        uint256 totalAmount;
+        uint256 claimableCount;
+        uint256 claimableAmount;
+        uint256 unmaturedCount;
+        uint256 unmaturedAmount;
+        uint256 claimedCount;
+        uint256 claimedAmount;
+        uint256 fragmentedCount;
+        uint256 fragmentedAmount;
+        uint256 earliestUnlockTime;
+        uint256 latestUnlockTime;
+        uint256 lastIndex;
     }
 
     struct PreviewClaimable {
-        uint256 claimable;   // 本次可领取总额
-        uint256 burnAmount;  // 本次应销毁数量
-        uint256 netAmount;   // 本次实际到账数量
-        uint256 processed;   // 本次处理条数
-        uint256 nextCursor;  // 下一游标位置（仅计算，不入库）
+        uint256 claimable;
+        uint256 burnAmount;
+        uint256 netAmount;
+        uint256 processed;
+        uint256 nextCursor;
     }
 
     enum OrderMethodType {
-        ALLOCATE,         // 分发入仓 / 直接分发
-        CLAIM,            // 领取
-        EXCHANGE_LOCKED,  // 兑换未解锁碎片
-        EXCHANGE_UNLOCKED // 兑换已解锁碎片
+        ALLOCATE,
+        CLAIM,
+        EXCHANGE_LOCKED,
+        EXCHANGE_UNLOCKED
     }
 
     struct OrderRecord {
-        OrderMethodType methodType; // 方法类型
-        address user;               // 订单归属用户
-        uint8 lockType;             // 仓位
-        uint256 amount;             // 数量入参（allocate=amount / exchange=targetAmount / claim=0）
-        uint256 executedAmount;     // 本次实际执行数量
-        uint256 netAmount;          // 实际到账数量（仅领取有意义）
-        uint256 burnAmount;         // 本次销毁数量
-        uint256 timestamp;          // 执行时间
-        uint8 status;               // 执行状态（0=成功，1=失败）
+        OrderMethodType methodType;
+        uint8 lockType;
+        uint256 amount;
+        uint256 executedAmount;
+        uint256 netAmount;
+        uint256 burnAmount;
+        uint256 timestamp;
     }
 
-    // =========================
-    // 存储映射
-    // =========================
-    // 用户锁仓：user => lockType => records
     mapping(address => mapping(uint8 => LockRecord[])) private _locks;
 
-    // 游标：user => lockType => mode => cursor
     mapping(address => mapping(uint8 => mapping(uint8 => uint256))) private _cursors;
 
-    // 订单记录：user => orderId => record
     mapping(address => mapping(uint256 => OrderRecord)) private _orders;
     mapping(address => mapping(uint256 => bool)) private _orderExists;
 
-    // 用户授权：user => operator => approved
     mapping(address => mapping(address => bool)) private _operatorApproved;
 
-    // 模式常量（用于游标）
     uint8 private constant MODE_CLAIM = 0;
     uint8 private constant MODE_FRAG_LOCKED = 1;
     uint8 private constant MODE_FRAG_UNLOCKED = 2;
 
-    // =========================
-    // 事件（日志输出）
-    // =========================
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
-    // 年度结算：未挖完额度销毁
     event UnmintedAllocationBurned(uint256 year, uint256 unminted);
 
-    // 领取销毁明细
     event ClaimWithBurn(
         address indexed user,
         uint256 claimable,
@@ -186,17 +143,14 @@ contract AiRWord_v3 {
         uint8 lockType
     );
 
-    // 直接分发事件
-    event DirectDistributed(
-        address indexed to,
-        uint256 amount,
-        uint256 orderId,
-        uint256 timestamp
+    event AllocateDetail(
+        address indexed user,
+        uint256 indexed orderId,
+        uint8 lockType,
+        uint8 distType,
+        uint256 amount
     );
 
-    // =========================
-    // 构造函数（部署阶段）
-    // =========================
     constructor(address admin_, address communityAddress) {
         if (admin_ == address(0) || communityAddress == address(0)) {
             revert BizError(INVALID_ADDRESS);
@@ -206,19 +160,14 @@ contract AiRWord_v3 {
         admin = admin_;
         community = communityAddress;
 
-        // 初始分配（唯一例外可 mint）
         uint256 toContract = (CAP * 4) / 100;
         uint256 toCommunity = (CAP * 6) / 100;
         _mint(address(this), toContract);
         _mint(communityAddress, toCommunity);
 
-        // 初始化剩余可挖额度
         remainingCap = CAP - toContract - toCommunity;
     }
 
-    // =========================
-    // ERC20 基础接口
-    // =========================
     function name() external pure returns (string memory) {
         return NAME;
     }
@@ -263,11 +212,8 @@ contract AiRWord_v3 {
         return true;
     }
 
-    // =========================
-    // 权限与管理员
-    // =========================
     function setAdmin(address newAdmin) external {
-        // 仅部署者可设置管理员
+
         if (msg.sender != owner) {
             revert BizError(NOT_ADMIN);
         }
@@ -278,18 +224,14 @@ contract AiRWord_v3 {
     }
 
     function approveOperator(address operator, bool approved) external {
-        // 用户授权管理员操作
+
         _operatorApproved[msg.sender][operator] = approved;
     }
 
-    // 查询授权状态：user 是否授权 operator
     function isOperatorApproved(address user, address operator) external view returns (bool) {
         return _operatorApproved[user][operator];
     }
 
-    // =========================
-    // 扫描上限配置
-    // =========================
     function setMaxScanLimit(uint256 limit) external onlyAdmin {
         maxScanLimit = limit;
     }
@@ -307,9 +249,7 @@ contract AiRWord_v3 {
     }
 
     function estimateMaxCount(uint256 perRecordGas, uint256 fixedGas) external view returns (uint256) {
-        // 预估建议上限：根据区块 gasLimit 反推出可安全处理的最大条数
-        // perRecordGas：每条记录预计消耗 gas
-        // fixedGas：固定开销（不随记录数变化）
+
         if (perRecordGas == 0 || fixedGas == 0) {
             revert BizError(INVALID_GAS_PARAM);
         }
@@ -324,11 +264,8 @@ contract AiRWord_v3 {
         return suggested;
     }
 
-    // =========================
-    // 启动挖矿
-    // =========================
     function startMining() external onlyAdmin {
-        // 重复调用忽略
+
         if (miningStart != 0) {
             return;
         }
@@ -339,9 +276,6 @@ contract AiRWord_v3 {
         lastSettledYear = 0;
     }
 
-    // =========================
-    // 年度结算
-    // =========================
     function settleToCurrentYear() public {
         _requireStarted();
         uint256 currentYear = _currentYear();
@@ -356,9 +290,6 @@ contract AiRWord_v3 {
         }
     }
 
-    // =========================
-    // 今日可发行量（只读）
-    // =========================
     function getTodayMintable() external view returns (uint256) {
         _requireStartedView();
         (uint256 budget, uint256 minted, uint256 startTs) = _simulateToCurrentYear();
@@ -371,9 +302,6 @@ contract AiRWord_v3 {
         return yearRemaining / daysRemaining;
     }
 
-    // =========================
-    // 当前年度剩余额度（只读）
-    // =========================
     function getCurrentYearRemaining()
     external
     view
@@ -384,9 +312,6 @@ contract AiRWord_v3 {
         return (b - m, b, m);
     }
 
-    // =========================
-    // 分发额度（入仓/直接）
-    // =========================
     function allocateEmissionToLocks(
         address to,
         uint256 amount,
@@ -429,28 +354,22 @@ contract AiRWord_v3 {
         if (distType == 1) {
             _pushLock(to, lockType, amount);
         } else {
-            // 直接分发：直接 mint 给用户
-            _mint(to, amount);
-            emit DirectDistributed(to, amount, orderId, block.timestamp);
-        }
 
-        // 写入订单记录（ALLOCATE）
+            _mint(to, amount);
+        }
+        emit AllocateDetail(to, orderId, lockType, distType, amount);
+
         OrderRecord storage r = _orders[to][orderId];
         r.methodType = OrderMethodType.ALLOCATE;
-        r.user = to;
         r.lockType = lockType;
         r.amount = amount;
         r.executedAmount = amount;
         r.netAmount = (distType == 2) ? amount : 0;
         r.burnAmount = 0;
         r.timestamp = block.timestamp;
-        r.status = 0;
         _orderExists[to][orderId] = true;
     }
 
-    // =========================
-    // 批量分发额度（入仓/直接）
-    // =========================
     function allocateEmissionToLocksBatch(address[] calldata tos, BatchData[] calldata data) external onlyAdmin {
         _requireStarted();
         if (tos.length != data.length) {
@@ -472,16 +391,42 @@ contract AiRWord_v3 {
             }
 
             BatchData calldata d = data[i];
-            _handleBatchItem(to, 1, 1, d.l1);
-            _handleBatchItem(to, 2, 1, d.l2);
-            _handleBatchItem(to, 3, 1, d.l3);
-            _handleBatchItem(to, 0, 2, d.direct);
+            uint256 orderId = d.orderId;
+            _requireOrderNotExists(to, orderId);
+
+            uint256 l1Amount = _scaleAmount(d.l1);
+            uint256 l2Amount = _scaleAmount(d.l2);
+            uint256 l3Amount = _scaleAmount(d.l3);
+            uint256 directAmount = _scaleAmount(d.direct);
+            uint256 totalAmount = l1Amount + l2Amount + l3Amount + directAmount;
+
+            if (totalAmount == 0) {
+                continue;
+            }
+
+            if (yearMinted + totalAmount > yearBudget) {
+                revert BizError(ANNUAL_BUDGET_EXCEEDED);
+            }
+            yearMinted += totalAmount;
+            remainingCap -= totalAmount;
+
+            _allocateOne(to, orderId, 1, 1, l1Amount);
+            _allocateOne(to, orderId, 2, 1, l2Amount);
+            _allocateOne(to, orderId, 3, 1, l3Amount);
+            _allocateOne(to, orderId, 0, 2, directAmount);
+
+            OrderRecord storage r = _orders[to][orderId];
+            r.methodType = OrderMethodType.ALLOCATE;
+            r.lockType = 0;
+            r.amount = totalAmount;
+            r.executedAmount = totalAmount;
+            r.netAmount = directAmount;
+            r.burnAmount = 0;
+            r.timestamp = block.timestamp;
+            _orderExists[to][orderId] = true;
         }
     }
 
-    // =========================
-    // 一键领取（指定仓位）
-    // =========================
     function claimAll(address user, uint8 lockType, uint256 orderId) external onlyAdmin returns (uint256) {
         _requireStarted();
         if (!_isValidLockType(lockType)) {
@@ -504,41 +449,35 @@ contract AiRWord_v3 {
             s.processed++;
             LockRecord storage rec = list[s.i];
             if (rec.time > block.timestamp) {
-                // 未到期直接停止
+
                 break;
             }
 
             if (rec.claimStatus || rec.fragmentStatus) {
-                // 已领取或已兑换，跳过
+
                 s.i++;
                 continue;
             }
 
-            // 可领取
             rec.claimStatus = true;
             s.claimable += rec.amount;
             s.i++;
         }
 
-        // 更新游标
         _cursors[user][lockType][MODE_CLAIM] = s.i;
 
         if (s.claimable == 0) {
-            // 若游标未前进，说明本次无法领取
             if (s.i == s.cursorStart) {
                 revert BizError(NO_CLAIMABLE);
             }
-            // 游标已前进但无可领取（例如前段记录已领取/已兑换）
             OrderRecord storage r0 = _orders[user][orderId];
             r0.methodType = OrderMethodType.CLAIM;
-            r0.user = user;
             r0.lockType = lockType;
             r0.amount = 0;
             r0.executedAmount = 0;
             r0.netAmount = 0;
             r0.burnAmount = 0;
             r0.timestamp = block.timestamp;
-            r0.status = 0;
             _orderExists[user][orderId] = true;
             return 0;
         }
@@ -546,7 +485,6 @@ contract AiRWord_v3 {
         uint256 burnAmount = _calcBurn(lockType, s.claimable);
         uint256 netAmount = s.claimable - burnAmount;
 
-        // 领取：先 mint 到自身，再 burn，最后转账净额
         _mint(address(this), s.claimable);
         if (burnAmount > 0) {
             _burn(address(this), burnAmount);
@@ -555,25 +493,19 @@ contract AiRWord_v3 {
 
         emit ClaimWithBurn(user, s.claimable, burnAmount, netAmount, lockType);
 
-        // 写入订单记录（CLAIM）
         OrderRecord storage r = _orders[user][orderId];
         r.methodType = OrderMethodType.CLAIM;
-        r.user = user;
         r.lockType = lockType;
         r.amount = 0;
         r.executedAmount = s.claimable;
         r.netAmount = netAmount;
         r.burnAmount = burnAmount;
         r.timestamp = block.timestamp;
-        r.status = 0;
         _orderExists[user][orderId] = true;
 
         return netAmount;
     }
 
-    // =========================
-    // 兑换未解锁碎片（管理员代用户执行）
-    // =========================
     function exchangeLockedFragment(
         address user,
         uint8 lockType,
@@ -606,7 +538,7 @@ contract AiRWord_v3 {
             LockRecord storage rec = list[i];
 
             if (rec.time > block.timestamp) {
-                // 未到期
+
                 if (rec.fragmentStatus) {
                     i++;
                     continue;
@@ -615,7 +547,6 @@ contract AiRWord_v3 {
                     break;
                 }
 
-                // 可兑换未解锁碎片
                 rec.fragmentStatus = true;
                 sum += rec.amount;
                 i++;
@@ -625,7 +556,6 @@ contract AiRWord_v3 {
                 continue;
             }
 
-            // 已到期
             if (rec.claimStatus) {
                 break;
             }
@@ -634,40 +564,31 @@ contract AiRWord_v3 {
                 continue;
             }
 
-            // 已到期未兑换，未解锁碎片不处理，继续扫描
             i++;
         }
 
-        // 更新游标
         _cursors[user][lockType][MODE_FRAG_LOCKED] = i;
 
         if (sum < targetAmount) {
             revert BizError(EXCHANGE_TARGET_NOT_MET);
         }
 
-        // 兑换碎片：先 mint 到自身，再全量 burn，不转账
         _mint(address(this), sum);
         _burn(address(this), sum);
 
-        // 写入订单记录（EXCHANGE_LOCKED）
         OrderRecord storage r = _orders[user][orderId];
         r.methodType = OrderMethodType.EXCHANGE_LOCKED;
-        r.user = user;
         r.lockType = lockType;
         r.amount = targetAmount;
         r.executedAmount = sum;
         r.netAmount = 0;
         r.burnAmount = sum;
         r.timestamp = block.timestamp;
-        r.status = 0;
         _orderExists[user][orderId] = true;
 
         return sum;
     }
 
-    // =========================
-    // 兑换已解锁碎片（管理员代用户执行）
-    // =========================
     function exchangeUnlockedFragment(
         address user,
         uint8 lockType,
@@ -700,11 +621,10 @@ contract AiRWord_v3 {
             LockRecord storage rec = list[i];
 
             if (rec.time > block.timestamp) {
-                // 未到期直接停止
+
                 break;
             }
 
-            // 已到期
             if (rec.claimStatus) {
                 break;
             }
@@ -712,7 +632,6 @@ contract AiRWord_v3 {
                 break;
             }
 
-            // 可兑换已解锁碎片
             rec.fragmentStatus = true;
             sum += rec.amount;
             i++;
@@ -721,36 +640,28 @@ contract AiRWord_v3 {
             }
         }
 
-        // 更新游标
         _cursors[user][lockType][MODE_FRAG_UNLOCKED] = i;
 
         if (sum < targetAmount) {
             revert BizError(EXCHANGE_TARGET_NOT_MET);
         }
 
-        // 兑换碎片：先 mint 到自身，再全量 burn，不转账
         _mint(address(this), sum);
         _burn(address(this), sum);
 
-        // 写入订单记录（EXCHANGE_UNLOCKED）
         OrderRecord storage r = _orders[user][orderId];
         r.methodType = OrderMethodType.EXCHANGE_UNLOCKED;
-        r.user = user;
         r.lockType = lockType;
         r.amount = targetAmount;
         r.executedAmount = sum;
         r.netAmount = 0;
         r.burnAmount = sum;
         r.timestamp = block.timestamp;
-        r.status = 0;
         _orderExists[user][orderId] = true;
 
         return sum;
     }
 
-    // =========================
-    // 领取预览（仅 CLAIM）
-    // =========================
     function previewClaimable(address user, uint8 lockType) external view returns (PreviewClaimable memory) {
         _requireStartedView();
         if (!_isValidLockType(lockType)) {
@@ -790,9 +701,6 @@ contract AiRWord_v3 {
         });
     }
 
-    // =========================
-    // 锁仓统计（全量遍历）
-    // =========================
     function getLockStats(address user, uint8 lockType) external view returns (LockStats memory) {
         _requireStartedView();
         if (!_isValidLockType(lockType)) {
@@ -811,11 +719,11 @@ contract AiRWord_v3 {
             stats.totalAmount += rec.amount;
 
             if (rec.fragmentStatus) {
-                // 已兑换碎片
+
                 stats.fragmentedCount += 1;
                 stats.fragmentedAmount += rec.amount;
             } else if (rec.time <= block.timestamp) {
-                // 已到期
+
                 if (rec.claimStatus) {
                     stats.claimedCount += 1;
                     stats.claimedAmount += rec.amount;
@@ -824,12 +732,11 @@ contract AiRWord_v3 {
                     stats.claimableAmount += rec.amount;
                 }
             } else {
-                // 未到期且未兑换
+
                 stats.unmaturedCount += 1;
                 stats.unmaturedAmount += rec.amount;
             }
 
-            // 最近/最晚解锁时间（仅统计未兑换且未到期）
             if (!rec.fragmentStatus && rec.time > block.timestamp) {
                 if (stats.earliestUnlockTime == 0 || rec.time < stats.earliestUnlockTime) {
                     stats.earliestUnlockTime = rec.time;
@@ -843,9 +750,6 @@ contract AiRWord_v3 {
         return stats;
     }
 
-    // =========================
-    // 锁仓统计（分页遍历，避免过大数据导致失败）
-    // =========================
     function getLockStatsPaged(
         address user,
         uint8 lockType,
@@ -886,7 +790,6 @@ contract AiRWord_v3 {
                 stats.unmaturedAmount += rec.amount;
             }
 
-            // 最近/最晚解锁时间（仅统计未兑换且未到期）
             if (!rec.fragmentStatus && rec.time > block.timestamp) {
                 if (stats.earliestUnlockTime == 0 || rec.time < stats.earliestUnlockTime) {
                     stats.earliestUnlockTime = rec.time;
@@ -910,9 +813,6 @@ contract AiRWord_v3 {
         }
     }
 
-    // =========================
-    // 订单查询
-    // =========================
     function getOrder(address user, uint256 orderId) external view returns (OrderRecord memory) {
         _requireStartedView();
         if (!_orderExists[user][orderId]) {
@@ -921,9 +821,6 @@ contract AiRWord_v3 {
         return _orders[user][orderId];
     }
 
-    // =========================
-    // 内部工具函数
-    // =========================
     modifier onlyAdmin() {
         if (!_isAdmin(msg.sender)) {
             revert BizError(NOT_ADMIN);
@@ -935,51 +832,29 @@ contract AiRWord_v3 {
         return (who == admin || who == owner);
     }
 
-    function _handleBatchItem(
+    function _scaleAmount(uint256 rawAmount) private pure returns (uint256) {
+        if (rawAmount == 0) {
+            return 0;
+        }
+        return rawAmount * AMOUNT_SCALE;
+    }
+
+    function _allocateOne(
         address to,
+        uint256 orderId,
         uint8 lockType,
         uint8 distType,
-        uint256[2] calldata pair
+        uint256 amount
     ) private {
-        uint256 rawAmount = pair[0];
-        uint256 orderId = pair[1];
-
-        // 空占位：amount=0 且 orderId=0
-        if (rawAmount == 0) {
-            if (orderId == 0) {
-                return;
-            }
-            revert BizError(ZERO_AMOUNT);
+        if (amount == 0) {
+            return;
         }
-
-        uint256 amount = rawAmount * AMOUNT_SCALE;
-
-        _requireOrderNotExists(to, orderId);
-
-        if (yearMinted + amount > yearBudget) {
-            revert BizError(ANNUAL_BUDGET_EXCEEDED);
-        }
-        yearMinted += amount;
-        remainingCap -= amount;
-
         if (distType == 1) {
             _pushLock(to, lockType, amount);
         } else {
             _mint(to, amount);
-            emit DirectDistributed(to, amount, orderId, block.timestamp);
         }
-
-        OrderRecord storage r = _orders[to][orderId];
-        r.methodType = OrderMethodType.ALLOCATE;
-        r.user = to;
-        r.lockType = lockType;
-        r.amount = amount;
-        r.executedAmount = amount;
-        r.netAmount = (distType == 2) ? amount : 0;
-        r.burnAmount = 0;
-        r.timestamp = block.timestamp;
-        r.status = 0;
-        _orderExists[to][orderId] = true;
+        emit AllocateDetail(to, orderId, lockType, distType, amount);
     }
 
     function _requireStarted() private view {
@@ -1008,7 +883,6 @@ contract AiRWord_v3 {
         return ((block.timestamp - miningStart) / YEAR) + 1;
     }
 
-    // 仅用于 view 的年度模拟结算
     function _simulateToCurrentYear()
     private
     view
@@ -1063,9 +937,6 @@ contract AiRWord_v3 {
         return 0;
     }
 
-    // =========================
-    // ERC20 内部实现
-    // =========================
     function _transfer(address from, address to, uint256 amount) internal {
         if (to == address(0) || from == address(0)) {
             revert BizError(INVALID_ADDRESS);

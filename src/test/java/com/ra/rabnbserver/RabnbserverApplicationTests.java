@@ -235,7 +235,7 @@ class RabnbserverApplicationTests {
      */
     @Test
     void testAionLockStats() throws Exception {
-        String user = "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF";
+        String user = "0xE7229d10B5E6014cA8F586963eF6E0784F7735B2";
         int lockType = 1; // TODO: 1/2/3（测试合约为 1/2/4 分钟）
         AionContract.LockStats stats = aionContract.getLockStats(user, lockType);
         if (stats == null) {
@@ -327,14 +327,12 @@ class RabnbserverApplicationTests {
                 return;
             }
             log.info("AION 订单-方法类型: {}", record.getMethodType());
-            log.info("AION 订单-用户地址: {}", record.getUser());
             log.info("AION 订单-仓位: {}", record.getLockType());
             log.info("AION 订单-入参数量: {}", record.getAmount());
             log.info("AION 订单-执行数量: {}", record.getExecutedAmount());
             log.info("AION 订单-到账数量: {}", record.getNetAmount());
             log.info("AION 订单-销毁数量: {}", record.getBurnAmount());
             log.info("AION 订单-时间戳: {}", record.getTimestamp());
-            log.info("AION 订单-状态: {}", record.getStatus());
         } catch (AionContractException e) {
             log.error(e.getDecodedDetail());
         }
@@ -403,25 +401,23 @@ class RabnbserverApplicationTests {
     @Test
     void testAionAllocateEmissionToLocksBatch() throws Exception {
         String to = requireTodoString("AION batch to", "TODO:填写地址");
+        BigInteger orderId = requireTodoRaw("AION 批量 订单号(每用户一个)", null);
         BigInteger l1Amount = requireTodoRaw("AION 批量 L1 数量(三位小数整数)", null);
-        BigInteger l1OrderId = requireTodoRaw("AION 批量 L1 订单号", null);
         BigInteger l2Amount = BigInteger.ZERO; // 为空则填 0
-        BigInteger l2OrderId = BigInteger.ZERO;
         BigInteger l3Amount = BigInteger.ZERO;
-        BigInteger l3OrderId = BigInteger.ZERO;
         BigInteger directAmount = requireTodoRaw("AION 批量 Direct 数量(三位小数整数)", null);
-        BigInteger directOrderId = requireTodoRaw("AION 批量 Direct 订单号", null);
 
         List<String> tos = List.of(to);
         List<AionContract.BatchData> dataList = List.of(
                 new AionContract.BatchData(
-                        l1Amount, l1OrderId,
-                        l2Amount, l2OrderId,
-                        l3Amount, l3OrderId,
-                        directAmount, directOrderId
+                        orderId,
+                        l1Amount,
+                        l2Amount,
+                        l3Amount,
+                        directAmount
                 )
         );
-        log.info("批量分发 AION，L1数量: {}, Direct数量: {}", l1Amount, directAmount);
+        log.info("批量分发 AION，订单号: {}, L1数量: {}, Direct数量: {}", orderId, l1Amount, directAmount);
         var receipt = aionContract.allocateEmissionToLocksBatch(tos, dataList);
         log.info("批量分发结果: {}", receipt);
     }
@@ -435,14 +431,12 @@ class RabnbserverApplicationTests {
     void testAionStructuredBatchDistribute() throws Exception {
         // 1. 基础配置
         List<String> targetAddresses = List.of(
-                "0x61188770CC57cf2f0f66fD746EbDF4A7495A80a9",
-                "0x9EAd035Fd684Dd489155A2dd936a7fDdCeCd2e78",
-                "0x6aDA2D643b850f179146F3979a5Acf613aBEA3FF"
+                "0xE7229d10B5E6014cA8F586963eF6E0784F7735B2"
         );
-        int[] lockTypes = {1, 2, 3};
-        int countPerConfig = 40; // 调低此数值以测试界限 (例如 50 * 9 = 450 条)
+        int[] lockTypes = {1, 2, 3,0};
+        int countPerConfig = 1;
 
-        BigDecimal amountPerRecord = new BigDecimal("10");
+        BigDecimal amountPerRecord = new BigDecimal("1000");
         BigInteger unitDivisor = BigInteger.valueOf(10).pow(15);
         BigInteger rawAmountWei = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.AION, amountPerRecord);
         BigInteger chainAmount = rawAmountWei.divide(unitDivisor);
@@ -452,31 +446,25 @@ class RabnbserverApplicationTests {
         List<AionContract.BatchData> dataList = new java.util.ArrayList<>();
 
         log.info("开始构造新版 BatchData 数据包...");
-
         for (String address : targetAddresses) {
-            for (int lockType : lockTypes) {
                 for (int i = 0; i < countPerConfig; i++) {
-                    String originalOrderId = String.valueOf(System.nanoTime() + i);
-                    String md5Hex = cn.hutool.crypto.SecureUtil.md5(originalOrderId);
-                    BigInteger chainOrderId = new BigInteger(md5Hex.substring(0, 8), 16);
-
-                    BigInteger l1Amt = BigInteger.ZERO, l1Id = BigInteger.ZERO;
-                    BigInteger l2Amt = BigInteger.ZERO, l2Id = BigInteger.ZERO;
-                    BigInteger l3Amt = BigInteger.ZERO, l3Id = BigInteger.ZERO;
-                    BigInteger directAmt = BigInteger.ZERO, directId = BigInteger.ZERO;
-
-                    switch (lockType) {
-                        case 1 -> { l1Amt = chainAmount; l1Id = chainOrderId; }
-                        case 2 -> { l2Amt = chainAmount; l2Id = chainOrderId; }
-                        case 3 -> { l3Amt = chainAmount; l3Id = chainOrderId; }
-                        case 0 -> { directAmt = chainAmount; directId = chainOrderId; }
+                    BigInteger l1Amt = BigInteger.ZERO;
+                    BigInteger l2Amt = BigInteger.ZERO;
+                    BigInteger l3Amt = BigInteger.ZERO;
+                    BigInteger directAmt = BigInteger.ZERO;
+                    BigInteger orderId = BigInteger.valueOf(System.nanoTime() + i);
+                    for (int lockType : lockTypes) {
+                        switch (lockType) {
+                            case 1 -> l1Amt = chainAmount;
+                            case 2 -> l2Amt = chainAmount;
+                            case 3 -> l3Amt = chainAmount;
+                            case 0 -> directAmt = chainAmount;
+                        }
                     }
-
                     tos.add(address);
                     dataList.add(new AionContract.BatchData(
-                            l1Amt, l1Id, l2Amt, l2Id, l3Amt, l3Id, directAmt, directId
+                            orderId, l1Amt, l2Amt, l3Amt, directAmt
                     ));
-                }
             }
         }
 

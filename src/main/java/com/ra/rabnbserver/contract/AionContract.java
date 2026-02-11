@@ -19,7 +19,6 @@ import org.web3j.abi.datatypes.Function;
 import org.web3j.abi.datatypes.StaticStruct;
 import org.web3j.abi.datatypes.Type;
 import org.web3j.abi.datatypes.Utf8String;
-import org.web3j.abi.datatypes.generated.StaticArray2;
 import org.web3j.abi.datatypes.generated.Uint256;
 import org.web3j.abi.datatypes.generated.Uint8;
 import org.web3j.crypto.Hash;
@@ -233,8 +232,19 @@ public class AionContract extends ContractBase {
      * @return 合约异常
      */
     private AionContractException buildContractException(Function function, String callData, String from, String revertReason) {
-        if (revertReason == null || revertReason.isBlank()) {
-            return new AionContractException("未知原因", getAddress(), function.getName(), from, callData, revertReason, null, null, null);
+        if (isEmptyRevertReason(revertReason)) {
+            String detail = buildEmptyRevertDetail(function, callData, from, revertReason);
+            return new AionContractException(
+                    "合约回退但无错误数据",
+                    getAddress(),
+                    function.getName(),
+                    from,
+                    callData,
+                    revertReason,
+                    null,
+                    "REVERT_EMPTY",
+                    detail
+            );
         }
         AionBizErrorCode code = parseBizError(revertReason);
         if (code != null) {
@@ -278,6 +288,50 @@ public class AionContract extends ContractBase {
             );
         }
         return new AionContractException("未知原因", getAddress(), function.getName(), from, callData, revertReason, null, null, null);
+    }
+
+    /**
+     * 判断 revert 是否为空（仅返回 0x 或无信息）
+     *
+     * @param revertReason 原始信息
+     * @return 是否为空
+     */
+    private boolean isEmptyRevertReason(String revertReason) {
+        if (revertReason == null || revertReason.isBlank()) {
+            return true;
+        }
+        String hex = extractHex(revertReason);
+        if (hex != null && "0x".equalsIgnoreCase(hex)) {
+            return true;
+        }
+        String trimmed = revertReason.trim().toLowerCase();
+        if ("0x".equals(trimmed) || "0x0".equals(trimmed)) {
+            return true;
+        }
+        if (trimmed.endsWith("0x")) {
+            return true;
+        }
+        return trimmed.matches(".*0x0+$");
+    }
+
+    /**
+     * 构造空 revert 的详细信息
+     *
+     * @param function 函数
+     * @param callData 调用数据
+     * @param from 发起地址
+     * @param revertReason 原始回退信息
+     * @return 详细描述
+     */
+    private String buildEmptyRevertDetail(Function function, String callData, String from, String revertReason) {
+        String data = callData == null ? "" : callData;
+        int length = data.length();
+        return "合约回退但无错误数据; 原始revert=" + revertReason
+                + "; 合约=" + getAddress()
+                + "; 方法=" + function.getName()
+                + "; 发起地址=" + from
+                + "; dataLen=" + length
+                + "; data=" + data;
     }
 
     /**
@@ -970,6 +1024,8 @@ public class AionContract extends ContractBase {
      *
      * @param tos 地址列表
      * @param dataList 批量数据列表（与地址一一对应）
+     *                 说明：每个用户仅一个 orderId，l1/l2/l3/direct 为三位小数整数
+     *                 若 l1/l2/l3/direct 全部为 0，该用户不会生成订单记录
      * @return 交易回执
      *         返回类型：TransactionReceipt
      *         错误码：
@@ -1268,22 +1324,25 @@ public class AionContract extends ContractBase {
     }
 
     /**
-     * 批量分发入参（每个用户固定 4 组：L1/L2/L3/Direct）
+     * 批量分发入参（每个用户一个 orderId，四组数量为三位小数整数）
      */
     public static class BatchData extends StaticStruct {
 
-        private final StaticArray2<Uint256> l1;
-        private final StaticArray2<Uint256> l2;
-        private final StaticArray2<Uint256> l3;
-        private final StaticArray2<Uint256> direct;
+        private final Uint256 orderId;
+        private final Uint256 l1;
+        private final Uint256 l2;
+        private final Uint256 l3;
+        private final Uint256 direct;
 
         public BatchData(
-                StaticArray2<Uint256> l1,
-                StaticArray2<Uint256> l2,
-                StaticArray2<Uint256> l3,
-                StaticArray2<Uint256> direct
+                Uint256 orderId,
+                Uint256 l1,
+                Uint256 l2,
+                Uint256 l3,
+                Uint256 direct
         ) {
-            super(l1, l2, l3, direct);
+            super(orderId, l1, l2, l3, direct);
+            this.orderId = orderId;
             this.l1 = l1;
             this.l2 = l2;
             this.l3 = l3;
@@ -1291,62 +1350,64 @@ public class AionContract extends ContractBase {
         }
 
         public BatchData(
+                BigInteger orderId,
                 BigInteger l1Amount,
-                BigInteger l1OrderId,
                 BigInteger l2Amount,
-                BigInteger l2OrderId,
                 BigInteger l3Amount,
-                BigInteger l3OrderId,
-                BigInteger directAmount,
-                BigInteger directOrderId
+                BigInteger directAmount
         ) {
             this(
-                    buildPair(l1Amount, l1OrderId),
-                    buildPair(l2Amount, l2OrderId),
-                    buildPair(l3Amount, l3OrderId),
-                    buildPair(directAmount, directOrderId)
+                    new Uint256(safeValue(orderId)),
+                    new Uint256(safeValue(l1Amount)),
+                    new Uint256(safeValue(l2Amount)),
+                    new Uint256(safeValue(l3Amount)),
+                    new Uint256(safeValue(directAmount))
             );
         }
 
         /**
-         * @return L1 分发数据（[amount, orderId]，amount 为三位小数整数）
+         * @return 订单号（每用户一个）
          */
-        public StaticArray2<Uint256> getL1() {
-            return l1;
+        public BigInteger getOrderId() {
+            return orderId.getValue();
         }
 
         /**
-         * @return L2 分发数据（[amount, orderId]，amount 为三位小数整数）
+         * @return L1 分发数量（三位小数整数）
          */
-        public StaticArray2<Uint256> getL2() {
-            return l2;
+        public BigInteger getL1() {
+            return l1.getValue();
         }
 
         /**
-         * @return L3 分发数据（[amount, orderId]，amount 为三位小数整数）
+         * @return L2 分发数量（三位小数整数）
          */
-        public StaticArray2<Uint256> getL3() {
-            return l3;
+        public BigInteger getL2() {
+            return l2.getValue();
         }
 
         /**
-         * @return Direct 分发数据（[amount, orderId]，amount 为三位小数整数）
+         * @return L3 分发数量（三位小数整数）
          */
-        public StaticArray2<Uint256> getDirect() {
-            return direct;
+        public BigInteger getL3() {
+            return l3.getValue();
         }
 
         /**
-         * 构建二元组（[amount, orderId]）
+         * @return Direct 分发数量（三位小数整数）
+         */
+        public BigInteger getDirect() {
+            return direct.getValue();
+        }
+
+        /**
+         * 空值保护
          *
-         * @param amount 数量（三位小数整数）
-         * @param orderId 订单号
-         * @return 固定长度数组
+         * @param value 数值
+         * @return 兜底后的数值
          */
-        private static StaticArray2<Uint256> buildPair(BigInteger amount, BigInteger orderId) {
-            BigInteger safeAmount = amount == null ? BigInteger.ZERO : amount;
-            BigInteger safeOrderId = orderId == null ? BigInteger.ZERO : orderId;
-            return new StaticArray2<>(new Uint256(safeAmount), new Uint256(safeOrderId));
+        private static BigInteger safeValue(BigInteger value) {
+            return value == null ? BigInteger.ZERO : value;
         }
     }
 
@@ -1574,36 +1635,30 @@ public class AionContract extends ContractBase {
     public static class OrderRecord extends StaticStruct {
 
         private final Uint8 methodType;
-        private final Address user;
         private final Uint8 lockType;
         private final Uint256 amount;
         private final Uint256 executedAmount;
         private final Uint256 netAmount;
         private final Uint256 burnAmount;
         private final Uint256 timestamp;
-        private final Uint8 status;
 
         public OrderRecord(
                 Uint8 methodType,
-                Address user,
                 Uint8 lockType,
                 Uint256 amount,
                 Uint256 executedAmount,
                 Uint256 netAmount,
                 Uint256 burnAmount,
-                Uint256 timestamp,
-                Uint8 status
+                Uint256 timestamp
         ) {
-            super(methodType, user, lockType, amount, executedAmount, netAmount, burnAmount, timestamp, status);
+            super(methodType, lockType, amount, executedAmount, netAmount, burnAmount, timestamp);
             this.methodType = methodType;
-            this.user = user;
             this.lockType = lockType;
             this.amount = amount;
             this.executedAmount = executedAmount;
             this.netAmount = netAmount;
             this.burnAmount = burnAmount;
             this.timestamp = timestamp;
-            this.status = status;
         }
 
         /**
@@ -1611,13 +1666,6 @@ public class AionContract extends ContractBase {
          */
         public BigInteger getMethodType() {
             return methodType.getValue();
-        }
-
-        /**
-         * @return 用户地址
-         */
-        public String getUser() {
-            return user.getValue();
         }
 
         /**
@@ -1660,13 +1708,6 @@ public class AionContract extends ContractBase {
          */
         public BigInteger getTimestamp() {
             return timestamp.getValue();
-        }
-
-        /**
-         * @return 执行状态
-         */
-        public BigInteger getStatus() {
-            return status.getValue();
         }
     }
 

@@ -346,12 +346,12 @@ remainingCap -= amount
 ```
 
 4. 校验分发类型：
-   * `distType` 必须为 `1/2`
-   * 若 `distType = 2`，`lockType` 必须为 `0`
+    * `distType` 必须为 `1/2`
+    * 若 `distType = 2`，`lockType` 必须为 `0`
 5. 校验订单号：`orderId` 在 `to` 地址下不得重复
 6. 根据 `distType` 执行：
-   * `distType = 1` → 按 `lockType` 写入指定锁仓
-   * `distType = 2` → **直接 `_mint` 给用户**（不写入锁仓记录）
+    * `distType = 1` → 按 `lockType` 写入指定锁仓
+    * `distType = 2` → **直接 `_mint` 给用户**（不写入锁仓记录）
 
 * 1 → L1：now + 1 month
 * 2 → L2：now + 2 month
@@ -550,14 +550,14 @@ flowchart TD
 5. 累计 `claimableLx`
 6. 先 `_mint` 全量 `claimableLx` 到合约自身
 7. 按仓类型执行 `burn`（只对当前 `Lx` 生效）：
-   * 若 `Lx = L1`，`burnLx = claimableLx * 75%`
-   * 若 `Lx = L2`，`burnLx = claimableLx * 50%`
-   * 若 `Lx = L3`，`burnLx = 0`
+    * 若 `Lx = L1`，`burnLx = claimableLx * 75%`
+    * 若 `Lx = L2`，`burnLx = claimableLx * 50%`
+    * 若 `Lx = L3`，`burnLx = 0`
 8. 实际到账：
-   * `netLx = claimableLx - burnLx`
+    * `netLx = claimableLx - burnLx`
 9. 将 `netLx` 转账给用户
 10. 将本次领取到的 `Lx` 记录逐条 `claimStatus = true`
-11. 写入订单记录（含 `amount/burnAmount/netAmount/timestamp/status`）
+11. 写入订单记录（含 `amount/burnAmount/netAmount/timestamp`）
 12. 触发事件（示例）：
 
 ```solidity
@@ -576,7 +576,7 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
 
 * 仅用于 CLAIM 领取预览，不用于兑换
 * 仅扫描**合约当前游标位置之后最多 maxScanLimit 条**
-   * 游标键：`user + lockType + CLAIM`
+    * 游标键：`user + lockType + CLAIM`
 * 返回本次“实际可领取的最大数量”（与 `claimAll` 同口径）
 
 ## 九点三、关键实现约定（已确认）
@@ -586,29 +586,29 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
 1. `startMining` 仅允许调用一次；重复调用**忽略**（不改变任何状态）。
 2. `exchangeLockedFragment / exchangeUnlockedFragment`：先计算可兑换数量，若 `< targetAmount` 则**不执行任何状态变更并返回错误**。
 3. 时间常量说明：
-   * 正式版：`month = 30 days`，`year = 365 days`
-   * 测试版：`month = 1 minutes`，`year = 1 hours`
+    * 正式版：`month = 30 days`，`year = 365 days`
+    * 测试版：`month = 1 minutes`，`year = 1 hours`
 4. 兑换碎片时执行顺序：**先 `_mint` 再 `_burn`**（碎片不需要独立载体，`_mint/_burn` 均为本币；**不转账给用户**，执行完成返回本次执行数量，后端自行记账）。
 5. `getLockStats` 返回结构体/元组（不返回 JSON 字符串）。
 6. 第一年初始化建议方案确定为：
-   * `startMining` 设置 `yearBudget = remainingCap / 2`、`yearMinted = 0`、`yearStartTs = miningStart`、`lastSettledYear = 0`
-   * `settleToCurrentYear` 只结算**已结束的年度**：
-     `while (lastSettledYear + 1 < currentYear) { ... }`
+    * `startMining` 设置 `yearBudget = remainingCap / 2`、`yearMinted = 0`、`yearStartTs = miningStart`、`lastSettledYear = 0`
+    * `settleToCurrentYear` 只结算**已结束的年度**：
+      `while (lastSettledYear + 1 < currentYear) { ... }`
 7. 扫描类接口使用**合约存储游标**，每次最多遍历 **maxScanLimit** 条（可配置，默认 100，不作为入参），且**不提供重置游标**功能。
-   * 游标键：`user + lockType + mode` 独立存储。
-   * 遇到“未到期 break”时，游标停留在**未到期记录的位置**（前序已处理完）。
+    * 游标键：`user + lockType + mode` 独立存储。
+    * 遇到“未到期 break”时，游标停留在**未到期记录的位置**（前序已处理完）。
 8. L1/L2 领取与兑换碎片时的执行方式：
-   * 领取（CLAIM）：合约先 `_mint` 到自身 → `burn` 销毁比例部分 → `transfer` 净额给用户
-   * 兑换碎片：合约先 `_mint` 到自身 → **全量** `burn`（不转账）
+    * 领取（CLAIM）：合约先 `_mint` 到自身 → `burn` 销毁比例部分 → `transfer` 净额给用户
+    * 兑换碎片：合约先 `_mint` 到自身 → **全量** `burn`（不转账）
 9. 新增 `previewClaimable(user, lockType)`：只查看**当前合约游标之后最多 maxScanLimit 条**记录，返回“本次可实际领取的最大数量”（不支持兑换预览）。
 10. `getLockStats` 允许**一次性全量遍历**该仓全部记录，建议仅用于 `view` 调用（链上调用可能超出 gas）。
-   * 若数据量很大，使用 `getLockStatsPaged` 分页统计。
-   * `getLockStatsPaged` 的 `stats` 为**本页统计值**，不是全量值，前端需自行累加汇总。
+    * 若数据量很大，使用 `getLockStatsPaged` 分页统计。
+    * `getLockStatsPaged` 的 `stats` 为**本页统计值**，不是全量值，前端需自行累加汇总。
 11. 权限控制：`startMining`、`allocateEmissionToLocks`、矿机分发相关入口需**管理员**权限。
-   * `exchangeLockedFragment / exchangeUnlockedFragment` 也需**管理员**调用，并要求**用户授权**（链上授权表）。
-   * 授权方式：用户调用 `approveOperator(operator, approved)`，合约校验 `operator` 是否被授权。
-   * 合约部署者拥有所有权限（**唯一可调用 `setAdmin`**），管理员不具备设置管理员权限。
-   * `claimAll` 需**管理员**调用，并要求**用户授权**。
+    * `exchangeLockedFragment / exchangeUnlockedFragment` 也需**管理员**调用，并要求**用户授权**（链上授权表）。
+    * 授权方式：用户调用 `approveOperator(operator, approved)`，合约校验 `operator` 是否被授权。
+    * 合约部署者拥有所有权限（**唯一可调用 `setAdmin`**），管理员不具备设置管理员权限。
+    * `claimAll` 需**管理员**调用，并要求**用户授权**。
 12. 返回值口径：
 * `claimAll` 返回**净到账数量**
 * `exchangeLockedFragment / exchangeUnlockedFragment` 返回**本次执行数量**
@@ -633,38 +633,45 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
 2. 兑换碎片不转账本币，执行流程为“合约 `_mint` → 全量 `_burn` → 返回执行数量”。
 3. `previewClaimable` 返回字段确认：`claimable / burnAmount / netAmount / processed / nextCursor`。
 4. 订单记录写入：
-   * 仅在执行成功后写入订单记录；若订单号重复则直接报错，不写入。
-   * `status` 写入为 `0=成功`（失败场景无记录）。
-   * `amount` 口径：`allocate=amount`，`exchange=targetAmount`，`claim=0`。
-   * `executedAmount` 口径：`allocate=amount`，`claim=claimableLx`，`exchange=本次执行数量`。
-   * `distType=2（直接分发）` 时：
-      * `methodType=ALLOCATE`（不新增类型）
-      * `amount=amount`
-      * `executedAmount=amount`
-      * `netAmount=amount`
-      * `burnAmount=0`
-   * `netAmount` 仅 `claim` 与 `distType=2` 有意义，其它方法为 `0`。
-   * `claimAll` 若本次仅跳过已领取/已兑换记录（游标前进但无可领取），仍会写入订单记录，`executedAmount=0`，并返回 `0`。
+    * 仅在执行成功后写入订单记录；若订单号重复则直接报错，不写入。
+    * `amount` 口径：`allocate=amount`，`exchange=targetAmount`，`claim=0`。
+    * `executedAmount` 口径：`allocate=amount`，`claim=claimableLx`，`exchange=本次执行数量`。
+    * `distType=2（直接分发）` 时：
+        * `methodType=ALLOCATE`（不新增类型）
+        * `amount=amount`
+        * `executedAmount=amount`
+        * `netAmount=amount`
+        * `burnAmount=0`
+    * `netAmount` 仅 `claim` 与 `distType=2` 有意义，其它方法为 `0`。
+    * `claimAll` 若本次仅跳过已领取/已兑换记录（游标前进但无可领取），仍会写入订单记录，`executedAmount=0`，并返回 `0`。
+    * 订单记录不再保存 `user/status` 字段，用户由 `getOrder(user, orderId)` 的 `user` 入参确定。
 5. `exchangeLockedFragment / exchangeUnlockedFragment` 为**管理员调用**，需校验**用户授权**（链上授权表）。
 6. 授权机制（链上授权表）建议：
-   * `mapping(user => mapping(operator => bool))`
-   * 用户调用 `approveOperator(operator, approved)` 设置授权
-   * 管理员调用 `exchange*` 时校验 `approved == true`
+    * `mapping(user => mapping(operator => bool))`
+    * 用户调用 `approveOperator(operator, approved)` 设置授权
+    * 管理员调用 `exchange*` 时校验 `approved == true`
 7. 批量分发 `allocateEmissionToLocksBatch`：
-   * 入参为并行数组：`tos[]` 与 `data[]`，长度必须一致
-   * `data[i]` 固定包含 4 组：`l1/l2/l3/direct`
-      * `l1` 对应 `lockType=1, distType=1`
-      * `l2` 对应 `lockType=2, distType=1`
-      * `l3` 对应 `lockType=3, distType=1`
-      * `direct` 对应 `lockType=0, distType=2`
-   * 每组为 `[amount, orderId]`，`amount=0 且 orderId=0` 视为“空占位”
-   * `amount` 采用**三位小数的整数表示**：
-      * 传参示例：`1.234` 需传 `1234`
-      * 合约内部会将 `amount * 10^(18-3)` 转为 18 位最小单位
-      * 订单记录中的 `amount/executedAmount` 保存**18 位最小单位**
-   * 注意：仅批量分发使用三位小数整数，其它方法仍按 18 位最小单位传参
-   * 每条记录独立订单号
-   * 任意一条失败则整批回滚
+    * 入参为并行数组：`tos[]` 与 `data[]`，长度必须一致
+    * `data[i]` 包含 `orderId` 与 4 组数量：`l1/l2/l3/direct`
+        * `l1` 对应 `lockType=1, distType=1`
+        * `l2` 对应 `lockType=2, distType=1`
+        * `l3` 对应 `lockType=3, distType=1`
+        * `direct` 对应 `lockType=0, distType=2`
+    * `orderId` 为该用户本次批量的唯一订单号（按用户唯一）
+    * `l1/l2/l3/direct` 为**三位小数的整数表示**：
+        * 传参示例：`1.234` 需传 `1234`
+        * 合约内部会将 `amount * 10^(18-3)` 转为 18 位最小单位
+        * 订单记录中的 `amount/executedAmount` 保存**18 位最小单位**
+    * 注意：仅批量分发使用三位小数整数，其它方法仍按 18 位最小单位传参
+    * 若 `l1/l2/l3/direct` 全部为 0，则该用户不产生订单记录
+    * 每用户一个订单号（`orderId` 按用户唯一）
+    * 订单记录仅写一条汇总：
+        * `lockType=0`
+        * `amount/executedAmount=四组总和`
+        * `netAmount=directAmount`
+        * `burnAmount=0`
+    * 分发明细通过事件 `AllocateDetail` 记录
+    * 任意一条失败则整批回滚
 
 
 # 第八部分：字段 & 方法完整对照表
@@ -713,6 +720,8 @@ previewClaimable(address user, uint8 lockType) returns (uint256 claimable, uint2
 | setMaxBatchLimit         | 设置批量上限 | limit | 无 |
 | getMaxBatchLimit         | 查询批量上限 | 无 | uint256 |
 | estimateMaxCount         | 预估建议上限 | perRecordGas, fixedGas | uint256 |
+
+> 说明：`allocateEmissionToLocksBatch` 的 `dataList` 中包含 `orderId` 与 `l1/l2/l3/direct`（三位小数整数），合约内部会换算为 18 位最小单位。
 
 ---
 
@@ -839,12 +848,13 @@ struct LockRecord {
     bool fragmentStatus;     // 是否已兑换碎片
 }
 
-// 批量分发入参（每个用户固定 4 组：L1/L2/L3/Direct）
+// 批量分发入参（每个用户一个 orderId，固定 4 组：L1/L2/L3/Direct）
 struct BatchData {
-    uint256[2] l1;      // [amount, orderId]（amount 为三位小数整数）
-    uint256[2] l2;      // [amount, orderId]（amount 为三位小数整数）
-    uint256[2] l3;      // [amount, orderId]（amount 为三位小数整数）
-    uint256[2] direct;  // [amount, orderId]（amount 为三位小数整数，direct=distType 2）
+    uint256 orderId; // 订单号（按用户唯一）
+    uint256 l1;      // L1 分发数量（三位小数整数）
+    uint256 l2;      // L2 分发数量（三位小数整数）
+    uint256 l3;      // L3 分发数量（三位小数整数）
+    uint256 direct;  // 直接分发数量（三位小数整数）
 }
 
 // 锁仓统计返回
@@ -895,22 +905,16 @@ enum OrderMethodType {
 // 2 = EXCHANGE_LOCKED
 // 3 = EXCHANGE_UNLOCKED
 
-// 订单记录
+// 订单记录（精简字段）
 struct OrderRecord {
     OrderMethodType methodType; // 方法类型
-    address user;               // 订单归属用户
-    uint8 lockType;             // 仓位
+    uint8 lockType;             // 仓位（批量混合分发时为 0）
     uint256 amount;             // 数量入参（allocate=amount / exchange=targetAmount / claim=0）
     uint256 executedAmount;     // 本次实际执行数量
-    uint256 netAmount;          // 实际到账数量（仅领取有意义）
+    uint256 netAmount;          // 实际到账数量（仅领取/直接分发有意义）
     uint256 burnAmount;         // 本次销毁数量
     uint256 timestamp;          // 执行时间
-    uint8 status;               // 执行状态（0=成功，1=失败）
 }
-
-// 订单状态映射关系
-// 0 = 成功
-// 1 = 失败
 ```
 
 ---
@@ -930,16 +934,17 @@ event ClaimWithBurn(
     uint8 lockType
 );
 
-// 直接分发事件
-event DirectDistributed(
-    address indexed to,
-    uint256 amount,
-    uint256 orderId,
-    uint256 timestamp
+// 分发明细（单笔/批量通用）
+event AllocateDetail(
+    address indexed user,
+    uint256 indexed orderId,
+    uint8 lockType,
+    uint8 distType,
+    uint256 amount
 );
 ```
 
-> 如需审计入仓或兑换细节，可在实现中补充对应事件。
+> `AllocateDetail` 用于审计每条分发明细（含批量）。
 
 ---
 
@@ -1002,6 +1007,8 @@ error BizError(uint8 code);
 * `MINING_NOT_STARTED`：挖矿未启动
 
 ### allocateEmissionToLocks
+> `amount` 为 18 位最小单位（需乘以 `10^decimals`）。
+
 * `NOT_ADMIN`：非管理员调用
 * `MINING_NOT_STARTED`：挖矿未启动
 * `INVALID_LOCK_TYPE`：仓位非法
@@ -1012,13 +1019,12 @@ error BizError(uint8 code);
 * `CAP_EXCEEDED`：超出总量上限
 
 ### allocateEmissionToLocksBatch
-> `BatchData` 中的 `amount` 为三位小数整数（例如 1.234 传 1234），合约内部会乘以 `10^(18-3)` 转为最小单位保存。
+> `BatchData` 中的 `l1/l2/l3/direct` 为三位小数整数（例如 1.234 传 1234），合约内部会乘以 `10^(18-3)` 转为最小单位保存。
 
 * `NOT_ADMIN`：非管理员调用
 * `MINING_NOT_STARTED`：挖矿未启动
 * `ORDER_ID_DUPLICATE`：订单号重复
 * `ANNUAL_BUDGET_EXCEEDED`：年度额度不足
-* `ZERO_AMOUNT`：数量为 0
 * `INVALID_ADDRESS`：地址非法（零地址）
 * `EMPTY_BATCH`：批量参数为空
 * `BATCH_LIMIT_EXCEEDED`：批量条数超过上限
