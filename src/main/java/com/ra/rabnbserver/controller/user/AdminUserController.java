@@ -155,6 +155,9 @@ public class AdminUserController {
         user.setStatus(null);
 
         boolean updated = adminUserService.updateAdmin(user);
+        if (updated) {
+            StpUtil.logout();
+        }
         return updated ? ApiResponse.success("修改成功，下次登录生效") : ApiResponse.error("修改失败");
     }
 
@@ -164,6 +167,7 @@ public class AdminUserController {
     @GetMapping("/delete/{id}")
     public String delete(@PathVariable Long id) {
         boolean removed = userService.deleteUserWithCascade(id);
+
         return removed ? ApiResponse.success("删除成功，该用户的下级已重置为根用户") : ApiResponse.error("删除失败");
     }
 

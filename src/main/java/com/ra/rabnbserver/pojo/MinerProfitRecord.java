@@ -35,6 +35,7 @@ public class MinerProfitRecord extends AbnormalBaseEntity {
      */
     @TableField("amount")
     @ColumnComment("收益金额")
+    @ColumnType("DECIMAL(65, 18)")
     private BigDecimal amount;
 
     /**

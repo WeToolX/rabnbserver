@@ -41,6 +41,7 @@ import org.web3j.protocol.core.methods.response.TransactionReceipt;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -386,6 +387,10 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             log.info("计算全网矿机基数并存入 Redis: {}", allMinersCount);
         }
         BigInteger perMinerAmountWei = todayMintableWei.divide(BigInteger.valueOf(allMinersCount));
+
+        BigDecimal amount = new BigDecimal(perMinerAmountWei)
+                .movePointLeft(18)               // 18位转换 (Wei -> Unit)
+                .setScale(6, RoundingMode.DOWN); // 省略/截断 6 位以后的数值
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiryLimit = now.minusDays(30);
         LocalDateTime todayStart = now.withHour(0).withMinute(0).withSecond(0).withNano(0);
@@ -437,7 +442,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                                     MinerProfitRecord r = new MinerProfitRecord();
                                     r.setUserId(m.getUserId());
                                     r.setWalletAddress(m.getWalletAddress());
-                                    r.setAmount(new BigDecimal(perMinerAmountWei));
+                                    r.setAmount(amount);
                                     r.setMinerType(m.getMinerType());
                                     r.setMinerId(String.valueOf(m.getId()));
                                     r.setLockType("3".equals(m.getMinerType()) ? 0 : Integer.parseInt(m.getMinerType()) + 1);
@@ -526,7 +531,14 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             TransactionReceipt receipt = aionContract.claimAll(user.getUserWalletAddress(), dto.getLockType(), BigInteger.valueOf(orderId));
             if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
                 AionContract.OrderRecord order = aionContract.getOrder(user.getUserWalletAddress(), BigInteger.valueOf(orderId));
-                BigDecimal netAmount = new BigDecimal(order.getNetAmount()).movePointLeft(18);
+                BigDecimal netAmount = new BigDecimal(order.getNetAmount())
+                        .movePointLeft(18)
+                        .setScale(6, RoundingMode.DOWN);
+
+                        // 或者 方案 B：四舍五入保留 6 位
+                        // BigDecimal netAmount = new BigDecimal(order.getNetAmount())
+                        //         .movePointLeft(18)
+                        //         .setScale(6, RoundingMode.HALF_UP);
                 userBillServe.createBillAndUpdateBalance(
                         userId,
                         netAmount,

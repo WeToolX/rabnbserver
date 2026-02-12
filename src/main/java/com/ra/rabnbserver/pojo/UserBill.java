@@ -91,7 +91,7 @@ public class UserBill extends AbnormalBaseEntity {
      */
     @ColumnComment("交易金额")
     @TableField("amount")
-    @ColumnType("DECIMAL(36, 18)") // 推荐精度：总长度36位，小数位18位
+    @ColumnType("DECIMAL(65, 18)") // 推荐精度：总长度36位，小数位18位
     private BigDecimal amount;
 
     /**
@@ -99,7 +99,7 @@ public class UserBill extends AbnormalBaseEntity {
      */
     @ColumnComment("交易前余额")
     @TableField("balance_before")
-    @ColumnType("DECIMAL(36, 18)")
+    @ColumnType("DECIMAL(65, 18)")
     private BigDecimal balanceBefore;
 
     /**
@@ -107,7 +107,7 @@ public class UserBill extends AbnormalBaseEntity {
      */
     @ColumnComment("交易后余额")
     @TableField("balance_after")
-    @ColumnType("DECIMAL(36, 18)")
+    @ColumnType("DECIMAL(65, 18)")
     private BigDecimal balanceAfter;
 
 

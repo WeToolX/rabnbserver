@@ -27,7 +27,8 @@ public class MinerProfitRecordServeImpl extends ServiceImpl<MinerProfitRecordMap
                 .eq(queryDTO.getPayoutStatus() != null, MinerProfitRecord::getPayoutStatus, queryDTO.getPayoutStatus())
                 .eq(queryDTO.getLockType() != null, MinerProfitRecord::getLockType, queryDTO.getLockType())
                 .eq(queryDTO.getDistType() != null, MinerProfitRecord::getDistType, queryDTO.getDistType())
-                .eq(StrUtil.isNotBlank(queryDTO.getTxId()), MinerProfitRecord::getTxId, queryDTO.getTxId());
+                .eq(StrUtil.isNotBlank(queryDTO.getTxId()), MinerProfitRecord::getTxId, queryDTO.getTxId())
+                .eq(StrUtil.isNotBlank(queryDTO.getMinerId()), MinerProfitRecord::getMinerId, queryDTO.getMinerId());
         // 时间筛选：使用 Hutool 格式化
         // DateUtil.parse 能够解析 yyyy-MM-dd, yyyy-MM-dd HH:mm:ss, yyyy/MM/dd 等多种格式
         if (StrUtil.isNotBlank(queryDTO.getStartTime())) {

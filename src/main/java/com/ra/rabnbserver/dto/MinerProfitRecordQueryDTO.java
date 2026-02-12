@@ -37,6 +37,11 @@ public class MinerProfitRecordQueryDTO {
     private String minerType;
 
     /**
+     * (value = "矿机id", example = "0，1，2，3")
+     */
+    private String minerId;
+
+    /**
      * (value = "合约分发状态 (0:未发放, 1:已发放)", example = "1")
      */
     private Integer payoutStatus;
