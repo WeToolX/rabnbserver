@@ -3,6 +3,7 @@ package com.ra.rabnbserver.server.user.impl;
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.ra.rabnbserver.contract.CardNftContract;
+import com.ra.rabnbserver.contract.CardNftContractV1;
 import com.ra.rabnbserver.contract.PaymentUsdtContract;
 import com.ra.rabnbserver.enums.TransactionStatus;
 import com.ra.rabnbserver.enums.TransactionType;
@@ -38,15 +39,17 @@ public class UserBillRetryServeImpl extends AbstractAbnormalRetryService {
     private final UserBillMapper userBillMapper;
     private final PaymentUsdtContract paymentUsdtContract;
     private final CardNftContract cardNftContract;
+    private final CardNftContractV1 cardNftContractV1;
 
     public UserBillRetryServeImpl(AbnormalRetryManager abnormalRetryManager,
                                   UserBillMapper userBillMapper,
                                   @Lazy PaymentUsdtContract paymentUsdtContract,
-                                  @Lazy CardNftContract cardNftContract) {
+                                  @Lazy CardNftContract cardNftContract, CardNftContractV1 cardNftContractV1) {
         super(abnormalRetryManager);
         this.userBillMapper = userBillMapper;
         this.paymentUsdtContract = paymentUsdtContract;
         this.cardNftContract = cardNftContract;
+        this.cardNftContractV1 = cardNftContractV1;
     }
 
     /**
@@ -92,9 +95,10 @@ public class UserBillRetryServeImpl extends AbstractAbnormalRetryService {
                     log.error("补发NFT失败：账单缺少卡牌ID，账单ID={}", dataId);
                     return false;
                 }
-                TransactionReceipt receipt = cardNftContract.distribute(
+                //todo 重试方法分发卡牌
+                TransactionReceipt receipt = cardNftContractV1.distribute(
                         bill.getUserWalletAddress(),
-                        BigInteger.valueOf(bill.getCardId()),
+//                        BigInteger.valueOf(bill.getCardId()),
                         BigInteger.valueOf(bill.getNum())
                 );
                 if (receipt != null && "0x1".equals(receipt.getStatus())) {

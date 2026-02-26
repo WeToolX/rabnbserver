@@ -14,6 +14,7 @@ import com.ra.rabnbserver.VO.GetAdminClaimVO;
 import com.ra.rabnbserver.VO.MinerSettings;
 import com.ra.rabnbserver.contract.AionContract;
 import com.ra.rabnbserver.contract.CardNftContract;
+import com.ra.rabnbserver.contract.CardNftContractV1;
 import com.ra.rabnbserver.dto.MinerAccelerationDTO;
 import com.ra.rabnbserver.dto.MinerElectricityDTO;
 import com.ra.rabnbserver.dto.MinerQueryDTO;
@@ -61,6 +62,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private final MinerPurchaseRetryServeImpl purchaseRetryServe;
     private final CardNftContract cardNftContract;
+    private final CardNftContractV1 cardNftContractV1;
 
     @Autowired
     private StringRedisTemplate redisTemplate;
@@ -140,12 +142,15 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
 //            if (isApproved == null || !isApproved) {
 //                throw new BusinessException("检测到未授权卡牌操作，请先在页面完成授权");
 //            }
-            String adminWallet = cardNftContract.getAdminAddress();
-            Boolean isApproved = cardNftContract.isApprovedForAll(walletAddress, adminWallet);
-            if (isApproved == null || !isApproved) {
-                throw new BusinessException("检测到未授权卡牌操作，请先在页面完成授权");
-            }
-            BigInteger balance = cardNftContract.balanceOf(walletAddress, BigInteger.valueOf(cardId));
+            //todo 购买矿机销毁卡牌
+            //todo 获取管理员地址
+//            String adminWallet = cardNftContract.getAdminAddress();
+//            Boolean isApproved = cardNftContractV1.isApprovedForAll(walletAddress, adminWallet);
+//            if (isApproved == null || !isApproved) {
+//                throw new BusinessException("检测到未授权卡牌操作，请先在页面完成授权");
+//            }
+//            BigInteger balance = cardNftContract.balanceOf(walletAddress, BigInteger.valueOf(cardId));
+            BigInteger balance = cardNftContractV1.balanceOf(walletAddress);
             if (balance == null || balance.compareTo(BigInteger.valueOf(quantity)) < 0) {
                 throw new BusinessException("卡牌余额不足，当前拥有: " + (balance == null ? 0 : balance));
             }
@@ -179,11 +184,16 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         // 执行销毁逻辑（遍历执行，失败则进入重试框架）
         for (UserMiner miner : createdMiners) {
             try {
-                TransactionReceipt receipt = cardNftContract.burnWithOrder(
+                //todo 销毁卡牌
+//                TransactionReceipt receipt = cardNftContract.burnWithOrder(
+//                        walletAddress,
+//                        BigInteger.valueOf(cardId),
+//                        BigInteger.ONE,
+//                        miner.getNftBurnOrderId()
+//                );
+                TransactionReceipt receipt = cardNftContractV1.burnUser(
                         walletAddress,
-                        BigInteger.valueOf(cardId),
-                        BigInteger.ONE,
-                        miner.getNftBurnOrderId()
+                        BigInteger.ONE
                 );
                 // 合约调用未抛异常且 receipt 不为空，视为成功
                 if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
@@ -719,9 +729,9 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 0,
                 vo
         );
-        TransactionReceipt receipt = cardNftContract.distribute(
+        //todo 碎片兑换卡牌 NFT
+        TransactionReceipt receipt = cardNftContractV1.distribute(
                 user.getUserWalletAddress(),
-                BigInteger.valueOf(dto.getCardId()),
                 BigInteger.valueOf(dto.getQuantity())
         );
         if (receipt == null || !"0x1".equalsIgnoreCase(receipt.getStatus())) {

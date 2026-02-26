@@ -13,10 +13,11 @@ import com.ra.rabnbserver.VO.AdminBillStatisticsVO;
 import com.ra.rabnbserver.VO.CreateUserBillVO;
 import com.ra.rabnbserver.VO.PaymentUsdtMetaVO;
 import com.ra.rabnbserver.contract.CardNftContract;
+import com.ra.rabnbserver.contract.CardNftContractV1;
 import com.ra.rabnbserver.contract.PaymentUsdtContract;
 import com.ra.rabnbserver.contract.support.AmountConvertUtils;
-import com.ra.rabnbserver.dto.AdminBillQueryDTO;
-import com.ra.rabnbserver.dto.BillQueryDTO;
+import com.ra.rabnbserver.dto.admin.bill.AdminBillQueryDTO;
+import com.ra.rabnbserver.dto.user.BillQueryDTO;
 import com.ra.rabnbserver.enums.*;
 import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.mapper.UserBillMapper;
@@ -52,6 +53,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
     private final EtfCardServe etfCardServe;
     private final PaymentUsdtContract paymentUsdtContract;
     private final CardNftContract cardNftContract;
+    private final CardNftContractV1 cardNftContractV1;
     private final UserBillRetryServeImpl billRetryServe;
 
     /**
@@ -148,7 +150,8 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         String nftError = null;
         try {
             log.info("发起NFT链上分发，用户：{}，数量：{}", user.getUserWalletAddress(), quantity);
-            receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(cardId), BigInteger.valueOf(quantity));
+            //todo 链上调用购买卡牌的
+            receipt = cardNftContractV1.distribute(user.getUserWalletAddress(), BigInteger.valueOf(quantity));
         } catch (Exception e) {
             log.error("NFT分发执行异常", e);
             nftError = e.getMessage();
@@ -215,7 +218,8 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         try {
             log.info("管理员发起NFT链上分发，用户：{}，数量：{}", user.getUserWalletAddress(), amount);
             // 调用合约分发
-            receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(cardId), BigInteger.valueOf(amount));
+            //todo 管理员调用链上卡牌的
+            receipt = cardNftContractV1.distribute(user.getUserWalletAddress(), BigInteger.valueOf(amount));
         } catch (Exception e) {
             log.error("管理员分发链上执行异常", e);
             adminErr = e.getMessage();

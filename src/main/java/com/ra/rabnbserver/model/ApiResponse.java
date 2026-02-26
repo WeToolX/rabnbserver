@@ -60,6 +60,10 @@ public class ApiResponse<T> {
         return toJson(new ApiResponse<>(code, message, null));
     }
 
+    public static String error(int code, String message, String data) {
+        return toJson(new ApiResponse<>(code, message, data));
+    }
+
     private static String toJson(ApiResponse<?> response) {
         try {
             return OBJECT_MAPPER.writeValueAsString(response);

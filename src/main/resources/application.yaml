@@ -61,6 +61,7 @@ ADMIN:
   USERNAME: ADMIN
   PASSWORD: admin
   DFCODE: eC4vW8
+  ISOPEN: true
 # Sa-Token 配置
 sa-token:
   token-name: Account-token

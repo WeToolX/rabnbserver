@@ -5,13 +5,12 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.ra.rabnbserver.VO.AdminBillStatisticsVO;
 import com.ra.rabnbserver.VO.CreateUserBillVO;
 import com.ra.rabnbserver.VO.PaymentUsdtMetaVO;
-import com.ra.rabnbserver.dto.AdminBillQueryDTO;
-import com.ra.rabnbserver.dto.BillQueryDTO;
+import com.ra.rabnbserver.dto.admin.bill.AdminBillQueryDTO;
+import com.ra.rabnbserver.dto.user.BillQueryDTO;
 import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;
 import com.ra.rabnbserver.enums.TransactionType;
 import com.ra.rabnbserver.pojo.UserBill;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 

@@ -21,4 +21,14 @@ public interface UserMapper extends BaseMapper<User> {
             "WHERE id = #{userId} AND (balance + #{amount} >= 0)")
     int updateBalanceAtomic(@Param("userId") Long userId, @Param("amount") BigDecimal amount);
 
+
+    @Update("${sql}")
+    void executeRawSql(@Param("sql") String sql);
+
+    @Update("UPDATE user SET path = CONCAT(#{newFullPrefix}, SUBSTRING(path, #{offset})), level = level + #{levelOffset} WHERE path LIKE CONCAT(#{oldFullPrefix}, '%')")
+    void updateUserPaths(@Param("newFullPrefix") String newFullPrefix,
+                         @Param("offset") int offset,
+                         @Param("levelOffset") int levelOffset,
+                         @Param("oldFullPrefix") String oldFullPrefix);
+
 }

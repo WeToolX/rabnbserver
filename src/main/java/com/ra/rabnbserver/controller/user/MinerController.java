@@ -16,6 +16,7 @@ import com.ra.rabnbserver.server.miner.MinerServe;
 import com.ra.rabnbserver.server.sys.SystemConfigServe;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -33,6 +34,9 @@ public class MinerController {
     private  final MinerProfitRecordServe minerProfitRecordServe;
     private final SystemConfigServe systemConfigServe;
 
+
+    @Value("${ADMIN.ISOPEN:true}")
+    private Boolean ISOPEN;
 
     /**
      * 分页查询我的矿机列表
@@ -59,6 +63,9 @@ public class MinerController {
     @PostMapping("/purchase")
     public String purchase(@RequestBody MinerPurchaseDTO dto) {
         Long userId = getFormalUserId();
+        if (!ISOPEN){
+            return ApiResponse.success("购买矿机暂未开放！");
+        }
         if (StrUtil.isBlank(dto.getMinerType()) || dto.getQuantity() == null || dto.getQuantity() <= 0) {
             return ApiResponse.error("参数错误");
         }
@@ -78,6 +85,9 @@ public class MinerController {
     @PostMapping("/claim-tokens")
     public String adminClaim(@RequestBody GetAdminClaimVO dto) {
         Long userId = getFormalUserId();
+        if (!ISOPEN){
+            return ApiResponse.success("矿机收益暂未开放！");
+        }
         if ( dto.getLockType() == null) {
             return ApiResponse.error("仓类参数缺失");
         }
@@ -95,6 +105,9 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/exchange-locked")
     public String adminExchangeLocked(@RequestBody AdminMinerActionDTO dto) {
+        if (!ISOPEN){
+            return ApiResponse.success("暂未开放！");
+        }
         Long userId = getFormalUserId();
         if (dto.getAmount() == null || dto.getAddress() == null || dto.getLockType() == null) {
             return ApiResponse.error("参数缺失");
@@ -113,6 +126,9 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/exchange-unlocked")
     public String adminExchangeUnlocked(@RequestBody AdminMinerActionDTO dto) {
+        if (!ISOPEN){
+            return ApiResponse.success("暂未开放！");
+        }
         Long userId = getFormalUserId();
         if (dto.getAmount() == null || dto.getAddress() == null || dto.getLockType() == null) {
             return ApiResponse.error("参数缺失");
@@ -131,6 +147,9 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/exchange-nft")
     public String exchangeNft(@RequestBody FragmentExchangeNftDTO dto) {
+        if (!ISOPEN){
+            return ApiResponse.success("暂未开放！");
+        }
         Long userId = getFormalUserId();
         if (dto.getQuantity() == null || dto.getQuantity() <= 0) {
             return ApiResponse.error("兑换数量不合法");
@@ -155,6 +174,9 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/pay-electricity")
     public String payElectricity(@RequestBody MinerElectricityDTO dto) {
+        if (!ISOPEN){
+            return ApiResponse.success("暂未开放！");
+        }
         Long userId = getFormalUserId();
         if (dto.getMode() == null) return ApiResponse.error("请选择模式");
         try {
@@ -171,6 +193,9 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/buy-acceleration")
     public String buyAcceleration(@RequestBody MinerAccelerationDTO dto) {
+        if (!ISOPEN){
+            return ApiResponse.success("暂未开放！");
+        }
         Long userId = getFormalUserId();
         if (dto.getMode() == null) return ApiResponse.error("请选择模式");
         try {
@@ -190,6 +215,9 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/miner-profit-record/list")
     public String getProfitList(@RequestBody MinerProfitRecordQueryDTO queryDTO) {
+        if (!ISOPEN){
+            return ApiResponse.success("暂未开放！");
+        }
         Long userId = getFormalUserId();
         queryDTO.setUserId(userId);
         return ApiResponse.success(minerProfitRecordServe.findPage(queryDTO));
@@ -217,4 +245,10 @@ public class MinerController {
         }
         return Long.parseLong(loginId);
     }
+
+//    private String isOpen(String m){
+//        if (!ISOPEN){
+//            return ApiResponse.error(m+"暂未开放！");
+//        }
+//    }
 }

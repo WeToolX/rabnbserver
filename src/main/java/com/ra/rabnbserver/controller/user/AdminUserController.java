@@ -3,22 +3,28 @@ package com.ra.rabnbserver.controller.user;
 import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ra.rabnbserver.contract.CardNftContract;
+import com.ra.rabnbserver.contract.CardNftContractV1;
 import com.ra.rabnbserver.dto.*;
+import com.ra.rabnbserver.dto.admin.user.AdminUserLoginDTO;
+import com.ra.rabnbserver.dto.team.AdminTeamSearchDTO;
+import com.ra.rabnbserver.dto.team.TeamBatchOperationDTO;
+import com.ra.rabnbserver.dto.user.UserQueryDTO;
+import com.ra.rabnbserver.dto.user.WithdrawAuditDTO;
+import com.ra.rabnbserver.dto.withdraw.AdminWithdrawQueryDTO;
 import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;
 import com.ra.rabnbserver.enums.TransactionType;
 import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.model.ApiResponse;
-import com.ra.rabnbserver.pojo.AdminPermission;
-import com.ra.rabnbserver.pojo.AdminRole;
-import com.ra.rabnbserver.pojo.AdminUser;
-import com.ra.rabnbserver.pojo.User;
+import com.ra.rabnbserver.pojo.*;
 import com.ra.rabnbserver.server.admin.AdminPermissionService;
 import com.ra.rabnbserver.server.admin.AdminRoleService;
 import com.ra.rabnbserver.server.admin.AdminUserService;
 import com.ra.rabnbserver.server.user.UserBillServe;
 import com.ra.rabnbserver.server.user.UserServe;
+import com.ra.rabnbserver.server.user.WithdrawServe;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,19 +47,23 @@ public class AdminUserController {
     private UserServe userService;
 
     private final CardNftContract cardNftContract;
+    private final CardNftContractV1  cardNftContractV1;
     private final UserBillServe userBillServer;
     private final AdminUserService adminUserService;
     private final AdminRoleService adminRoleService;
     private final AdminPermissionService adminPermissionService;
     private final UserBillServe userBillServe;
+    private final WithdrawServe withdrawServe;
 
-    public AdminUserController(CardNftContract cardNftContract, UserBillServe userBillServer, AdminUserService adminUserService, AdminRoleService adminRoleService, AdminPermissionService adminPermissionService, UserBillServe userBillServe) {
+    public AdminUserController(CardNftContract cardNftContract, CardNftContractV1 cardNftContractV1, UserBillServe userBillServer, AdminUserService adminUserService, AdminRoleService adminRoleService, AdminPermissionService adminPermissionService, UserBillServe userBillServe, WithdrawServe withdrawServe) {
         this.cardNftContract = cardNftContract;
+        this.cardNftContractV1 = cardNftContractV1;
         this.userBillServer = userBillServer;
         this.adminUserService = adminUserService;
         this.adminRoleService = adminRoleService;
         this.adminPermissionService = adminPermissionService;
         this.userBillServe = userBillServe;
+        this.withdrawServe = withdrawServe;
     }
 
     @Value("${ADMIN.USERNAME}")
@@ -182,7 +192,8 @@ public class AdminUserController {
         if (user == null) return ApiResponse.error("用户不存在");
         if (cardId == null) return ApiResponse.error("卡牌ID不能为空");
 
-        BigInteger balance = cardNftContract.balanceOf(user.getUserWalletAddress(), BigInteger.valueOf(cardId));
+        //todo 查询链上卡牌余额
+        BigInteger balance = cardNftContractV1.balanceOf(user.getUserWalletAddress());
         return ApiResponse.success(balance);
     }
 
@@ -193,6 +204,55 @@ public class AdminUserController {
     public String distributeNft(@RequestBody DistributeNftDTO dto) {
         userBillServer.distributeNftByAdmin(dto.getUserId(), dto.getAmount(), dto.getCardId());
         return ApiResponse.success("分发指令已执行");
+    }
+    /**
+     * 一键绑定团队
+     */
+    @SaCheckLogin
+    @PostMapping("/team/bind-batch")
+    public String bindTeamBatch(@RequestBody TeamBatchOperationDTO dto) {
+        if (dto.getUserIds() == null || dto.getUserIds().isEmpty()) {
+            return ApiResponse.error("未选择用户");
+        }
+        if (dto.getTargetParentId() == null) {
+            return ApiResponse.error("未指定目标上级");
+        }
+        try {
+            userService.bindTeamBatch(dto.getUserIds(), dto.getTargetParentId());
+            return ApiResponse.success("批量绑定成功");
+        } catch (BusinessException e) {
+            return ApiResponse.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("批量绑定异常", e);
+            return ApiResponse.error("系统繁忙");
+        }
+    }
+
+    /**
+     * 一键解绑团队（变为根用户）
+     */
+    @SaCheckLogin
+    @PostMapping("/team/unbind-batch")
+    public String unbindTeamBatch(@RequestBody TeamBatchOperationDTO dto) {
+        if (dto.getUserIds() == null || dto.getUserIds().isEmpty()) {
+            return ApiResponse.error("未选择用户");
+        }
+        try {
+            userService.unbindTeamBatch(dto.getUserIds());
+            return ApiResponse.success("批量解绑成功");
+        } catch (Exception e) {
+            log.error("批量解绑异常", e);
+            return ApiResponse.error("系统异常");
+        }
+    }
+
+    /**
+     * 高级团队搜索接口 (支持钱包、领导人、团队规模等筛选)
+     */
+    @SaCheckLogin
+    @PostMapping("/team/search")
+    public String searchTeam(@RequestBody AdminTeamSearchDTO queryDTO) {
+        return ApiResponse.success("查询成功", userService.selectComplexTeamPage(queryDTO));
     }
 
 
@@ -226,6 +286,43 @@ public class AdminUserController {
         } catch (BusinessException e) {
             log.error("充值失败: {}", e.getMessage());
             return ApiResponse.error("充值失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 管理员审核提现
+     */
+    @SaCheckLogin
+    @PostMapping("/withdraw/audit")
+    public String auditWithdraw(@RequestBody WithdrawAuditDTO dto) {
+        try {
+            if (dto.getRecordId() == null || dto.getIsPass() == null) {
+                return ApiResponse.error("参数不完整");
+            }
+            withdrawServe.auditWithdraw(dto);
+            return ApiResponse.success("审核操作成功");
+        } catch (BusinessException e) {
+            return ApiResponse.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("审核提现异常", e);
+            return ApiResponse.error("系统繁忙，请稍后再试");
+        }
+    }
+
+    /**
+     * 管理员多条件分页查询所有提现记录
+     */
+    @SaCheckLogin
+    @PostMapping("/withdraw/list")
+    public String allWithdrawList(@RequestBody(required = false) AdminWithdrawQueryDTO queryDTO) {
+        try {
+            IPage<WithdrawRecord> result = withdrawServe.getAdminWithdrawPage(queryDTO);
+            return ApiResponse.success("查询成功", result);
+        } catch (java.time.format.DateTimeParseException e) {
+            return ApiResponse.error("日期格式错误，请使用 yyyy-MM-dd 格式");
+        } catch (Exception e) {
+            log.error("查询提现记录异常", e);
+            return ApiResponse.error("查询失败: " + e.getMessage());
         }
     }
 }

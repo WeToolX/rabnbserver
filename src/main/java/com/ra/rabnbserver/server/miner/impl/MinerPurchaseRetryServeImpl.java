@@ -1,6 +1,7 @@
 package com.ra.rabnbserver.server.miner.impl;
 
 import com.ra.rabnbserver.contract.CardNftContract;
+import com.ra.rabnbserver.contract.CardNftContractV1;
 import com.ra.rabnbserver.exception.Abnormal.annotation.AbnormalRetryConfig;
 import com.ra.rabnbserver.exception.Abnormal.core.AbstractAbnormalRetryService;
 import com.ra.rabnbserver.exception.Abnormal.core.AbnormalRetryManager;
@@ -31,11 +32,13 @@ public class MinerPurchaseRetryServeImpl extends AbstractAbnormalRetryService {
 
     private final UserMinerMapper userMinerMapper;
     private final CardNftContract cardNftContract;
+    private final CardNftContractV1  cardNftContractV1;
 
-    public MinerPurchaseRetryServeImpl(AbnormalRetryManager abnormalRetryManager, UserMinerMapper userMinerMapper, CardNftContract cardNftContract) {
+    public MinerPurchaseRetryServeImpl(AbnormalRetryManager abnormalRetryManager, UserMinerMapper userMinerMapper, CardNftContract cardNftContract, CardNftContractV1 cardNftContractV1) {
         super(abnormalRetryManager);
         this.userMinerMapper = userMinerMapper;
         this.cardNftContract = cardNftContract;
+        this.cardNftContractV1 = cardNftContractV1;
     }
 
     @Override
@@ -79,11 +82,16 @@ public class MinerPurchaseRetryServeImpl extends AbstractAbnormalRetryService {
                 log.error("销毁重试缺少必要参数，ID={}, cardId={}, orderId={}", dataId, miner.getNftCardId(), miner.getNftBurnOrderId());
                 return false;
             }
-            TransactionReceipt receipt = cardNftContract.burnWithOrder(
+            //todo 重试方法销毁卡牌
+//            TransactionReceipt receipt = cardNftContract.burnWithOrder(
+//                    miner.getWalletAddress(),
+//                    BigInteger.valueOf(miner.getNftCardId()),
+//                    BigInteger.ONE,
+//                    miner.getNftBurnOrderId()
+//            );
+            TransactionReceipt receipt = cardNftContractV1.burnUser(
                     miner.getWalletAddress(),
-                    BigInteger.valueOf(miner.getNftCardId()),
-                    BigInteger.ONE,
-                    miner.getNftBurnOrderId()
+                    BigInteger.ONE
             );
             // ContractBase 及其子类在 status=0x0 时会抛出 ContractCallException
             // 此处逻辑只需判断 receipt 是否成功到达
