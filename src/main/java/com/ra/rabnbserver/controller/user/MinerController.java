@@ -44,6 +44,9 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/list")
     public String getMinerList(@RequestBody(required = false) MinerQueryDTO query) {
+        if (!ISOPEN){
+            return ApiResponse.error("暂未开放！");
+        }
         log.info("getMinerList,查询参数：{}", query.toString());
         if (query == null) query = new MinerQueryDTO();
         Long userId = getFormalUserId();
@@ -64,7 +67,7 @@ public class MinerController {
     public String purchase(@RequestBody MinerPurchaseDTO dto) {
         Long userId = getFormalUserId();
         if (!ISOPEN){
-            return ApiResponse.success("购买矿机暂未开放！");
+            return ApiResponse.error("购买矿机暂未开放！");
         }
         if (StrUtil.isBlank(dto.getMinerType()) || dto.getQuantity() == null || dto.getQuantity() <= 0) {
             return ApiResponse.error("参数错误");
@@ -86,7 +89,7 @@ public class MinerController {
     public String adminClaim(@RequestBody GetAdminClaimVO dto) {
         Long userId = getFormalUserId();
         if (!ISOPEN){
-            return ApiResponse.success("矿机收益暂未开放！");
+            return ApiResponse.error("矿机收益暂未开放！");
         }
         if ( dto.getLockType() == null) {
             return ApiResponse.error("仓类参数缺失");
@@ -106,7 +109,7 @@ public class MinerController {
     @PostMapping("/exchange-locked")
     public String adminExchangeLocked(@RequestBody AdminMinerActionDTO dto) {
         if (!ISOPEN){
-            return ApiResponse.success("暂未开放！");
+            return ApiResponse.error("暂未开放！");
         }
         Long userId = getFormalUserId();
         if (dto.getAmount() == null || dto.getAddress() == null || dto.getLockType() == null) {
@@ -127,7 +130,7 @@ public class MinerController {
     @PostMapping("/exchange-unlocked")
     public String adminExchangeUnlocked(@RequestBody AdminMinerActionDTO dto) {
         if (!ISOPEN){
-            return ApiResponse.success("暂未开放！");
+            return ApiResponse.error("暂未开放！");
         }
         Long userId = getFormalUserId();
         if (dto.getAmount() == null || dto.getAddress() == null || dto.getLockType() == null) {
@@ -148,7 +151,7 @@ public class MinerController {
     @PostMapping("/exchange-nft")
     public String exchangeNft(@RequestBody FragmentExchangeNftDTO dto) {
         if (!ISOPEN){
-            return ApiResponse.success("暂未开放！");
+            return ApiResponse.error("暂未开放！");
         }
         Long userId = getFormalUserId();
         if (dto.getQuantity() == null || dto.getQuantity() <= 0) {
@@ -175,7 +178,7 @@ public class MinerController {
     @PostMapping("/pay-electricity")
     public String payElectricity(@RequestBody MinerElectricityDTO dto) {
         if (!ISOPEN){
-            return ApiResponse.success("暂未开放！");
+            return ApiResponse.error("暂未开放！");
         }
         Long userId = getFormalUserId();
         if (dto.getMode() == null) return ApiResponse.error("请选择模式");
@@ -194,7 +197,7 @@ public class MinerController {
     @PostMapping("/buy-acceleration")
     public String buyAcceleration(@RequestBody MinerAccelerationDTO dto) {
         if (!ISOPEN){
-            return ApiResponse.success("暂未开放！");
+            return ApiResponse.error("暂未开放！");
         }
         Long userId = getFormalUserId();
         if (dto.getMode() == null) return ApiResponse.error("请选择模式");
@@ -216,7 +219,7 @@ public class MinerController {
     @PostMapping("/miner-profit-record/list")
     public String getProfitList(@RequestBody MinerProfitRecordQueryDTO queryDTO) {
         if (!ISOPEN){
-            return ApiResponse.success("暂未开放！");
+            return ApiResponse.error("暂未开放！");
         }
         Long userId = getFormalUserId();
         queryDTO.setUserId(userId);
@@ -232,6 +235,8 @@ public class MinerController {
         String  KEY = "";
         if (key.equals("1")) {
             KEY = "MINER_SYSTEM_SETTINGS";
+        }else if(key.equals("2")){
+            KEY = "WITHDRAW_SETTINGS";
         }
         return ApiResponse.success(systemConfigServe.getValueByKey(KEY));
     }

@@ -229,7 +229,7 @@ public class UserController {
     @PostMapping("/team/list")
     public String getTeamList(@RequestBody TeamQueryDTO query) {
         if (!ISOPEN){
-            return ApiResponse.success("暂未开放！");
+            return ApiResponse.error("暂未开放！");
         }
         Long userId = getFormalUserId();
         User currentUser = userService.getById(userId);
@@ -373,7 +373,7 @@ public class UserController {
     @PostMapping("/withdraw/apply")
     public String applyWithdraw(@RequestBody WithdrawApplyDTO dto) {
         if (!ISOPEN){
-            return ApiResponse.success("暂未开放！");
+            return ApiResponse.error("暂未开放！");
         }
         try {
             Long userId = getFormalUserId();
@@ -394,7 +394,7 @@ public class UserController {
     @PostMapping("/withdraw/list")
     public String myWithdrawList(@RequestBody(required = false) UserWithdrawQueryDTO queryDTO) {
         if (!ISOPEN){
-            return ApiResponse.success("暂未开放！");
+            return ApiResponse.error("暂未开放！");
         }
         try {
             Long userId = getFormalUserId();
