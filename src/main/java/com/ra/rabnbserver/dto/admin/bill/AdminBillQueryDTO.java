@@ -1,4 +1,4 @@
-package com.ra.rabnbserver.dto;
+package com.ra.rabnbserver.dto.admin.bill;
 
 import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;

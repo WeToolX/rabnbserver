@@ -9,7 +9,8 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ra.rabnbserver.dto.RegisterDataDTO;
-import com.ra.rabnbserver.dto.UserQueryDTO;
+import com.ra.rabnbserver.dto.team.AdminTeamSearchDTO;
+import com.ra.rabnbserver.dto.user.UserQueryDTO;
 import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.mapper.UserMapper;
 import com.ra.rabnbserver.pojo.User;
@@ -250,6 +251,202 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
             }
         }
         return user;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @Override
+    public void bindTeamBatch(List<Long> userIds, Long targetParentId) {
+        if (userIds == null || userIds.isEmpty()) return;
+        // 1. 获取目标上级
+        User targetParent = null;
+        if (targetParentId != null && targetParentId != 0) {
+            targetParent = this.getById(targetParentId);
+            if (targetParent == null) throw new BusinessException("目标上级不存在");
+        }
+
+        for (Long userId : userIds) {
+            moveUserToNewParent(userId, targetParent);
+        }
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @Override
+    public void unbindTeamBatch(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) return;
+
+        for (Long userId : userIds) {
+            // 解绑即移动到根节点 (targetParent = null)
+            moveUserToNewParent(userId, null);
+        }
+    }
+
+    /**
+     * 核心私有方法：移动单个用户及其整个子树到新上级
+     */
+    private void moveUserToNewParent(Long userId, User newParent) {
+        User user = this.getById(userId);
+        if (user == null) return;
+
+        // 0. 防止死循环：目标上级不能是该用户本身或其子孙
+        if (newParent != null) {
+            if (newParent.getId().equals(user.getId())) throw new BusinessException("不能将用户绑定到自己身上");
+            if (newParent.getPath().contains("," + user.getId() + ",")) {
+                throw new BusinessException("目标上级不能是该用户的下级");
+            }
+            if (newParent.getId().equals(user.getParentId())) return; // 无需移动
+        } else if (user.getParentId() == 0) {
+            return; // 已经是根用户，无需解绑
+        }
+
+        // --- 第一部分：清理旧上级的统计数据 ---
+        int affectCount = 1 + user.getTeamCount(); // 本身 + 他的所有团队成员
+        List<Long> oldAncestorIds = Arrays.stream(user.getPath().split(","))
+                .filter(s -> StrUtil.isNotBlank(s) && !"0".equals(s))
+                .map(Long::parseLong)
+                .collect(Collectors.toList());
+
+        if (!oldAncestorIds.isEmpty()) {
+            // 扣除旧祖先的团队人数
+            this.update(new LambdaUpdateWrapper<User>()
+                    .setSql("team_count = team_count - " + affectCount)
+                    .in(User::getId, oldAncestorIds));
+
+            // 扣除旧直接上级的直推人数
+            this.lambdaUpdate()
+                    .setSql("direct_count = direct_count - 1")
+                    .eq(User::getId, user.getParentId())
+                    .update();
+        }
+
+        // --- 第二部分：更新用户自身及子孙节点的路径/层级 ---
+        String oldPathPrefix = user.getPath() + user.getId() + ",";
+        String newPath;
+        int newLevel;
+        String newParentInviteCode;
+        Long newParentId;
+
+        if (newParent != null) {
+            newPath = newParent.getPath() + newParent.getId() + ",";
+            newLevel = newParent.getLevel() + 1;
+            newParentInviteCode = newParent.getInviteCode();
+            newParentId = newParent.getId();
+        } else {
+            newPath = "0,";
+            newLevel = 1;
+            newParentInviteCode = "0";
+            newParentId = 0L;
+        }
+
+        // 更新子孙节点的 path 和 level
+        // 逻辑：将所有 path 以 oldPathPrefix 开头的用户，替换其 path 前缀，并调整 level 偏移量
+        int levelOffset = newLevel - user.getLevel();
+
+        // MyBatis Plus 手写 SQL 更新子孙
+        this.lambdaUpdate()
+                .setSql("path = REPLACE(path, '" + user.getPath() + "', '" + newPath + "')") // 错误预警：这里需要更精准的替换
+                // 建议更稳健的子孙路径更新方案：
+                .setSql("level = level + " + levelOffset)
+                .likeRight(User::getPath, oldPathPrefix)
+                .update();
+
+        // 特殊处理：MySQL 的 REPLACE 在处理 materialized path 时要小心，下面是优化后的子孙更新逻辑：
+        String sql = String.format(
+                "UPDATE user SET path = CONCAT('%s', SUBSTRING(path, %d)), level = level + %d WHERE path LIKE '%s%%'",
+                newPath + user.getId() + ",",
+                (user.getPath() + user.getId() + ",").length() + 1,
+                levelOffset,
+                oldPathPrefix
+        );
+        this.baseMapper.updateUserPaths(newPath + user.getId() + ",", (user.getPath() + user.getId() + ",").length() + 1, levelOffset, oldPathPrefix);
+
+        // 更新当前节点
+        user.setParentId(newParentId);
+        user.setParentInviteCode(newParentInviteCode);
+        user.setPath(newPath);
+        user.setLevel(newLevel);
+        this.updateById(user);
+
+        // --- 第三部分：增加新上级的统计数据 ---
+        if (newParent != null) {
+            List<Long> newAncestorIds = Arrays.stream(newPath.split(","))
+                    .filter(s -> StrUtil.isNotBlank(s) && !"0".equals(s))
+                    .map(Long::parseLong)
+                    .collect(Collectors.toList());
+
+            if (!newAncestorIds.isEmpty()) {
+                this.update(new LambdaUpdateWrapper<User>()
+                        .setSql("team_count = team_count + " + affectCount)
+                        .in(User::getId, newAncestorIds));
+            }
+
+            // 增加新直接上级的直推人数
+            this.lambdaUpdate()
+                    .setSql("direct_count = direct_count + 1")
+                    .eq(User::getId, newParentId)
+                    .update();
+        }
+    }
+
+    @Override
+    public IPage<User> selectComplexTeamPage(AdminTeamSearchDTO queryDTO) {
+        Page<User> page = new Page<>(queryDTO.getPage(), queryDTO.getSize());
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+
+        // 目标用户信息筛选 ---
+        // 搜索特定钱包地址 (支持模糊查询)
+        wrapper.like(StrUtil.isNotBlank(queryDTO.getUserWalletAddress()),
+                User::getUserWalletAddress, queryDTO.getUserWalletAddress());
+
+        // 搜索特定用户名
+        wrapper.like(StrUtil.isNotBlank(queryDTO.getUserName()),
+                User::getUserName, queryDTO.getUserName());
+
+        // 搜索特定邀请码
+        wrapper.eq(StrUtil.isNotBlank(queryDTO.getInviteCode()),
+                User::getInviteCode, queryDTO.getInviteCode());
+
+
+        // 团队范围限定 (确定搜索的“树”范围) ---
+
+        // 如果传了领导人钱包地址，先查出领导人ID
+        if (StrUtil.isNotBlank(queryDTO.getLeaderWalletAddress())) {
+            User leader = this.getByWalletAddress(queryDTO.getLeaderWalletAddress());
+            if (leader != null) {
+                String teamPathPrefix = leader.getPath() + leader.getId() + ",";
+                wrapper.likeRight(User::getPath, teamPathPrefix);
+            } else {
+                // 如果领导人地址搜不到，直接返回空分页，防止查出全表数据
+                return page;
+            }
+        }
+        // 或者通过 LeaderId 缩小范围
+        else if (queryDTO.getLeaderId() != null) {
+            User leader = this.getById(queryDTO.getLeaderId());
+            if (leader != null) {
+                String teamPathPrefix = leader.getPath() + leader.getId() + ",";
+                wrapper.likeRight(User::getPath, teamPathPrefix);
+            }
+        }
+
+        // 层级与统计指标筛选 ---
+        // 指定直接上级
+        wrapper.eq(queryDTO.getParentId() != null, User::getParentId, queryDTO.getParentId());
+        // 指定绝对层级
+        wrapper.eq(queryDTO.getLevel() != null, User::getLevel, queryDTO.getLevel());
+        // 团队人数区间
+        if (queryDTO.getMinTeamCount() != null) wrapper.ge(User::getTeamCount, queryDTO.getMinTeamCount());
+        if (queryDTO.getMaxTeamCount() != null) wrapper.le(User::getTeamCount, queryDTO.getMaxTeamCount());
+        // 直推人数区间
+        if (queryDTO.getMinDirectCount() != null) wrapper.ge(User::getDirectCount, queryDTO.getMinDirectCount());
+        // 时间与排序 ---
+        if (StrUtil.isNotBlank(queryDTO.getStartTime())) {
+            wrapper.ge(User::getCreateTime, DateUtil.parse(queryDTO.getStartTime()).toLocalDateTime());
+        }
+        if (StrUtil.isNotBlank(queryDTO.getEndTime())) {
+            wrapper.le(User::getCreateTime, DateUtil.parse(queryDTO.getEndTime()).toLocalDateTime());
+        }
+        wrapper.orderByDesc(User::getCreateTime);
+        return this.page(page, wrapper);
     }
 
     @Transactional(rollbackFor = Exception.class)

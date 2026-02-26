@@ -2,7 +2,7 @@ package com.ra.rabnbserver.exception;
 
 import cn.dev33.satoken.exception.NotLoginException;
 import cn.dev33.satoken.exception.SaTokenException;
-import com.ra.rabnbserver.common.Result;
+import com.ra.rabnbserver.model.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.mybatis.spring.MyBatisSystemException;
 import org.springframework.http.HttpStatus;
@@ -25,9 +25,9 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    public Result<?> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+    public String handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
         log.error("不支持的请求方法: {}, 错误信息={}", e.getMessage(), e);
-        return Result.error("不支持的请求方法");
+        return ApiResponse.error("不支持的请求方法");
     }
 
     /**
@@ -36,7 +36,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Result<?> handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException ex) {
+    public String handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException ex) {
         String paramName = ex.getName(); // 获取参数名: parentId
         Class<?> requiredType = ex.getRequiredType(); // 获取目标类型: Long
         Object actualValue = ex.getValue(); // 获取实际值: "p"
@@ -45,7 +45,7 @@ public class GlobalExceptionHandler {
                 actualValue,
                 requiredType != null ? requiredType.getSimpleName() : "未知");
         log.warn("请求参数类型错误: {}", message, ex); // 保留堆栈信息便于排查
-        return Result.error(401, message); // 返回友好的中文提示
+        return ApiResponse.error(401, message); // 返回友好的中文提示
     }
 
     /**
@@ -54,49 +54,49 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(BindException.class) // 只捕获父类即可
     @ResponseStatus(HttpStatus.BAD_REQUEST) // 使用此注解可让Spring自动设置HTTP状态码
-    public Result<?> handleBindException(BindException e) {
+    public String handleBindException(BindException e) {
         String msg = "参数校验失败";
-        FieldError fieldError = e.getBindingResult().getFieldError();
+        FieldError fieldError = e.getFieldError();
         if (fieldError != null) {
              msg = fieldError.getField() + " " + fieldError.getDefaultMessage();
         }
         log.warn("参数校验或绑定异常: {}", msg, e);
-        return Result.error(401, msg);
+        return ApiResponse.error(401, msg);
     }
     /**
      * 处理单个必需参数缺失的异常 (@RequestParam)
      */
     @ExceptionHandler(MissingServletRequestParameterException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Result<?> handleMissingServletRequestParameterException(MissingServletRequestParameterException e) {
+    public String handleMissingServletRequestParameterException(MissingServletRequestParameterException e) {
         // 格式化为: "必需的请求参数 '参数名' 不存在"
         String msg = "必需的请求参数 '" + e.getParameterName() + "' 不存在";
         log.warn(msg);
-        return Result.error(401, msg);
+        return ApiResponse.error(401, msg);
     }
 
     // JSON解析失败
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public Result<?> handleHttpMessageNotReadableException(HttpMessageNotReadableException e) {
+    public String handleHttpMessageNotReadableException(HttpMessageNotReadableException e) {
         log.warn("请求体JSON解析失败: { }, 错误信息={}", e.getMessage(), e);
-        return Result.error(401, "请求参数格式错误");
+        return ApiResponse.error(401, "请求参数格式错误");
     }
 
     @ExceptionHandler(NumberFormatException.class)
-    public Result<?> handNumberFormatException(NumberFormatException e){
+    public String handNumberFormatException(NumberFormatException e){
         log.warn("数据类型转换错误，请尝试刷新网页或修改错误的数据类型: {}, 错误信息={}", e.getMessage(), e);
-        return Result.error(401,"数据类型转换错误，请尝试刷新网页或修改错误的数据类型");
+        return ApiResponse.error(401,"数据类型转换错误，请尝试刷新网页或修改错误的数据类型");
     }
 
     @ExceptionHandler(NullPointerException.class)
-    public Result<?> handNullPointerException(NullPointerException e){
+    public String handNullPointerException(NullPointerException e){
         log.warn("参数出现空值: {}, 错误信息={}", e.getMessage(), e);
-        return Result.error(400,"参数出现空值");
+        return ApiResponse.error(400,"参数出现空值");
     }
 
 //     SaToken异常
     @ExceptionHandler(SaTokenException.class)
-    public Result<?> handleSaTokenException(SaTokenException e) {
+    public String handleSaTokenException(SaTokenException e) {
         int code = e.getCode();
         String msg;
         switch (code) {
@@ -113,14 +113,14 @@ public class GlobalExceptionHandler {
             case 11042: msg = "无此角色权限：" + e.getMessage(); code = 404; break;
             default:
                 log.error("未知SaToken异常: code={}, msg={}， 错误信息={}", code, e.getMessage(), e);
-                return Result.error(400, "认证服务器错误");
+                return ApiResponse.error(400, "认证服务器错误");
         }
         log.warn("SaToken鉴权异常: code={}, msg={}, 错误信息={}", code, msg, e);
-        return Result.error(400, msg);
+        return ApiResponse.error(400, msg);
     }
 
     @ExceptionHandler(NotLoginException.class)
-    public Result<?> handleNotLoginException(NotLoginException nle) {
+    public String handleNotLoginException(NotLoginException nle) {
         // 判断场景, p.s. 这种区分片面, 实际根据前端约定进行灵活处理
         String message;
         if (nle.getType().equals(NotLoginException.NOT_TOKEN)) {
@@ -132,20 +132,20 @@ public class GlobalExceptionHandler {
         } else {
             message = "当前会话未登录";
         }
-        return Result.error(400, "请检查是否登录，错误原因："+message);
+        return ApiResponse.error(400, "请检查是否登录，错误原因："+message);
     }
 // 可以添加自定义业务异常
     @ExceptionHandler(BusinessException.class)
-    public Result<?> handleBusinessException(BusinessException e) {
+    public String handleBusinessException(BusinessException e) {
         log.warn("业务异常: {}", e.getMessage(), e);
-        return Result.error(e.getMessage());
+        return ApiResponse.error(e.getMessage());
     }
 
     /**
      * 处理 AION 合约异常（包含原始与解码信息）
      */
     @ExceptionHandler(AionContractException.class)
-    public Result<?> handleAionContractException(AionContractException e) {
+    public String handleAionContractException(AionContractException e) {
         Map<String, Object> detail = buildContractExceptionDetail(e);
         log.warn("AION 合约异常: {}, 详情={}", e.getMessage(), detail, e);
         String message = e.getDecodedDetail();
@@ -155,14 +155,14 @@ public class GlobalExceptionHandler {
         if (message == null || message.isBlank()) {
             message = e.getMessage();
         }
-        return Result.error(500, message, detail);
+        return ApiResponse.error(500, message, detail.toString());
     }
 
     /**
      * 处理链上调用异常（非 revert）
      */
     @ExceptionHandler(ChainCallException.class)
-    public Result<?> handleChainCallException(ChainCallException e) {
+    public String handleChainCallException(ChainCallException e) {
         Map<String, Object> detail = buildContractExceptionDetail(e);
         log.warn("链上调用异常: {}, 详情={}", e.getMessage(), detail, e);
         String message = e.getOriginExceptionMessage();
@@ -172,7 +172,7 @@ public class GlobalExceptionHandler {
         if (message == null || message.isBlank()) {
             message = e.getMessage();
         }
-        return Result.error(500, message, detail);
+        return ApiResponse.error(500, message, detail.toString());
     }
 
     /**
@@ -200,15 +200,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(NoResourceFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND) // 设置HTTP状态码为404
-    public Result<?> handleNoResourceFoundException(NoResourceFoundException e) {
+    public String handleNoResourceFoundException(NoResourceFoundException e) {
         log.warn("资源未找到：{}", e.getMessage());
-        return Result.error(404, "您访问的资源不存在");
+        return ApiResponse.error(404, "您访问的资源不存在");
     }
     // 全局异常兜底
     @ExceptionHandler(Exception.class)
-    public Result<?> handleAllException(Exception e) {
+    public String handleAllException(Exception e) {
         log.error("服务器未知异常:{ }", e);
-        return Result.error(500, "系统繁忙，未知错误，请稍后再试");
+        return ApiResponse.error(500, "系统繁忙，未知错误，请稍后再试");
     }
 
 //    /**
@@ -216,7 +216,7 @@ public class GlobalExceptionHandler {
 //     * 并将详细的错误信息返回给前端
 //     */
 //    @ExceptionHandler(WebClientResponseException.class)
-//    public Result<?> handleWebClientResponseException(WebClientResponseException e) {
+//    public String handleWebClientResponseException(WebClientResponseException e) {
 //        // 1. 提取详细的错误信息
 //        int statusCode = e.getStatusCode().value();
 //        String responseBody = e.getResponseBodyAsString();
@@ -235,17 +235,17 @@ public class GlobalExceptionHandler {
 //        // 4. 根据不同的状态码，返回不同的外层提示信息
 //        if (e.getStatusCode().isSameCodeAs(HttpStatus.NOT_FOUND)) {
 //            // 对于本次的 404 错误
-//            return Result.error(HttpStatus.BAD_GATEWAY.value(), "依赖的外部资源未找到", errorDetails);
+//            return ApiResponse.error(HttpStatus.BAD_GATEWAY.value(), "依赖的外部资源未找到", errorDetails);
 //        } else if (e.getStatusCode().is4xxClientError()) {
 //            // 对于其他 4xx 客户端错误 (如 400, 401, 403)
-//            return Result.error(HttpStatus.BAD_GATEWAY.value(), "外部服务调用异常，请检查请求", errorDetails);
+//            return ApiResponse.error(HttpStatus.BAD_GATEWAY.value(), "外部服务调用异常，请检查请求", errorDetails);
 //        } else if (e.getStatusCode().is5xxServerError()) {
 //            // 如果是服务端错误 (如 500, 503)，说明下游服务本身出了问题
-//            return Result.error(HttpStatus.SERVICE_UNAVAILABLE.value(), "外部依赖服务暂时不可用", errorDetails);
+//            return ApiResponse.error(HttpStatus.SERVICE_UNAVAILABLE.value(), "外部依赖服务暂时不可用", errorDetails);
 //        }
 //
 //        // 对于其他未分类的HTTP错误
-//        return Result.error(HttpStatus.INTERNAL_SERVER_ERROR.value(), "调用外部服务时发生未知错误", errorDetails);
+//        return ApiResponse.error(HttpStatus.INTERNAL_SERVER_ERROR.value(), "调用外部服务时发生未知错误", errorDetails);
 //    }
 
 
@@ -254,8 +254,8 @@ public class GlobalExceptionHandler {
      * 数据库框架异常MyBatisSystemException
      */
     @ExceptionHandler(MyBatisSystemException.class)
-    public Result<?> handleMyBatisSystemException(MyBatisSystemException e){
+    public String handleMyBatisSystemException(MyBatisSystemException e){
         log.warn("数据库框架处理异常: {}，异常详情：{}", e.getMessage(), e);
-        return Result.error("系统异常：异常码-10045");
+        return ApiResponse.error("系统异常：异常码-10045");
     }
 }

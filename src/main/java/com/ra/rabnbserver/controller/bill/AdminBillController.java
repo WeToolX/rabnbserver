@@ -2,7 +2,7 @@ package com.ra.rabnbserver.controller.bill;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ra.rabnbserver.VO.AdminBillStatisticsVO;
-import com.ra.rabnbserver.dto.AdminBillQueryDTO;
+import com.ra.rabnbserver.dto.admin.bill.AdminBillQueryDTO;
 import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.UserBill;
 import com.ra.rabnbserver.server.user.UserBillServe;

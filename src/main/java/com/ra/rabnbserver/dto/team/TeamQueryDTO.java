@@ -1,4 +1,4 @@
-package com.ra.rabnbserver.dto;
+package com.ra.rabnbserver.dto.team;
 
 import lombok.Data;
 

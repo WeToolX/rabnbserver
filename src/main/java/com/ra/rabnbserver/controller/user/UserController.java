@@ -11,6 +11,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ra.rabnbserver.crypto.CryptoConstants;
 import com.ra.rabnbserver.crypto.CryptoUtils;
 import com.ra.rabnbserver.dto.*;
+import com.ra.rabnbserver.dto.team.TeamQueryDTO;
+import com.ra.rabnbserver.dto.user.BillQueryDTO;
+import com.ra.rabnbserver.dto.user.WithdrawApplyDTO;
+import com.ra.rabnbserver.dto.withdraw.UserWithdrawQueryDTO;
 import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;
 import com.ra.rabnbserver.enums.TransactionType;
@@ -18,7 +22,9 @@ import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.User;
 import com.ra.rabnbserver.pojo.UserBill;
+import com.ra.rabnbserver.pojo.WithdrawRecord;
 import com.ra.rabnbserver.server.user.UserServe;
+import com.ra.rabnbserver.server.user.WithdrawServe;
 import com.ra.rabnbserver.server.user.impl.UserBillRetryServeImpl;
 import com.ra.rabnbserver.utils.RandomIdGenerator;
 import jakarta.servlet.http.HttpServletRequest;
@@ -46,14 +52,20 @@ public class UserController {
     private final UserServe userService;
     private final UserBillServe billService;
     private final UserBillRetryServeImpl billRetryServe;
-    public UserController(UserServe userService, UserBillServe billService, UserBillRetryServeImpl billRetryServe) {
+
+    private final WithdrawServe withdrawServe;
+    public UserController(UserServe userService, UserBillServe billService, UserBillRetryServeImpl billRetryServe, WithdrawServe withdrawServe) {
         this.userService = userService;
         this.billService = billService;
         this.billRetryServe = billRetryServe;
+        this.withdrawServe = withdrawServe;
     }
 
     @Value("${ADMIN.DFCODE:eC4vW8}")
     private String DFCODE;
+
+    @Value("${ADMIN.ISOPEN:true}")
+    private Boolean ISOPEN;
 
 
     /**
@@ -138,12 +150,12 @@ public class UserController {
      * 统一登录/注册接口
      * 数据库中是否存在             数据库中是否存在
      * 提交的 userWalletAddress	提交的 code(邀请人地址（默认地址（默认邀请码））)	库中是否存在该用户	    结果
-     * 为空	                    任意	                                        -	                报错：钱包地址不能为空
-     * 已存在地址	                任意（传或不传）	                            是	                直接登录成功
-     * 未注册地址	                为空	                                        否	                报错：用户未注册，请提供邀请人地址
-     * 未注册地址	                等于系统默认地址	                            否	                注册成功：作为根用户
-     * 未注册地址	                等于库中已有地址	                            否	                注册成功：作为该地址的下级
-     * 未注册地址	                库中不存在且非默认	                            否	                报错：邀请人地址无效
+     * 为空	                    任意	                                        -	                 Code: 1001 报错：钱包地址不能为空
+     * 已存在地址	                任意（传或不传）	                            是	                 Code: 200  直接登录成功
+     * 未注册地址	                为空	                                        否	                 Code: 1002 报错：用户未注册，请提供邀请人地址
+     * 未注册地址	                等于系统默认地址	                            否	                 Code: 200  注册成功：作为根用户
+     * 未注册地址	                等于库中已有地址	                            否	                 Code: 200  注册成功：作为该地址的下级
+     * 未注册地址	                库中不存在且非默认	                            否	                 Code: 1004 报错：邀请人地址无效,不能邀请自己 (Code: 1003)
      */
     @PostMapping("/access")
     public String login(@RequestBody LoginDataDTO loginDataDTO) throws Exception {
@@ -216,6 +228,9 @@ public class UserController {
     @SaCheckLogin
     @PostMapping("/team/list")
     public String getTeamList(@RequestBody TeamQueryDTO query) {
+        if (!ISOPEN){
+            return ApiResponse.success("暂未开放！");
+        }
         Long userId = getFormalUserId();
         User currentUser = userService.getById(userId);
         Page<User> page = new Page<>(query.getPage(), query.getSize());
@@ -351,6 +366,49 @@ public class UserController {
         }
     }
 
+    /**
+     * 用户提交提现申请
+     */
+    @SaCheckLogin
+    @PostMapping("/withdraw/apply")
+    public String applyWithdraw(@RequestBody WithdrawApplyDTO dto) {
+        if (!ISOPEN){
+            return ApiResponse.success("暂未开放！");
+        }
+        try {
+            Long userId = getFormalUserId();
+            withdrawServe.applyWithdraw(userId, dto.getAmount());
+            return ApiResponse.success("提现申请提交成功，请等待管理员审核");
+        } catch (BusinessException e) {
+            return ApiResponse.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("提现申请异常", e);
+            return ApiResponse.error("系统繁忙，请稍后再试");
+        }
+    }
+
+    /**
+     * 用户多条件分页查询自己的提现记录
+     */
+    @SaCheckLogin
+    @PostMapping("/withdraw/list")
+    public String myWithdrawList(@RequestBody(required = false) UserWithdrawQueryDTO queryDTO) {
+        if (!ISOPEN){
+            return ApiResponse.success("暂未开放！");
+        }
+        try {
+            Long userId = getFormalUserId();
+            IPage<WithdrawRecord> result = withdrawServe.getUserWithdrawPage(userId, queryDTO);
+            log.info("用户查询提现列表：{}", result);
+            return ApiResponse.success("查询成功", result);
+        } catch (java.time.format.DateTimeParseException e) {
+            return ApiResponse.error("日期格式错误，请使用 yyyy-MM-dd 格式");
+        } catch (Exception e) {
+            log.error("查询提现记录异常", e);
+            return ApiResponse.error("查询失败: " + e.getMessage());
+        }
+    }
+
 
     /**
      * 获取当前登录的正式用户ID
@@ -405,10 +463,5 @@ public class UserController {
             log.error("购买 NFT 接口异常", e);
             return ApiResponse.error("购买服务暂时不可用");
         }
-    }
-
-
-    public UserBillRetryServeImpl getBillRetryServe() {
-        return billRetryServe;
     }
 }
