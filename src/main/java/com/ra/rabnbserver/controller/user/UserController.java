@@ -115,7 +115,7 @@ public class UserController {
         }
         User user = userService.getByWalletAddress(walletAddress);
         if (user == null) {
-            return ApiResponse.error("用户不存在");
+            return ApiResponse.error(1000,"用户不存在");
         }
         upgradeToUserSession(user.getId().toString());
         return ApiResponse.success("登录成功", user);
@@ -134,12 +134,12 @@ public class UserController {
             return ApiResponse.error("钱包地址不能为空");
         }
         if (StrUtil.isBlank(registerDataDTO.getCode())) {
-            log.info("传入邀请码为空，自动填入默认邀请码");
-            registerDataDTO.setCode(DFCODE);
+            log.info("邀请码为空");
+            return ApiResponse.error("邀请码为空");
         }
         User existingUser = userService.getByWalletAddress(walletAddress);
         if (existingUser != null) {
-            return ApiResponse.error("该地址已注册");
+            return ApiResponse.error(1001,"该地址已注册");
         }
         User newUser = userService.register(registerDataDTO);
         upgradeToUserSession(newUser.getId().toString());
@@ -228,9 +228,9 @@ public class UserController {
     @SaCheckLogin
     @PostMapping("/team/list")
     public String getTeamList(@RequestBody TeamQueryDTO query) {
-        if (!ISOPEN){
-            return ApiResponse.error("暂未开放！");
-        }
+//        if (!ISOPEN){
+//            return ApiResponse.error("暂未开放！");
+//        }
         Long userId = getFormalUserId();
         User currentUser = userService.getById(userId);
         Page<User> page = new Page<>(query.getPage(), query.getSize());

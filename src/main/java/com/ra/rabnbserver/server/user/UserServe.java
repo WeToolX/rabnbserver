@@ -40,4 +40,7 @@ public interface UserServe extends IService<User> {
     boolean deleteUserWithCascade(Long id);
 
     IPage<User> selectUserPage(UserQueryDTO queryDTO);
+
+    @Transactional(rollbackFor = Exception.class)
+    int syncInviteCodeWithWalletAddress();
 }

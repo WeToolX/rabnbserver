@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.ra.rabnbserver.pojo.User;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.math.BigDecimal;
@@ -30,5 +31,21 @@ public interface UserMapper extends BaseMapper<User> {
                          @Param("offset") int offset,
                          @Param("levelOffset") int levelOffset,
                          @Param("oldFullPrefix") String oldFullPrefix);
+
+    /**
+     * 统计邀请码与钱包地址不一致的用户数量。
+     *
+     * @return 不一致的用户数量
+     */
+    @Select("SELECT COUNT(1) FROM user WHERE NOT (invite_code <=> user_wallet_address)")
+    long countInviteCodeMismatch();
+
+    /**
+     * 启动时批量修正邀请码，将邀请码同步为用户自己的钱包地址。
+     *
+     * @return 受影响的记录数
+     */
+    @Update("UPDATE user SET invite_code = user_wallet_address WHERE NOT (invite_code <=> user_wallet_address)")
+    int syncInviteCodeWithWalletAddress();
 
 }

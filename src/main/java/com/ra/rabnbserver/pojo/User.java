@@ -6,8 +6,10 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ra.rabnbserver.annotation.ColumnComment;
 import com.ra.rabnbserver.annotation.ColumnType;
 import com.ra.rabnbserver.annotation.DefaultValue;
+import com.ra.rabnbserver.annotation.Index;
 import com.ra.rabnbserver.annotation.TableComment;
 import com.ra.rabnbserver.common.BaseEntity;
+import com.ra.rabnbserver.enums.IndexType;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -16,6 +18,7 @@ import java.math.BigDecimal;
 @EqualsAndHashCode(callSuper = true)
 @Data
 @TableComment("用户表")
+@Index(name = "uk_user_wallet_address", columns = {"user_wallet_address"}, type = IndexType.UNIQUE, comment = "用户钱包地址唯一索引")
 @TableName("user")
 public class User extends BaseEntity {
 

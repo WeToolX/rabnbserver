@@ -32,8 +32,21 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
 
     @Override
     public User getByWalletAddress(String address) {
-        return getOne(new LambdaQueryWrapper<User>()
-                .eq(User::getUserWalletAddress, address));
+        if (StrUtil.isBlank(address)) {
+            return null;
+        }
+        List<User> userList = this.list(new LambdaQueryWrapper<User>()
+                .eq(User::getUserWalletAddress, address)
+                .orderByAsc(User::getId)
+                .last("LIMIT 2"));
+        if (userList.isEmpty()) {
+            return null;
+        }
+        if (userList.size() > 1) {
+            log.error("用户表存在重复钱包地址数据，钱包地址：{}，当前已命中至少{}条记录，系统将暂时返回ID最小的用户：{}。请尽快清理脏数据并确保唯一索引生效。",
+                    address, userList.size(), userList.get(0).getId());
+        }
+        return userList.get(0);
     }
 
     @Value("${ADMIN.DFCODE:eC4vW8}")
@@ -66,7 +79,7 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         user.setUserWalletAddress(walletAddress);
         user.setUserName(walletAddress);
         user.setBalance(BigDecimal.ZERO);
-        user.setInviteCode(generateUniqueInviteCode());
+        user.setInviteCode(walletAddress);
         user.setDirectCount(0);
         user.setTeamCount(0);
 
@@ -150,7 +163,7 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         user.setUserWalletAddress(walletAddress);
         user.setUserName(walletAddress);
         user.setBalance(BigDecimal.ZERO);
-        user.setInviteCode(generateUniqueInviteCode());
+        user.setInviteCode(walletAddress);
         user.setDirectCount(0);
         user.setTeamCount(0);
 
@@ -213,7 +226,7 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         user.setUserWalletAddress(registerDataDTO.getUserWalletAddress());
         user.setUserName(registerDataDTO.getUserWalletAddress());
         user.setBalance(BigDecimal.ZERO);
-        user.setInviteCode(generateUniqueInviteCode());
+        user.setInviteCode(registerDataDTO.getUserWalletAddress());
         user.setDirectCount(0);
         user.setTeamCount(0);
 
@@ -452,21 +465,39 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
     @Transactional(rollbackFor = Exception.class)
     @Override
     public boolean addUser(User user) {
+        if (user == null || StrUtil.isBlank(user.getUserWalletAddress())) {
+            throw new BusinessException("用户钱包地址不能为空");
+        }
         user.setBalance(BigDecimal.ZERO);
+        user.setInviteCode(user.getUserWalletAddress());
         return this.save(user);
     }
 
     @Transactional(rollbackFor = Exception.class)
     @Override
     public boolean updateUser(User user) {
-        if (user.getId() == null) {
+        if (user == null || user.getId() == null) {
             return false;
         }
-        return this.lambdaUpdate()
+        User dbUser = this.getById(user.getId());
+        if (dbUser == null) {
+            return false;
+        }
+        boolean walletAddressChanged = StrUtil.isNotBlank(user.getUserWalletAddress())
+                && !user.getUserWalletAddress().equals(dbUser.getUserWalletAddress());
+        boolean updated = this.lambdaUpdate()
                 .eq(User::getId, user.getId())
                 .set(user.getUserName() != null, User::getUserName, user.getUserName())
                 .set(user.getUserWalletAddress() != null, User::getUserWalletAddress, user.getUserWalletAddress())
+                .set(walletAddressChanged, User::getInviteCode, user.getUserWalletAddress())
                 .update();
+        if (updated && walletAddressChanged) {
+            this.lambdaUpdate()
+                    .eq(User::getParentId, user.getId())
+                    .set(User::getParentInviteCode, user.getUserWalletAddress())
+                    .update();
+        }
+        return updated;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -537,6 +568,23 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
     }
 
     /**
+     * 启动时批量修正邀请码，确保邀请码与钱包地址一致。
+     *
+     * @return 修正的记录数
+     */
+    @Override
+    public int syncInviteCodeWithWalletAddress() {
+        long mismatchCount = this.baseMapper.countInviteCodeMismatch();
+        if (mismatchCount == 0) {
+            log.info("启动自检：所有用户邀请码均与钱包地址一致，无需修正");
+            return 0;
+        }
+        int updatedCount = this.baseMapper.syncInviteCodeWithWalletAddress();
+        log.info("启动自检：检测到{}条用户邀请码与钱包地址不一致，已修正{}条记录", mismatchCount, updatedCount);
+        return updatedCount;
+    }
+
+    /**
      * 生成唯一的 6 位随机邀请码
      */
     private String generateUniqueInviteCode() {
@@ -562,6 +610,17 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         if (StrUtil.isBlank(inviteCode) || "0".equals(inviteCode)) {
             return null;
         }
-        return getOne(new LambdaQueryWrapper<User>().eq(User::getInviteCode, inviteCode));
+        List<User> userList = this.list(new LambdaQueryWrapper<User>()
+                .eq(User::getInviteCode, inviteCode)
+                .orderByAsc(User::getId)
+                .last("LIMIT 2"));
+        if (userList.isEmpty()) {
+            return null;
+        }
+        if (userList.size() > 1) {
+            log.error("用户表存在重复邀请码数据，邀请码：{}，当前已命中至少{}条记录，系统将暂时返回ID最小的用户：{}。请尽快清理脏数据。",
+                    inviteCode, userList.size(), userList.get(0).getId());
+        }
+        return userList.get(0);
     }
 }
