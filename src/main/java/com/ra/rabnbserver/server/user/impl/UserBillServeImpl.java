@@ -151,7 +151,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         try {
             log.info("发起NFT链上分发，用户：{}，数量：{}", user.getUserWalletAddress(), quantity);
             //todo 链上调用购买卡牌的
-            receipt = cardNftContractV1.distribute(user.getUserWalletAddress(), BigInteger.valueOf(quantity));
+            receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(cardId), BigInteger.valueOf(quantity));
         } catch (Exception e) {
             log.error("NFT分发执行异常", e);
             nftError = e.getMessage();
@@ -219,7 +219,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             log.info("管理员发起NFT链上分发，用户：{}，数量：{}", user.getUserWalletAddress(), amount);
             // 调用合约分发
             //todo 管理员调用链上卡牌的
-            receipt = cardNftContractV1.distribute(user.getUserWalletAddress(), BigInteger.valueOf(amount));
+            receipt = cardNftContract.distribute(user.getUserWalletAddress(), BigInteger.valueOf(cardId), BigInteger.valueOf(amount));
         } catch (Exception e) {
             log.error("管理员分发链上执行异常", e);
             adminErr = e.getMessage();

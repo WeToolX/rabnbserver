@@ -185,16 +185,16 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         for (UserMiner miner : createdMiners) {
             try {
                 //todo 销毁卡牌
-//                TransactionReceipt receipt = cardNftContract.burnWithOrder(
-//                        walletAddress,
-//                        BigInteger.valueOf(cardId),
-//                        BigInteger.ONE,
-//                        miner.getNftBurnOrderId()
-//                );
-                TransactionReceipt receipt = cardNftContractV1.burnUser(
+                TransactionReceipt receipt = cardNftContract.burnWithOrder(
                         walletAddress,
-                        BigInteger.ONE
+                        BigInteger.valueOf(cardId),
+                        BigInteger.ONE,
+                        miner.getNftBurnOrderId()
                 );
+//                TransactionReceipt receipt = cardNftContractV1.burnUser(
+//                        walletAddress,
+//                        BigInteger.ONE
+//                );
                 // 合约调用未抛异常且 receipt 不为空，视为成功
                 if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
                     boolean success = this.lambdaUpdate()
@@ -730,9 +730,11 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 vo
         );
         //todo 碎片兑换卡牌 NFT
-        TransactionReceipt receipt = cardNftContractV1.distribute(
+        TransactionReceipt receipt = cardNftContract.distribute(
                 user.getUserWalletAddress(),
+                BigInteger.valueOf(dto.getCardId()),
                 BigInteger.valueOf(dto.getQuantity())
+
         );
         if (receipt == null || !"0x1".equalsIgnoreCase(receipt.getStatus())) {
             throw new BusinessException("链上发放卡牌失败，请稍后重试");

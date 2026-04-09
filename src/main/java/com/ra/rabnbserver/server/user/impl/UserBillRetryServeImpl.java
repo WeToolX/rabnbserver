@@ -96,9 +96,9 @@ public class UserBillRetryServeImpl extends AbstractAbnormalRetryService {
                     return false;
                 }
                 //todo 重试方法分发卡牌
-                TransactionReceipt receipt = cardNftContractV1.distribute(
+                TransactionReceipt receipt = cardNftContract.distribute(
                         bill.getUserWalletAddress(),
-//                        BigInteger.valueOf(bill.getCardId()),
+                        BigInteger.valueOf(bill.getCardId()),
                         BigInteger.valueOf(bill.getNum())
                 );
                 if (receipt != null && "0x1".equals(receipt.getStatus())) {

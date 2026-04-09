@@ -83,16 +83,16 @@ public class MinerPurchaseRetryServeImpl extends AbstractAbnormalRetryService {
                 return false;
             }
             //todo 重试方法销毁卡牌
-//            TransactionReceipt receipt = cardNftContract.burnWithOrder(
-//                    miner.getWalletAddress(),
-//                    BigInteger.valueOf(miner.getNftCardId()),
-//                    BigInteger.ONE,
-//                    miner.getNftBurnOrderId()
-//            );
-            TransactionReceipt receipt = cardNftContractV1.burnUser(
+            TransactionReceipt receipt = cardNftContract.burnWithOrder(
                     miner.getWalletAddress(),
-                    BigInteger.ONE
+                    BigInteger.valueOf(miner.getNftCardId()),
+                    BigInteger.ONE,
+                    miner.getNftBurnOrderId()
             );
+//            TransactionReceipt receipt = cardNftContractV1.burnUser(
+//                    miner.getWalletAddress(),
+//                    BigInteger.ONE
+//            );
             // ContractBase 及其子类在 status=0x0 时会抛出 ContractCallException
             // 此处逻辑只需判断 receipt 是否成功到达
             if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {

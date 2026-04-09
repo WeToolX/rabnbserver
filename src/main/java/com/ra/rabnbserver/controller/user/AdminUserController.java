@@ -193,7 +193,7 @@ public class AdminUserController {
         if (cardId == null) return ApiResponse.error("卡牌ID不能为空");
 
         //todo 查询链上卡牌余额
-        BigInteger balance = cardNftContractV1.balanceOf(user.getUserWalletAddress());
+        BigInteger balance = cardNftContract.balanceOf(user.getUserWalletAddress(), BigInteger.valueOf(cardId));
         return ApiResponse.success(balance);
     }
 
