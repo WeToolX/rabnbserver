@@ -4,6 +4,7 @@ import lombok.Data;
 
 @Data
 public class EtfCardQueryDTO {
+    private Integer cardId;
     private String batchName;
     private String batchNo;
     private Integer status;

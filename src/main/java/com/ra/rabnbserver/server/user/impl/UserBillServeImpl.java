@@ -116,7 +116,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (cardId == null) {
             throw new BusinessException("卡牌ID不能为空");
         }
-        ETFCard currentBatch = etfCardServe.getActiveAndEnabledBatch();
+        ETFCard currentBatch = etfCardServe.getActiveAndEnabledBatch(cardId);
         if (currentBatch == null) {
             throw new BusinessException("当前无可用卡牌批次");
         }
@@ -184,7 +184,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             throw new BusinessException("卡牌ID不能为空");
         }
         // 获取当前可用批次并校验本地库存
-        ETFCard currentBatch = etfCardServe.getActiveAndEnabledBatch();
+        ETFCard currentBatch = etfCardServe.getActiveAndEnabledBatch(cardId);
         if (currentBatch == null) {
             throw new BusinessException("当前无可用卡牌批次，无法分发");
         }

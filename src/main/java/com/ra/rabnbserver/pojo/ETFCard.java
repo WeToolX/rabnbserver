@@ -21,6 +21,13 @@ import java.math.BigDecimal;
 @TableName("etf_card")
 public class ETFCard extends BaseEntity {
 
+    /**
+     * 卡牌ID（1-铜/2-银/3-金
+     */
+    @ColumnComment("卡牌ID（1-铜/2-银/3-金")
+    @TableField("card_id")
+    @ColumnType("INT(11)")
+    private Integer cardId;
 
     /**
      * 批次名称

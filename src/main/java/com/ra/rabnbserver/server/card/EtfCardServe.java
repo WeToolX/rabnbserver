@@ -6,6 +6,9 @@ import com.ra.rabnbserver.dto.EtfCardQueryDTO;
 import com.ra.rabnbserver.pojo.ETFCard;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.Map;
+
 public interface EtfCardServe extends IService<ETFCard> {
     IPage<ETFCard> getBatchPage(EtfCardQueryDTO query);
 
@@ -21,5 +24,7 @@ public interface EtfCardServe extends IService<ETFCard> {
     @Transactional(rollbackFor = Exception.class)
     void activeBatch(Long id);
 
-    ETFCard getActiveAndEnabledBatch();
+    ETFCard getActiveAndEnabledBatch(Integer cardId);
+
+    Map<Integer, ETFCard> getActiveAndEnabledBatchMap(List<Integer> cardIds);
 }
