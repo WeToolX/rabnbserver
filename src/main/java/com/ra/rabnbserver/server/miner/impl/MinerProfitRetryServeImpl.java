@@ -155,7 +155,7 @@ public class MinerProfitRetryServeImpl extends AbstractAbnormalRetryService {
 
             TransactionReceipt receipt = aionContract.allocateEmissionToLocks(
                     record.getWalletAddress(),
-                    record.getAmount().toBigInteger(),
+                    MinerProfitAmountConverter.toChainAmount(record.getAmount()),
                     record.getLockType(),
                     record.getDistType(),
                     BigInteger.valueOf(orderIdToUse)

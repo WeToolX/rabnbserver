@@ -281,7 +281,6 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiryLimit = now.minusDays(30);
         LocalDateTime todayStart = now.withHour(0).withMinute(0).withSecond(0).withNano(0);
-        BigInteger unitDivisor = BigInteger.valueOf(10).pow(15);
         int totalHandledMiners = 0;
 
         while (true) {
@@ -347,8 +346,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                                 }
                                 profitRecordService.updateBatchById(groupRecords);
                                 allRecordsInBatch.addAll(groupRecords);
-                                BigInteger groupTotalWei = toWei(typeAmount).multiply(BigInteger.valueOf(minersOfThisType.size()));
-                                slotAmounts[typeIdx] = groupTotalWei.divide(unitDivisor);
+                                slotAmounts[typeIdx] = MinerProfitAmountConverter.toChainAmount(typeAmount, minersOfThisType.size());
                             }
                         }
                         tos.add(wallet);
@@ -734,16 +732,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
      * 获取系统设置
      */
     private BigDecimal normalizeMinerDailyProfit(BigDecimal amount) {
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) < 0) {
-            return BigDecimal.ZERO.setScale(6, RoundingMode.DOWN);
-        }
-        return amount.setScale(6, RoundingMode.DOWN);
-    }
-
-    private BigInteger toWei(BigDecimal amount) {
-        return normalizeMinerDailyProfit(amount)
-                .movePointRight(18)
-                .toBigInteger();
+        return MinerProfitAmountConverter.normalizeProfitAmount(amount);
     }
 
     private MinerSettings getSettings() {
