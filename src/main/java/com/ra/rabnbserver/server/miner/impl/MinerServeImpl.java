@@ -224,7 +224,12 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             throw new BusinessException("没有符合条件的矿机，请先确认卡牌销毁已完成");
         }
         BigDecimal totalFee = unitFee.multiply(new BigDecimal(targets.size()));
-        if (userMapper.updateBalanceAtomic(userId, totalFee.negate()) == 0) {
+        User currentUser = userMapper.selectById(userId);
+        if (currentUser == null) {
+            throw new BusinessException(0, "用户不存在");
+        }
+        BigDecimal currentBalance = currentUser.getBalance() == null ? BigDecimal.ZERO : currentUser.getBalance();
+        if (currentBalance.compareTo(totalFee) < 0) {
             throw new BusinessException("余额不足，需支付: " + totalFee);
         }
         userBillServe.createBillAndUpdateBalance(
