@@ -12,8 +12,10 @@ public class MinerSettings {
     private String profitTime = "23:59:00"; // daily profit settlement time
     private String electricityRewardTime = "23:50:00"; // daily electricity reward time
     private BigDecimal electricFee = new BigDecimal("10.00"); // electricity fee
+    private BigDecimal accelerationFee = new BigDecimal("50.00"); // acceleration pack fee
     private Map<Integer, BigDecimal> distributionRatios = new HashMap<>(); // distribution ratios
     private List<RewardTier> tiers; // reward tiers
+    private Map<String, BigDecimal> minerDailyProfits = defaultMinerDailyProfits(); // daily profit per miner type
     private Map<Integer, BigDecimal> fragmentToCardRates = new HashMap<>(); // fragment cost per cardId
     private BigDecimal fragmentToCardRate = new BigDecimal("100"); // legacy fallback rate
 
@@ -25,6 +27,23 @@ public class MinerSettings {
             }
         }
         return fragmentToCardRate;
+    }
+
+    public BigDecimal getMinerDailyProfitByType(String minerType) {
+        if (minerDailyProfits == null) {
+            minerDailyProfits = defaultMinerDailyProfits();
+        }
+        BigDecimal amount = minerDailyProfits.get(minerType);
+        return amount != null ? amount : BigDecimal.ZERO;
+    }
+
+    private static Map<String, BigDecimal> defaultMinerDailyProfits() {
+        Map<String, BigDecimal> profits = new HashMap<>();
+        profits.put("0", BigDecimal.ZERO);
+        profits.put("1", BigDecimal.ZERO);
+        profits.put("2", BigDecimal.ZERO);
+        profits.put("3", BigDecimal.ZERO);
+        return profits;
     }
 
     @Data

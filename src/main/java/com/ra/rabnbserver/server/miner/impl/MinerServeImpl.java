@@ -33,8 +33,6 @@ import com.ra.rabnbserver.server.user.UserBillServe;
 import com.ra.rabnbserver.server.user.UserServe;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
@@ -44,7 +42,6 @@ import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -61,11 +58,6 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     private final MinerPurchaseRetryServeImpl purchaseRetryServe;
     private final CardNftContract cardNftContract;
     private final CardNftContractV1 cardNftContractV1;
-
-    @Autowired
-    private StringRedisTemplate redisTemplate;
-
-    private static final String MINER_TOTAL_COUNT_KEY = "miner:profit:total_burn_count";
 
     @Override
     public IPage<UserMiner> getUserMinerPage(Long userId, MinerQueryDTO query) {
@@ -280,31 +272,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     @Override
     public void processDailyProfit() throws Exception {
         log.info(">>> 开始执行每日收益分发任务...");
-        aionContract.settleToCurrentYear();
-        BigInteger todayMintableWei = aionContract.getTodayMintable();
-        if (todayMintableWei.compareTo(BigInteger.ZERO) <= 0) {
-            log.warn("今日链上无产出收益，任务终止。");
-            return;
-        }
-        long allMinersCount;
-        String cachedCount = redisTemplate.opsForValue().get(MINER_TOTAL_COUNT_KEY);
-        if (cachedCount != null) {
-            allMinersCount = Long.parseLong(cachedCount);
-            log.info("从 Redis 获取矿机基数: {}", allMinersCount);
-        } else {
-            allMinersCount = this.count(new LambdaQueryWrapper<UserMiner>().eq(UserMiner::getNftBurnStatus, 1));
-            if (allMinersCount <= 0) {
-                log.warn("全网无已销毁卡牌的活跃矿机，任务终止。");
-                return;
-            }
-            redisTemplate.opsForValue().set(MINER_TOTAL_COUNT_KEY, String.valueOf(allMinersCount), 23, TimeUnit.HOURS);
-            log.info("计算全网矿机基数并存入 Redis: {}", allMinersCount);
-        }
-        BigInteger perMinerAmountWei = todayMintableWei.divide(BigInteger.valueOf(allMinersCount));
-
-        BigDecimal amount = new BigDecimal(perMinerAmountWei)
-                .movePointLeft(18)               // 18位转换 (Wei -> Unit)
-                .setScale(6, RoundingMode.DOWN); // 省略/截断 6 位以后的数值
+        MinerSettings settings = getSettings();
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiryLimit = now.minusDays(30);
         LocalDateTime todayStart = now.withHour(0).withMinute(0).withSecond(0).withNano(0);
@@ -351,11 +319,12 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                             String mType = String.valueOf(typeIdx);
                             if (byType.containsKey(mType)) {
                                 List<UserMiner> minersOfThisType = byType.get(mType);
+                                BigDecimal typeAmount = normalizeMinerDailyProfit(settings.getMinerDailyProfitByType(mType));
                                 List<MinerProfitRecord> groupRecords = minersOfThisType.stream().map(m -> {
                                     MinerProfitRecord r = new MinerProfitRecord();
                                     r.setUserId(m.getUserId());
                                     r.setWalletAddress(m.getWalletAddress());
-                                    r.setAmount(amount);
+                                    r.setAmount(typeAmount);
                                     r.setMinerType(m.getMinerType());
                                     r.setMinerId(String.valueOf(m.getId()));
                                     r.setLockType("3".equals(m.getMinerType()) ? 0 : Integer.parseInt(m.getMinerType()) + 1);
@@ -373,7 +342,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                                 }
                                 profitRecordService.updateBatchById(groupRecords);
                                 allRecordsInBatch.addAll(groupRecords);
-                                BigInteger groupTotalWei = perMinerAmountWei.multiply(BigInteger.valueOf(minersOfThisType.size()));
+                                BigInteger groupTotalWei = toWei(typeAmount).multiply(BigInteger.valueOf(minersOfThisType.size()));
                                 slotAmounts[typeIdx] = groupTotalWei.divide(unitDivisor);
                             }
                         }
@@ -759,6 +728,19 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     /**
      * 获取系统设置
      */
+    private BigDecimal normalizeMinerDailyProfit(BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) < 0) {
+            return BigDecimal.ZERO.setScale(6, RoundingMode.DOWN);
+        }
+        return amount.setScale(6, RoundingMode.DOWN);
+    }
+
+    private BigInteger toWei(BigDecimal amount) {
+        return normalizeMinerDailyProfit(amount)
+                .movePointRight(18)
+                .toBigInteger();
+    }
+
     private MinerSettings getSettings() {
         SystemConfig config = configMapper.selectOne(new LambdaQueryWrapper<SystemConfig>()
                 .eq(SystemConfig::getConfigKey, "MINER_SYSTEM_SETTINGS"));

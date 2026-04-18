@@ -14,4 +14,9 @@ public class WithdrawSettingsVO {
      * 手续费率（小数，例如 0.05 代表 5%）
      */
     private BigDecimal feeRate;
+
+    /**
+     * 一个币对应多少U
+     */
+    private BigDecimal uPerCoin;
 }

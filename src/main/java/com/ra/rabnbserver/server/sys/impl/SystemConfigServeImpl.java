@@ -63,6 +63,13 @@ public class SystemConfigServeImpl extends ServiceImpl<SystemConfigMapper, Syste
                 // 1. 矿机系统设置
                 MinerSettings minerSettings = new MinerSettings();
                 minerSettings.setElectricFee(new BigDecimal("10.00"));
+                minerSettings.setAccelerationFee(new BigDecimal("50.00"));
+                Map<String, BigDecimal> minerDailyProfits = new HashMap<>();
+                minerDailyProfits.put("0", BigDecimal.ZERO);
+                minerDailyProfits.put("1", BigDecimal.ZERO);
+                minerDailyProfits.put("2", BigDecimal.ZERO);
+                minerDailyProfits.put("3", BigDecimal.ZERO);
+                minerSettings.setMinerDailyProfits(minerDailyProfits);
                 // 设置默认分销比例：1级10%，2级5%，3级2%
                 Map<Integer, BigDecimal> ratios = new HashMap<>();
                 ratios.put(1, new BigDecimal("0.10"));
@@ -90,7 +97,7 @@ public class SystemConfigServeImpl extends ServiceImpl<SystemConfigMapper, Syste
                 SystemConfig withdrawConfig = new SystemConfig();
                 withdrawConfig.setConfigKey("WITHDRAW_SETTINGS");
                 withdrawConfig.setConfigName("提现参数设置");
-                withdrawConfig.setConfigValue("{\"minAmount\":10, \"feeRate\":0.05}");
+                withdrawConfig.setConfigValue("{\"minAmount\":10, \"feeRate\":0.05, \"uPerCoin\":1}");
                 withdrawConfig.setRemark("最小提现金额及手续费率");
                 defaultConfigs.add(withdrawConfig);
 
