@@ -9,19 +9,30 @@ import java.util.Map;
 
 @Data
 public class MinerSettings {
-    private String profitTime = "23:59:00"; // 每日收益执行时间
-    private String electricityRewardTime =  "23:50:00"; //每日电费分成时间
-    private BigDecimal electricFee = new BigDecimal("10.00"); // 电费
-    private BigDecimal accelerationFee = new BigDecimal("50.00"); // 加速包价格
-    private Map<Integer, BigDecimal> distributionRatios = new HashMap<>(); // 分销比例
-    private List<RewardTier> tiers; // 阶梯比例
-    private BigDecimal fragmentToCardRate = new BigDecimal("100"); //多少张碎片兑换一张卡牌
+    private String profitTime = "23:59:00"; // daily profit settlement time
+    private String electricityRewardTime = "23:50:00"; // daily electricity reward time
+    private BigDecimal electricFee = new BigDecimal("10.00"); // electricity fee
+    private BigDecimal accelerationFee = new BigDecimal("50.00"); // acceleration pack fee
+    private Map<Integer, BigDecimal> distributionRatios = new HashMap<>(); // distribution ratios
+    private List<RewardTier> tiers; // reward tiers
+    private Map<Integer, BigDecimal> fragmentToCardRates = new HashMap<>(); // fragment cost per cardId
+    private BigDecimal fragmentToCardRate = new BigDecimal("100"); // legacy fallback rate
+
+    public BigDecimal getFragmentToCardRateByCardId(Integer cardId) {
+        if (cardId != null && fragmentToCardRates != null) {
+            BigDecimal rate = fragmentToCardRates.get(cardId);
+            if (rate != null) {
+                return rate;
+            }
+        }
+        return fragmentToCardRate;
+    }
 
     @Data
     public static class RewardTier {
-        /** 组织矿机总数(直属下级)达到该值 */
+        /** minimum direct miner count */
         private Integer minCount;
-        /** 对应的比例，如 0.15 代表 15% */
+        /** ratio such as 0.15 for 15% */
         private BigDecimal ratio;
     }
 }

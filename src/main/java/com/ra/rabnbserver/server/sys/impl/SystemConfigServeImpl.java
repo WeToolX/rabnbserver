@@ -73,6 +73,12 @@ public class SystemConfigServeImpl extends ServiceImpl<SystemConfigMapper, Syste
                 ratios.put(5, new BigDecimal("0.009"));
                 ratios.put(6, new BigDecimal("0.008"));
                 minerSettings.setDistributionRatios(ratios);
+                Map<Integer, BigDecimal> fragmentRates = new HashMap<>();
+                fragmentRates.put(1, new BigDecimal("100"));
+                fragmentRates.put(2, new BigDecimal("150"));
+                fragmentRates.put(3, new BigDecimal("200"));
+                minerSettings.setFragmentToCardRates(fragmentRates);
+                minerSettings.setFragmentToCardRate(new BigDecimal("100"));
 
                 SystemConfig minerConfig = new SystemConfig();
                 minerConfig.setConfigKey("MINER_SYSTEM_SETTINGS");

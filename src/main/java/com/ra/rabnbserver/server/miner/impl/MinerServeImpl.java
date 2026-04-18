@@ -706,7 +706,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             throw new BusinessException("卡牌ID不能为空");
         }
         MinerSettings settings = getSettings();
-        BigDecimal rate = settings.getFragmentToCardRate();
+        BigDecimal rate = settings.getFragmentToCardRateByCardId(dto.getCardId());
         if (rate == null || rate.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException("碎片换卡比例未配置，请联系系统管理员");
         }
