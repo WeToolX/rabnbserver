@@ -477,7 +477,14 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         vo.setAdminAddress(paymentUsdtContract.adminAddress());
         vo.setExecutorAddress(paymentUsdtContract.executorAddress());
         vo.setTreasuryAddress(paymentUsdtContract.treasuryAddress());
-        vo.setMinAmount(new BigDecimal(paymentUsdtContract.minAmount()).divide(new BigDecimal("1000000000000000000"), 6, RoundingMode.HALF_UP));
+        var rawMinAmount = paymentUsdtContract.minAmount();
+        if (rawMinAmount != null) {
+            BigDecimal divisor = new BigDecimal("1000000000000000000");
+            vo.setMinAmount(new BigDecimal(rawMinAmount).divide(divisor, 6, RoundingMode.HALF_UP));
+        } else {
+            log.error("合约 minAmount() 返回为空，请检查合约状态或网络连接。Contract: {}", paymentUsdtContract.getAddress());
+            vo.setMinAmount(BigDecimal.ZERO);
+        }
         return vo;
     }
 
