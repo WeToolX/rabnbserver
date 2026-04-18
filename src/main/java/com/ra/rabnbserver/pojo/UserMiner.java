@@ -9,6 +9,7 @@ import com.ra.rabnbserver.annotation.DefaultValue;
 import com.ra.rabnbserver.exception.Abnormal.model.AbnormalBaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+
 import java.time.LocalDateTime;
 
 @EqualsAndHashCode(callSuper = true)
@@ -48,7 +49,7 @@ public class UserMiner extends AbnormalBaseEntity {
      * 对应重试框架检测的目标状态
      */
     @TableField("nft_burn_status")
-    @ColumnComment("卡牌NFT销毁状态 0:未销毁, 1:已销毁")
+    @ColumnComment("卡牌NFT销毁状态 0:未销毁 1:已销毁")
     @DefaultValue("0")
     private Integer nftBurnStatus;
 
@@ -74,7 +75,7 @@ public class UserMiner extends AbnormalBaseEntity {
      * 是否已交电费 (0: 否, 1: 是)
      */
     @TableField("is_electricity_paid")
-    @ColumnComment("是否已交电费 0:否, 1:是")
+    @ColumnComment("是否已交电费 0:否 1:是")
     @DefaultValue("0")
     private Integer isElectricityPaid;
 
@@ -87,15 +88,15 @@ public class UserMiner extends AbnormalBaseEntity {
     private LocalDateTime paymentDate;
 
     /**
-     * 矿机生命周期状态 (0: 待激活/初始化, 1: 运行中, 2: 已过期/停止)
+     * 矿机生命周期状态 (0:待激活 1:运行中 2:已过期)
      */
     @TableField("status")
-    @ColumnComment("矿机状态 0:待激活, 1:运行中, 2:已过期")
+    @ColumnComment("矿机状态 0:待激活 1:运行中 2:已过期")
     @DefaultValue("0")
     private Integer status;
 
     /**
-     * 收益起算日期 (15或3天天等待期结束时间)
+     * 已停用：原用于等待期/收益起算控制，当前版本不再使用该字段。
      */
     @TableField("eligible_date")
     @ColumnComment("收益起算日期")
@@ -103,16 +104,13 @@ public class UserMiner extends AbnormalBaseEntity {
     private LocalDateTime eligibleDate;
 
     /**
-     * 是否已购买加速包 (0: 否, 1: 是)
+     * 已停用：加速包功能已删除，该字段仅为兼容现有表结构保留。
      */
     @TableField("is_accelerated")
-    @ColumnComment("是否已购买加速包 0:否, 1:是")
+    @ColumnComment("是否已购买加速包 0:否 1:是")
     @DefaultValue("0")
     private Integer isAccelerated;
 
-    /**
-     * 上次收益产生时间
-     */
     @TableField("last_reward_time")
     @ColumnComment("上次收益产生时间")
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

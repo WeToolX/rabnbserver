@@ -3,15 +3,12 @@ package com.ra.rabnbserver.server.miner;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.ra.rabnbserver.VO.GetAdminClaimVO;
-import com.ra.rabnbserver.dto.MinerAccelerationDTO;
 import com.ra.rabnbserver.dto.MinerElectricityDTO;
 import com.ra.rabnbserver.dto.MinerQueryDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.AdminMinerActionDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.FragmentExchangeNftDTO;
 import com.ra.rabnbserver.pojo.UserMiner;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
 
 public interface MinerServe extends IService<UserMiner> {
 
@@ -22,9 +19,6 @@ public interface MinerServe extends IService<UserMiner> {
 
     @Transactional(rollbackFor = Exception.class)
     void payElectricity(Long userId, MinerElectricityDTO dto);
-
-    @Transactional(rollbackFor = Exception.class)
-    void buyAccelerationPack(Long userId, MinerAccelerationDTO dto);
 
     void processDailyProfit() throws Exception;
 

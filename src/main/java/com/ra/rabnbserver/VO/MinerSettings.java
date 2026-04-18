@@ -12,7 +12,6 @@ public class MinerSettings {
     private String profitTime = "23:59:00"; // daily profit settlement time
     private String electricityRewardTime = "23:50:00"; // daily electricity reward time
     private BigDecimal electricFee = new BigDecimal("10.00"); // electricity fee
-    private BigDecimal accelerationFee = new BigDecimal("50.00"); // acceleration pack fee
     private Map<Integer, BigDecimal> distributionRatios = new HashMap<>(); // distribution ratios
     private List<RewardTier> tiers; // reward tiers
     private Map<Integer, BigDecimal> fragmentToCardRates = new HashMap<>(); // fragment cost per cardId

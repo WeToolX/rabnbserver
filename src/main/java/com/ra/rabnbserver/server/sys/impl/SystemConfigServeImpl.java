@@ -63,7 +63,6 @@ public class SystemConfigServeImpl extends ServiceImpl<SystemConfigMapper, Syste
                 // 1. 矿机系统设置
                 MinerSettings minerSettings = new MinerSettings();
                 minerSettings.setElectricFee(new BigDecimal("10.00"));
-                minerSettings.setAccelerationFee(new BigDecimal("50.00"));
                 // 设置默认分销比例：1级10%，2级5%，3级2%
                 Map<Integer, BigDecimal> ratios = new HashMap<>();
                 ratios.put(1, new BigDecimal("0.10"));

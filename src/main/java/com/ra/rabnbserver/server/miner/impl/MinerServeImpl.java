@@ -15,7 +15,6 @@ import com.ra.rabnbserver.VO.MinerSettings;
 import com.ra.rabnbserver.contract.AionContract;
 import com.ra.rabnbserver.contract.CardNftContract;
 import com.ra.rabnbserver.contract.CardNftContractV1;
-import com.ra.rabnbserver.dto.MinerAccelerationDTO;
 import com.ra.rabnbserver.dto.MinerElectricityDTO;
 import com.ra.rabnbserver.dto.MinerQueryDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.AdminMinerActionDTO;
@@ -51,7 +50,6 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 @RequiredArgsConstructor
-
 public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> implements MinerServe {
     private final UserMapper userMapper;
     private final UserBillServe userBillServe;
@@ -73,23 +71,21 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     public IPage<UserMiner> getUserMinerPage(Long userId, MinerQueryDTO query) {
         Page<UserMiner> pageParam = new Page<>(query.getPage(), query.getSize());
         LambdaQueryWrapper<UserMiner> wrapper = new LambdaQueryWrapper<>();
-        if (userId != 0){
+        if (userId != 0) {
             wrapper.eq(UserMiner::getUserId, userId);
         }
         // 动态条件
         wrapper.eq(StrUtil.isNotBlank(query.getMinerType()), UserMiner::getMinerType, query.getMinerType());
         wrapper.eq(query.getStatus() != null, UserMiner::getStatus, query.getStatus());
         wrapper.eq(query.getIsElectricityPaid() != null, UserMiner::getIsElectricityPaid, query.getIsElectricityPaid());
-        wrapper.eq(query.getIsAccelerated() != null, UserMiner::getIsAccelerated, query.getIsAccelerated());
         if (query.getExpiryStatus() != null) {
             LocalDateTime now = LocalDateTime.now();
             LocalDateTime expiredLine = now.minusDays(30); // 30天前的时间点
             LocalDateTime warningLine = now.minusDays(25); // 25天前的时间点（即距离过期还有5天）
             switch (query.getExpiryStatus()) {
-                case 1: // 已到期：paymentDate < 30天前，或者从未缴费(status=0/paymentDate is null)
-                    wrapper.and(w -> w.lt(UserMiner::getPaymentDate, expiredLine)
-                            .or().isNull(UserMiner::getPaymentDate)
-                            .or().eq(UserMiner::getStatus, 0));
+                case 1: // 已到期：paymentDate < 30天前，或者从未缴费 status=0/paymentDate is null)
+                    wrapper.lt(UserMiner::getPaymentDate, expiredLine)
+                            .eq(UserMiner::getStatus, 1);
                     break;
                 case 2: // 未到期（正常）：paymentDate > 25天前
                     wrapper.gt(UserMiner::getPaymentDate, warningLine)
@@ -114,42 +110,22 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         return this.page(pageParam, wrapper);
     }
 
-    /**
-     * 购买矿机（销毁卡牌）
-     * @param userId 用户id
-     * @param minerType "0" ;//小形矿机，"1"  //中形矿机，"2" //大形矿机，"3"//特殊矿机
-     * @param quantity 购买数量
-     */
     @Transactional(rollbackFor = Exception.class)
     @Override
     public void buyMinerBatch(Long userId, String minerType, int quantity, Integer cardId) {
-        if (quantity <= 0) throw new BusinessException("数量不合法");
-        // 关键变更：新增卡牌ID参数，避免默认卡牌导致销毁错误
+        if (quantity <= 0) {
+            throw new BusinessException("数量不合法");
+        }
         if (cardId == null) {
             throw new BusinessException("卡牌ID不能为空");
         }
         User user = userMapper.selectById(userId);
-        if(user == null){
-            throw new BusinessException(0,"用户不存在");
+        if (user == null) {
+            throw new BusinessException(0, "用户不存在");
         }
         String walletAddress = user.getUserWalletAddress();
-        // 异常框架预检查
         purchaseRetryServe.checkUserErr(walletAddress);
-        // 合约前置检查：必须检查后端钱包是否获得用户授权
         try {
-//            String adminWallet = cardNftContract.getAddress();
-//            Boolean isApproved = cardNftContract.isApprovedForAll(walletAddress, adminWallet);
-//            if (isApproved == null || !isApproved) {
-//                throw new BusinessException("检测到未授权卡牌操作，请先在页面完成授权");
-//            }
-            //todo 购买矿机销毁卡牌
-            //todo 获取管理员地址
-//            String adminWallet = cardNftContract.getAdminAddress();
-//            Boolean isApproved = cardNftContractV1.isApprovedForAll(walletAddress, adminWallet);
-//            if (isApproved == null || !isApproved) {
-//                throw new BusinessException("检测到未授权卡牌操作，请先在页面完成授权");
-//            }
-//            BigInteger balance = cardNftContract.balanceOf(walletAddress, BigInteger.valueOf(cardId));
             BigInteger balance = cardNftContractV1.balanceOf(walletAddress);
             if (balance == null || balance.compareTo(BigInteger.valueOf(quantity)) < 0) {
                 throw new BusinessException("卡牌余额不足，当前拥有: " + (balance == null ? 0 : balance));
@@ -160,10 +136,12 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             log.error("卡牌状态检查异常: {}", e.getMessage());
             throw new BusinessException("区块链网络通讯失败，请稍后");
         }
+
         String safeMinerType = switch (minerType) {
             case "0", "1", "2", "3" -> minerType;
             default -> "0";
         };
+
         List<UserMiner> createdMiners = new ArrayList<>();
         for (int i = 0; i < quantity; i++) {
             UserMiner miner = new UserMiner();
@@ -173,31 +151,26 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             miner.setMinerType(safeMinerType);
             miner.setNftBurnStatus(0);
             miner.setNftCardId(cardId);
-            // 关键变更：为每条记录生成独立业务订单号（可读字符串）
-            // 合约调用时会对该订单号做 keccak256 转 bytes32
             miner.setNftBurnOrderId("NFT_BURN_" + userId + "_" + IdWorker.getIdStr());
             miner.setStatus(0);
-            miner.setEligibleDate(LocalDateTime.now().plusDays(15));
+            miner.setIsElectricityPaid(0);
+            miner.setPaymentDate(null);
+            miner.setEligibleDate(null);
+            miner.setIsAccelerated(0);
             this.save(miner);
             createdMiners.add(miner);
         }
-        // 执行销毁逻辑（遍历执行，失败则进入重试框架）
+
         for (UserMiner miner : createdMiners) {
             try {
-                //todo 销毁卡牌
                 TransactionReceipt receipt = cardNftContract.burnWithOrder(
                         walletAddress,
                         BigInteger.valueOf(cardId),
                         BigInteger.ONE,
                         miner.getNftBurnOrderId()
                 );
-//                TransactionReceipt receipt = cardNftContractV1.burnUser(
-//                        walletAddress,
-//                        BigInteger.ONE
-//                );
-                // 合约调用未抛异常且 receipt 不为空，视为成功
                 if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
-                    boolean success = this.lambdaUpdate()
+                    this.lambdaUpdate()
                             .set(UserMiner::getNftBurnStatus, 1)
                             .eq(UserMiner::getId, miner.getId())
                             .update();
@@ -211,162 +184,93 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         }
     }
 
-    /**
-     * 电费缴纳
-     * @param userId
-     * @param dto
-     */
     @Transactional(rollbackFor = Exception.class)
     @Override
     public void payElectricity(Long userId, MinerElectricityDTO dto) {
-        log.info("缴纳电费传入参数：{}",dto.toString());
+        log.info("缴纳电费传入参数：{}", dto);
         MinerSettings settings = getSettings();
         BigDecimal unitFee = settings.getElectricFee();
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime expiryLimit = now.minusDays(30);
+        LocalDateTime expiryLimit = LocalDateTime.now().minusDays(30);
         LambdaQueryWrapper<UserMiner> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(UserMiner::getUserId, userId);
-        //只有卡牌销毁成功(nftBurnStatus=1)的矿机，才允许下一步操作
-        wrapper.eq(UserMiner::getNftBurnStatus, 1);
+        wrapper.eq(UserMiner::getUserId, userId)
+                .eq(UserMiner::getNftBurnStatus, 1);
         switch (dto.getMode()) {
-            case 1: // 初始激活缴费  有数量就传入数量，数量为0则全部
-                wrapper.eq(UserMiner::getStatus, 0).eq(UserMiner::getMinerType, dto.getMinerType());
-                if (dto.getQuantity() != null && !dto.getQuantity().equals("0")) {
-                    //wrapper.last("LIMIT " + dto.getQuantity());
-                    int quantity = dto.getQuantity();
-                    long totalCount = this.count(wrapper);
-                    // 限制数量不能超过实际记录数
-                    int limit = Math.min(quantity, (int) totalCount);
-                    if (limit > 0) {
-                        wrapper.last("LIMIT " + limit);
-                    }
-                }
+            case 1:
+                wrapper.eq(UserMiner::getStatus, 0)
+                        .eq(UserMiner::getMinerType, dto.getMinerType());
+                applyQuantityLimit(wrapper, dto.getQuantity());
                 break;
-            case 2: // 续费
-                LocalDateTime targetDate = expiryLimit.plusDays(dto.getDays());
-                wrapper.eq(UserMiner::getStatus, 1).eq(UserMiner::getMinerType, dto.getMinerType())
-                        .ge(UserMiner::getPaymentDate, expiryLimit).le(UserMiner::getPaymentDate, targetDate);
-                if (dto.getQuantity() != null && !dto.getQuantity().equals("0")) {
-                    //wrapper.last("LIMIT " + dto.getQuantity());
-                    int quantity = dto.getQuantity();
-                    long totalCount = this.count(wrapper);
-                    // 限制数量不能超过实际记录数
-                    int limit = Math.min(quantity, (int) totalCount);
-                    if (limit > 0) {
-                        wrapper.last("LIMIT " + limit);
-                    }
-                }
+            case 2:
+                LocalDateTime targetDate = expiryLimit.plusDays(dto.getDays() == null ? 30 : dto.getDays());
+                wrapper.eq(UserMiner::getStatus, 1)
+                        .eq(UserMiner::getMinerType, dto.getMinerType())
+                        .ge(UserMiner::getPaymentDate, expiryLimit)
+                        .le(UserMiner::getPaymentDate, targetDate);
+                applyQuantityLimit(wrapper, dto.getQuantity());
                 break;
-            case 3: // 已到期 (按类型) 有数量就传入数量，数量为0则全部
-                wrapper.eq(UserMiner::getMinerType, dto.getMinerType())
-                        .and(w -> w.lt(UserMiner::getPaymentDate, expiryLimit).or().eq(UserMiner::getStatus, 0));
-                if (dto.getQuantity() != null && !dto.getQuantity().equals("0")) {
-                    //wrapper.last("LIMIT " + dto.getQuantity());
-                    int quantity = dto.getQuantity();
-                    long totalCount = this.count(wrapper);
-                    // 限制数量不能超过实际记录数
-                    int limit = Math.min(quantity, (int) totalCount);
-                    if (limit > 0) {
-                        wrapper.last("LIMIT " + limit);
-                    }
-                }
+            case 3:
+                wrapper.eq(UserMiner::getStatus, 2)
+                        .eq(UserMiner::getMinerType, dto.getMinerType());
+                applyQuantityLimit(wrapper, dto.getQuantity());
                 break;
-            case 4: // 全部已到期/未激活
-                wrapper.and(w -> w.lt(UserMiner::getPaymentDate, expiryLimit).or().eq(UserMiner::getStatus, 0));
+            case 4:
+                wrapper.eq(UserMiner::getStatus, 2);
                 break;
-            case 5: // 新增：指定矿机ID缴费
+            case 5:
                 if (dto.getUserMinerIds() == null || dto.getUserMinerIds().isEmpty()) {
                     throw new BusinessException("请选择要缴纳电费的矿机");
                 }
                 wrapper.in(UserMiner::getId, dto.getUserMinerIds());
                 break;
-            case 6: // 一键缴纳所有矿机电费
+            case 6:
                 break;
-            default: throw new BusinessException("模式错误");
+            default:
+                throw new BusinessException("模式错误");
         }
         List<UserMiner> targets = this.list(wrapper);
         if (targets.isEmpty()) {
-            throw new BusinessException("没有符合条件的矿机（若刚购买，请等待卡牌销毁完成）");
+            throw new BusinessException("没有符合条件的矿机，请先确认卡牌销毁已完成");
         }
         BigDecimal totalFee = unitFee.multiply(new BigDecimal(targets.size()));
         if (userMapper.updateBalanceAtomic(userId, totalFee.negate()) == 0) {
             throw new BusinessException("余额不足，需支付: " + totalFee);
         }
-        userBillServe.createBillAndUpdateBalance(userId, totalFee, BillType.PLATFORM, FundType.EXPENSE,
-                TransactionType.PURCHASE, "缴纳电费-模式" + dto.getMode(), null, null, null, 0,null);
+        userBillServe.createBillAndUpdateBalance(
+                userId,
+                totalFee,
+                BillType.PLATFORM,
+                FundType.EXPENSE,
+                TransactionType.PURCHASE,
+                "缴纳电费-模式" + dto.getMode(),
+                null,
+                null,
+                null,
+                0,
+                null
+        );
 
         List<Long> targetIds = targets.stream().map(UserMiner::getId).collect(Collectors.toList());
-        // 执行原子更新
         this.lambdaUpdate()
                 .in(UserMiner::getId, targetIds)
-                //.set(UserMiner::getPaymentDate, now) // 统一更新缴费时间
                 .set(UserMiner::getIsElectricityPaid, 1)
-                /*
-                   使用 setSql 实现原子逻辑：
-                   如果当前状态是 0 (待激活)，则更新为 1 (运行中)；
-                   如果当前状态已经是 1 (续费情况)，则保持 1。
-                */
-                .setSql("status = CASE WHEN status = 0 THEN 1 ELSE status END")
-                /*
-                  使用 MySQL DATE_ADD 函数实现叠加：
-                  1. 如果 payment_date 为空，或者已经超过30天(已过期)，则设置为 NOW()
-                  2. 如果还在有效期内，则在原有 payment_date 基础上增加 30 天
-                */
+                .setSql("status = 1")
                 .setSql("payment_date = CASE " +
                         "WHEN payment_date IS NULL OR payment_date < DATE_SUB(NOW(), INTERVAL 30 DAY) " +
                         "THEN NOW() " +
                         "ELSE DATE_ADD(payment_date, INTERVAL 30 DAY) END")
+                .setSql("eligible_date = NULL")
                 .update();
     }
 
-    /**
-     * 购买加速包
-     * @param userId
-     * @param dto
-     */
-    @Transactional(rollbackFor = Exception.class)
-    @Override
-    public void buyAccelerationPack(Long userId, MinerAccelerationDTO dto) {
-        MinerSettings settings = getSettings();
-        BigDecimal unitFee = settings.getAccelerationFee();
-        LocalDateTime now = LocalDateTime.now();
-        LambdaQueryWrapper<UserMiner> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(UserMiner::getUserId, userId)
-                .eq(UserMiner::getNftBurnStatus, 1)
-                .eq(UserMiner::getIsAccelerated, 0)
-                .gt(UserMiner::getEligibleDate, now);
-        switch (dto.getMode()) {
-            case 1: wrapper.eq(UserMiner::getMinerType, dto.getMinerType()); break;
-            case 2: wrapper.eq(UserMiner::getMinerType, dto.getMinerType()).last("LIMIT " + dto.getQuantity()); break;
-            case 3: break;
-            case 4: wrapper.eq(UserMiner::getId, dto.getUserMinerId()); break;
-            default: throw new BusinessException("模式错误");
+    private void applyQuantityLimit(LambdaQueryWrapper<UserMiner> wrapper, Integer quantity) {
+        if (quantity == null || quantity <= 0) {
+            return;
         }
-        List<UserMiner> targets = this.list(wrapper);
-        if (targets.isEmpty()) throw new BusinessException("当前无可加速的矿机");
-        BigDecimal totalFee = unitFee.multiply(new BigDecimal(targets.size()));
-        if (userMapper.updateBalanceAtomic(userId, totalFee.negate()) == 0) {
-            throw new BusinessException("余额不足");
+        long totalCount = this.count(wrapper);
+        int limit = Math.min(quantity, (int) totalCount);
+        if (limit > 0) {
+            wrapper.last("LIMIT " + limit);
         }
-        // 获取目标 ID 列表
-        List<Long> targetIds = targets.stream().map(UserMiner::getId).collect(Collectors.toList());
-        // 执行原子更新
-        this.lambdaUpdate()
-                .in(UserMiner::getId, targetIds)
-                .eq(UserMiner::getIsAccelerated, 0) // 原子性检查：确保未加速过
-                .set(UserMiner::getIsAccelerated, 1)
-                /*
-                   使用 MySQL 函数实现原子逻辑：
-                   DATE_ADD(create_time, INTERVAL 3 DAY) 计算限制日期
-                   如果限制日期在当前时间之后，则设为限制日期；否则设为当前时间。
-                */
-                .setSql("eligible_date = CASE " +
-                        "WHEN DATE_ADD(create_time, INTERVAL 3 DAY) > NOW() " +
-                        "THEN DATE_ADD(create_time, INTERVAL 3 DAY) " +
-                        "ELSE NOW() END")
-                .update();
-        userBillServe.createBillAndUpdateBalance(userId, totalFee, BillType.PLATFORM, FundType.EXPENSE,
-                TransactionType.PURCHASE, "购买加速包-模式" + dto.getMode(), null, null, null, 0,null);
     }
 
     /**
@@ -412,7 +316,6 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                     .eq(UserMiner::getNftBurnStatus, 1)
                     .eq(UserMiner::getStatus, 1)
                     .ge(UserMiner::getPaymentDate, expiryLimit)
-                    .le(UserMiner::getEligibleDate, now)
                     .and(w -> w.isNull(UserMiner::getLastRewardTime)
                             .or()
                             .lt(UserMiner::getLastRewardTime, todayStart))
@@ -525,7 +428,6 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         }
     }
 
-
     /**
      * 管理员代领取代币 (CLAIM)
      */
@@ -535,7 +437,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         Long userId = getFormalUserId();
         User user = userService.getById(userId);
         if (user == null) {
-            throw new BusinessException(0,"用户不存在");
+            throw new BusinessException(0, "用户不存在");
         }
         try {
             TransactionReceipt receipt = aionContract.claimAll(user.getUserWalletAddress(), dto.getLockType(), BigInteger.valueOf(orderId));
@@ -545,10 +447,6 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                         .movePointLeft(18)
                         .setScale(6, RoundingMode.DOWN);
 
-                        // 或者 方案 B：四舍五入保留 6 位
-                        // BigDecimal netAmount = new BigDecimal(order.getNetAmount())
-                        //         .movePointLeft(18)
-                        //         .setScale(6, RoundingMode.HALF_UP);
                 userBillServe.createBillAndUpdateBalance(
                         userId,
                         netAmount,
@@ -572,7 +470,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             log.error("链上领取执行失败: {}", e.getMessage());
             throw e;
         } catch (Exception e) {
-            log.error("链上领取执行失败，关键参数： error={ }",e);
+            log.error("链上领取执行失败，关键参数： error={}", e);
             throw new BusinessException("链上领取执行失败，请检查账单日志");
         }
     }
@@ -587,22 +485,20 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         if (user != null) {
             dto.setAddress(user.getUserWalletAddress());
         }
-        log.info("管理员代兑换未解锁碎片.请求参数：{}", dto);
+        log.info("管理员代兑换未解锁碎片 请求参数：{}", dto);
         // 将前端传来的正常数量转换为链上18位精度的 BigInteger
-        // 例如：1.5 -> 1500000000000000000
         BigInteger chainAmount = dto.getAmount()
                 .multiply(new BigDecimal("1000000000000000000"))
                 .toBigInteger();
         Long orderId = IdWorker.getId();
         try {
-            // 使用转换后的 chainAmount 调用合约
             TransactionReceipt receipt = aionContract.exchangeLockedFragment(
                     dto.getAddress(),
                     dto.getLockType(),
                     chainAmount,
                     BigInteger.valueOf(orderId)
             );
-            log.info("管理员代兑换未解锁碎片.链上返回数据：{}", receipt);
+            log.info("管理员代兑换未解锁碎片 链上返回数据：{}", receipt);
             if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
                 AionContract.OrderRecord order = aionContract.getOrder(dto.getAddress(), BigInteger.valueOf(orderId));
                 log.info("兑换未解锁碎片获取订单详情：{}", order.getExecutedAmount().toString());
@@ -642,7 +538,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
      */
     @Override
     public String adminExchangeUnlocked(AdminMinerActionDTO dto) throws Exception {
-        log.info("管理员代兑换已解锁碎片.请求参数：{}", dto);
+        log.info("管理员代兑换已解锁碎片 请求参数：{}", dto);
         Long userId = getFormalUserId();
         User user = userService.getById(userId);
         if (user != null) {
@@ -654,14 +550,13 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 .toBigInteger();
         try {
             Long orderId = IdWorker.getId();
-            // 使用转换后的 chainAmount 调用合约
             TransactionReceipt receipt = aionContract.exchangeUnlockedFragment(
                     dto.getAddress(),
                     dto.getLockType(),
                     chainAmount,
                     BigInteger.valueOf(orderId)
             );
-            log.info("管理员代兑换已解锁碎片.链上返回数据：{}", receipt);
+            log.info("管理员代兑换已解锁碎片 链上返回数据：{}", receipt);
             if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
                 AionContract.OrderRecord order = aionContract.getOrder(dto.getAddress(), BigInteger.valueOf(orderId));
                 log.info("兑换已解锁碎片获取订单详情：{}", order.getExecutedAmount().toString());
@@ -729,24 +624,22 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 0,
                 vo
         );
-        //todo 碎片兑换卡牌 NFT
+        // 执行链上分发 NFT
         TransactionReceipt receipt = cardNftContract.distribute(
                 user.getUserWalletAddress(),
                 BigInteger.valueOf(dto.getCardId()),
                 BigInteger.valueOf(dto.getQuantity())
-
         );
         if (receipt == null || !"0x1".equalsIgnoreCase(receipt.getStatus())) {
             throw new BusinessException("链上发放卡牌失败，请稍后重试");
         }
     }
 
-
     /**
      * 每日电费分成结算
      * 规则：
      * 1. 统计直属下级持有的活跃矿机总数决定比例
-     * 2. 奖金基数：若只有1个下级缴费则按该笔计，若多于1个则扣除最高的一笔
+     * 2. 奖金基数：若只有1个下级缴费则按该笔预计，若多于1个则扣除最高的一笔
      * 3. 只有直属下级今日产生电费才发放
      */
     @Transactional(rollbackFor = Exception.class)
@@ -769,10 +662,12 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         Set<Long> userIds = allActiveMiners.stream().map(UserMiner::getUserId).collect(Collectors.toSet());
         Map<Long, User> userMap = userMapper.selectBatchIds(userIds).stream()
                 .collect(Collectors.toMap(User::getId, u -> u));
+
         // Map<上级ID, List<直属下级今日缴纳的电费金额>>
         Map<Long, List<BigDecimal>> parentSubFeesMap = new HashMap<>();
         // Map<上级ID, 直属下级活跃矿机总台数>
         Map<Long, Integer> parentSubActiveCountMap = new HashMap<>();
+
         for (UserMiner m : allActiveMiners) {
             User user = userMap.get(m.getUserId());
             if (user == null) continue;
@@ -820,7 +715,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                             TransactionType.REWARD,
                             String.format("直属下级电费分成(下级总机:%d, 比例:%.2f%%, 缴费人数:%d)",
                                     totalSubMiners, ratio.multiply(new BigDecimal("100")), fees.size()),
-                            null, null, null, 0,null
+                            null, null, null, 0, null
                     );
                     log.info("上级 {} 奖励发放成功: {}, 比例: {}", parentId, rewardAmount, ratio);
                 } catch (Exception e) {
@@ -863,7 +758,6 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
 
     /**
      * 获取系统设置
-     * @return
      */
     private MinerSettings getSettings() {
         SystemConfig config = configMapper.selectOne(new LambdaQueryWrapper<SystemConfig>()
@@ -871,6 +765,4 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         if (config == null) return new MinerSettings();
         return com.alibaba.fastjson2.JSON.parseObject(config.getConfigValue(), MinerSettings.class);
     }
-
-
 }

@@ -27,7 +27,6 @@ public class MinerQueryDTO {
     /**
      * // 是否已加速 (0:否, 1:是)
      */
-    private Integer isAccelerated;
     /**
      * // 矿机ID (如 M001)
      */

@@ -5,7 +5,10 @@ import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ra.rabnbserver.VO.GetAdminClaimVO;
-import com.ra.rabnbserver.dto.*;
+import com.ra.rabnbserver.dto.MinerElectricityDTO;
+import com.ra.rabnbserver.dto.MinerProfitRecordQueryDTO;
+import com.ra.rabnbserver.dto.MinerPurchaseDTO;
+import com.ra.rabnbserver.dto.MinerQueryDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.AdminMinerActionDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.FragmentExchangeNftDTO;
 import com.ra.rabnbserver.exception.BusinessException;
@@ -19,36 +22,28 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
-
-/**
- * 用户端 - 用户矿机接口
- * （包含用户缴纳矿机电费，购买矿机，购买加速包，获取矿机收益，获取碎片，使用碎片兑换卡牌）
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/user/miner")
 @RequiredArgsConstructor
 public class MinerController {
     private final MinerServe minerServe;
-    private  final MinerProfitRecordServe minerProfitRecordServe;
+    private final MinerProfitRecordServe minerProfitRecordServe;
     private final SystemConfigServe systemConfigServe;
-
 
     @Value("${ADMIN.ISOPEN:true}")
     private Boolean ISOPEN;
 
-    /**
-     * 分页查询我的矿机列表
-     */
     @SaCheckLogin
     @PostMapping("/list")
     public String getMinerList(@RequestBody(required = false) MinerQueryDTO query) {
-        if (!ISOPEN){
+        if (!ISOPEN) {
             return ApiResponse.error("暂未开放！");
         }
-        log.info("getMinerList,查询参数：{}", query.toString());
-        if (query == null) query = new MinerQueryDTO();
+        if (query == null) {
+            query = new MinerQueryDTO();
+        }
+        log.info("getMinerList,查询参数：{}", query);
         Long userId = getFormalUserId();
         try {
             IPage<UserMiner> result = minerServe.getUserMinerPage(userId, query);
@@ -59,14 +54,11 @@ public class MinerController {
         }
     }
 
-    /**
-     * 购买矿机
-     */
     @SaCheckLogin
     @PostMapping("/purchase")
     public String purchase(@RequestBody MinerPurchaseDTO dto) {
         Long userId = getFormalUserId();
-        if (!ISOPEN){
+        if (!ISOPEN) {
             return ApiResponse.error("购买矿机暂未开放！");
         }
         if (StrUtil.isBlank(dto.getMinerType()) || dto.getQuantity() == null || dto.getQuantity() <= 0) {
@@ -79,19 +71,14 @@ public class MinerController {
         return ApiResponse.success("购买申请提交成功");
     }
 
-
-
-    /**
-     * 领取矿机收益
-     */
     @SaCheckLogin
     @PostMapping("/claim-tokens")
     public String adminClaim(@RequestBody GetAdminClaimVO dto) {
         Long userId = getFormalUserId();
-        if (!ISOPEN){
+        if (!ISOPEN) {
             return ApiResponse.error("矿机收益暂未开放！");
         }
-        if ( dto.getLockType() == null) {
+        if (dto.getLockType() == null) {
             return ApiResponse.error("仓类参数缺失");
         }
         try {
@@ -108,10 +95,9 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/exchange-locked")
     public String adminExchangeLocked(@RequestBody AdminMinerActionDTO dto) {
-        if (!ISOPEN){
+        if (!ISOPEN) {
             return ApiResponse.error("暂未开放！");
         }
-        Long userId = getFormalUserId();
         if (dto.getAmount() == null || dto.getAddress() == null || dto.getLockType() == null) {
             return ApiResponse.error("参数缺失");
         }
@@ -129,10 +115,9 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/exchange-unlocked")
     public String adminExchangeUnlocked(@RequestBody AdminMinerActionDTO dto) {
-        if (!ISOPEN){
+        if (!ISOPEN) {
             return ApiResponse.error("暂未开放！");
         }
-        Long userId = getFormalUserId();
         if (dto.getAmount() == null || dto.getAddress() == null || dto.getLockType() == null) {
             return ApiResponse.error("参数缺失");
         }
@@ -150,7 +135,7 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/exchange-nft")
     public String exchangeNft(@RequestBody FragmentExchangeNftDTO dto) {
-        if (!ISOPEN){
+        if (!ISOPEN) {
             return ApiResponse.error("暂未开放！");
         }
         Long userId = getFormalUserId();
@@ -162,9 +147,9 @@ public class MinerController {
         }
         try {
             minerServe.buyNftWithFragments(userId, dto);
-            return ApiResponse.success("卡牌兑换成功，已分发至钱包");
+            return ApiResponse.success("卡牌兑换成功，已发放至钱包");
         } catch (Exception e) {
-            log.error("碎片换卡失败, userId: {}, 原因: ", userId, e);
+            log.error("碎片换卡失败, userId: {}", userId, e);
             return ApiResponse.error(e.getMessage());
         }
     }
@@ -177,11 +162,13 @@ public class MinerController {
     @SaCheckLogin
     @PostMapping("/pay-electricity")
     public String payElectricity(@RequestBody MinerElectricityDTO dto) {
-        if (!ISOPEN){
+        if (!ISOPEN) {
             return ApiResponse.error("暂未开放！");
         }
         Long userId = getFormalUserId();
-        if (dto.getMode() == null) return ApiResponse.error("请选择模式");
+        if (dto.getMode() == null) {
+            return ApiResponse.error("请选择模式");
+        }
         try {
             minerServe.payElectricity(userId, dto);
             return ApiResponse.success("电费缴纳成功");
@@ -190,35 +177,10 @@ public class MinerController {
         }
     }
 
-    /**
-     * 购买加速包
-     */
-    @SaCheckLogin
-    @PostMapping("/buy-acceleration")
-    public String buyAcceleration(@RequestBody MinerAccelerationDTO dto) {
-        if (!ISOPEN){
-            return ApiResponse.error("暂未开放！");
-        }
-        Long userId = getFormalUserId();
-        if (dto.getMode() == null) return ApiResponse.error("请选择模式");
-        try {
-            minerServe.buyAccelerationPack(userId, dto);
-            return ApiResponse.success("加速成功");
-        } catch (BusinessException e) {
-            return ApiResponse.error(e.getMessage());
-        }
-    }
-
-
-
-    /**
-     * 条件筛选矿机收益记录表
-     * @return
-     */
     @SaCheckLogin
     @PostMapping("/miner-profit-record/list")
     public String getProfitList(@RequestBody MinerProfitRecordQueryDTO queryDTO) {
-        if (!ISOPEN){
+        if (!ISOPEN) {
             return ApiResponse.error("暂未开放！");
         }
         Long userId = getFormalUserId();
@@ -231,14 +193,14 @@ public class MinerController {
      */
     @GetMapping("/config/{key}")
     public String getValueByKey(@PathVariable String key) {
-        Long userId = getFormalUserId();
-        String  KEY = "";
-        if (key.equals("1")) {
-            KEY = "MINER_SYSTEM_SETTINGS";
-        }else if(key.equals("2")){
-            KEY = "WITHDRAW_SETTINGS";
+        getFormalUserId();
+        String configKey = "";
+        if ("1".equals(key)) {
+            configKey = "MINER_SYSTEM_SETTINGS";
+        } else if ("2".equals(key)) {
+            configKey = "WITHDRAW_SETTINGS";
         }
-        return ApiResponse.success(systemConfigServe.getValueByKey(KEY));
+        return ApiResponse.success(systemConfigServe.getValueByKey(configKey));
     }
 
     private Long getFormalUserId() {
@@ -250,10 +212,4 @@ public class MinerController {
         }
         return Long.parseLong(loginId);
     }
-
-//    private String isOpen(String m){
-//        if (!ISOPEN){
-//            return ApiResponse.error(m+"暂未开放！");
-//        }
-//    }
 }
