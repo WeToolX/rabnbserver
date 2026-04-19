@@ -57,7 +57,6 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private final MinerPurchaseRetryServeImpl purchaseRetryServe;
     private final CardNftContract cardNftContract;
-    private final CardNftContractV1 cardNftContractV1;
 
     @Override
     public IPage<UserMiner> getUserMinerPage(Long userId, MinerQueryDTO query) {
@@ -104,6 +103,52 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
 
     @Transactional(rollbackFor = Exception.class)
     @Override
+    public List<Long> assignSpecialMinerByAdmin(Long userId, Integer quantity, String remark) {
+        if (userId == null) {
+            throw new BusinessException("用户ID不能为空");
+        }
+        if (quantity == null || quantity <= 0) {
+            throw new BusinessException("发放数量必须大于0");
+        }
+        if (quantity > 100) {
+            throw new BusinessException("单次发放数量不能超过100");
+        }
+
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        if (StrUtil.isBlank(user.getUserWalletAddress())) {
+            throw new BusinessException("用户钱包地址不能为空");
+        }
+
+        log.info("admin assign special miners, userId={}, quantity={}, remark={}", userId, quantity, remark);
+
+        List<UserMiner> miners = new ArrayList<>();
+        for (int i = 0; i < quantity; i++) {
+            UserMiner miner = new UserMiner();
+            miner.setUserId(userId);
+            miner.setWalletAddress(user.getUserWalletAddress());
+            miner.setMinerId("SPECIAL_" + IdWorker.getIdStr());
+            miner.setMinerType("3");
+            miner.setNftBurnStatus(1);
+            miner.setNftCardId(null);
+            miner.setNftBurnOrderId(null);
+            miner.setIsElectricityPaid(0);
+            miner.setPaymentDate(null);
+            miner.setStatus(0);
+            miner.setEligibleDate(null);
+            miner.setIsAccelerated(0);
+            miner.setLastRewardTime(null);
+            miners.add(miner);
+        }
+
+        this.saveBatch(miners);
+        return miners.stream().map(UserMiner::getId).collect(Collectors.toList());
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @Override
     public void buyMinerBatch(Long userId, String minerType, int quantity, Integer cardId) {
         if (quantity <= 0) {
             throw new BusinessException("数量不合法");
@@ -118,7 +163,8 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         String walletAddress = user.getUserWalletAddress();
         purchaseRetryServe.checkUserErr(walletAddress);
         try {
-            BigInteger balance = cardNftContractV1.balanceOf(walletAddress);
+            BigInteger balance = cardNftContract.balanceOf(walletAddress, BigInteger.valueOf(cardId));
+            log.info("卡牌余额:"+balance);
             if (balance == null || balance.compareTo(BigInteger.valueOf(quantity)) < 0) {
                 throw new BusinessException("卡牌余额不足，当前拥有: " + (balance == null ? 0 : balance));
             }

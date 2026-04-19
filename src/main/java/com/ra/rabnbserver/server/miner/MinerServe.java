@@ -10,10 +10,14 @@ import com.ra.rabnbserver.dto.adminMinerAction.FragmentExchangeNftDTO;
 import com.ra.rabnbserver.pojo.UserMiner;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 public interface MinerServe extends IService<UserMiner> {
 
-
     IPage<UserMiner> getUserMinerPage(Long userId, MinerQueryDTO query);
+
+    @Transactional(rollbackFor = Exception.class)
+    List<Long> assignSpecialMinerByAdmin(Long userId, Integer quantity, String remark);
 
     void buyMinerBatch(Long userId, String minerType, int quantity, Integer cardId);
 
@@ -22,18 +26,12 @@ public interface MinerServe extends IService<UserMiner> {
 
     void processDailyProfit() throws Exception;
 
-    /** 管理员代领取 */
-//    String adminClaimAll(AdminMinerActionDTO dto) throws Exception;
-
     String adminClaimAll(GetAdminClaimVO dto) throws Exception;
 
-    /** 管理员代兑换未解锁碎片 */
     String adminExchangeLocked(AdminMinerActionDTO dto) throws Exception;
 
-    /** 管理员代兑换已解锁碎片 */
     String adminExchangeUnlocked(AdminMinerActionDTO dto) throws Exception;
 
-    /** 碎片换卡牌 */
     void buyNftWithFragments(Long userId, FragmentExchangeNftDTO dto) throws Exception;
 
     @Transactional(rollbackFor = Exception.class)
