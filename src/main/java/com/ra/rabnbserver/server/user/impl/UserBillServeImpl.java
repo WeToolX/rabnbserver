@@ -12,6 +12,9 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ra.rabnbserver.VO.AdminBillStatisticsVO;
 import com.ra.rabnbserver.VO.CreateUserBillVO;
 import com.ra.rabnbserver.VO.PaymentUsdtMetaVO;
+import com.ra.rabnbserver.VO.WithdrawSettingsVO;
+import com.ra.rabnbserver.contract.AionContract;
+import com.ra.rabnbserver.contract.AirPaymentCollectorContract;
 import com.ra.rabnbserver.contract.CardNftContract;
 import com.ra.rabnbserver.contract.CardNftContractV1;
 import com.ra.rabnbserver.contract.PaymentUsdtContract;
@@ -26,6 +29,7 @@ import com.ra.rabnbserver.pojo.ETFCard;
 import com.ra.rabnbserver.pojo.User;
 import com.ra.rabnbserver.pojo.UserBill;
 import com.ra.rabnbserver.server.card.EtfCardServe;
+import com.ra.rabnbserver.server.sys.SystemConfigServe;
 import com.ra.rabnbserver.server.user.UserBillServe;
 import io.micrometer.common.util.StringUtils;
 import lombok.RequiredArgsConstructor;
@@ -52,9 +56,12 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
     private final TransactionTemplate transactionTemplate;
     private final EtfCardServe etfCardServe;
     private final PaymentUsdtContract paymentUsdtContract;
+    private final AionContract aionContract;
+    private final AirPaymentCollectorContract airPaymentCollectorContract;
     private final CardNftContract cardNftContract;
     private final CardNftContractV1 cardNftContractV1;
     private final UserBillRetryServeImpl billRetryServe;
+    private final SystemConfigServe systemConfigServe;
 
     /**
      * 链上调用执行接口用于封装合约交互逻辑
@@ -104,6 +111,89 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
             // 抛出异常返回前端，此处已在 Try-Catch 外部，不会被再次拦截
             throw new BusinessException(finalRemark);
         }
+    }
+
+    /**
+     * AIR 闪兑平台 USDT 余额
+     *
+     * @param userId    用户ID
+     * @param airAmount AIR 数量
+     * @throws Exception 合约调用异常
+     */
+    @Override
+    public void flashSwapAirToPlatform(Long userId, BigDecimal airAmount) throws Exception {
+        if (airAmount == null || airAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("闪兑AIR数量必须大于0");
+        }
+        User user = validateUserAndCheckLock(userId);
+        if (StringUtils.isBlank(user.getUserWalletAddress())) {
+            throw new BusinessException("用户钱包地址不能为空");
+        }
+        BigDecimal uPerCoin = getAirFlashSwapRate();
+        BigDecimal usdtAmount = calculateFlashSwapUsdtAmount(airAmount, uPerCoin);
+        String orderId = "0x" + IdWorker.get32UUID();
+        BigInteger rawAirAmount = AmountConvertUtils.toRawAmount(AmountConvertUtils.Currency.AIR, airAmount);
+
+        // 按需求先检查 AIR 余额，再检查授权额度。
+        checkAirBalanceAndAllowance(user.getUserWalletAddress(), rawAirAmount);
+        AirPaymentCollectorContract.PreviewCollectResult previewResult = airPaymentCollectorContract.previewCollect(
+                orderId,
+                user.getUserWalletAddress(),
+                rawAirAmount
+        );
+        if (!Boolean.TRUE.equals(previewResult.getExecutable())) {
+            throw new BusinessException("AIR闪兑预检查失败：" + previewResult.getCodeMessage());
+        }
+
+        TransactionReceipt receipt = null;
+        String systemErrorMsg = null;
+        try {
+            log.info("发起AIR闪兑，用户地址={}, AIR数量={}, 汇率={}, 预计到账USDT={}, 订单号={}",
+                    user.getUserWalletAddress(), airAmount, uPerCoin, usdtAmount, orderId);
+            receipt = airPaymentCollectorContract.collect(orderId, user.getUserWalletAddress(), rawAirAmount);
+        } catch (Exception e) {
+            log.error("AIR闪兑合约调用发生系统异常，用户地址={}, 订单号={}",
+                    user.getUserWalletAddress(), orderId, e);
+            systemErrorMsg = e.getMessage();
+        }
+
+        if (receipt != null && "0x1".equalsIgnoreCase(receipt.getStatus())) {
+            createBillAndUpdateBalance(
+                    userId,
+                    usdtAmount,
+                    BillType.PLATFORM,
+                    FundType.INCOME,
+                    TransactionType.EXCHANGE,
+                    buildFlashSwapSuccessRemark(airAmount, uPerCoin, usdtAmount),
+                    orderId,
+                    receipt.getTransactionHash(),
+                    JSON.toJSONString(receipt),
+                    0,
+                    null
+            );
+            log.info("AIR闪兑成功，用户地址={}, AIR数量={}, 到账USDT={}, 订单号={}, 交易哈希={}",
+                    user.getUserWalletAddress(), airAmount, usdtAmount, orderId, receipt.getTransactionHash());
+            return;
+        }
+
+        String finalRemark = systemErrorMsg != null ? "AIR闪兑系统异常：" + systemErrorMsg : "AIR闪兑合约执行失败";
+        createBillAndUpdateBalance(
+                userId,
+                BigDecimal.ZERO,
+                BillType.ERROR_ORDER,
+                FundType.INCOME,
+                TransactionType.EXCHANGE,
+                finalRemark,
+                orderId,
+                receipt != null ? receipt.getTransactionHash() : null,
+                null,
+                0,
+                null
+        );
+        Long billId = getBillIdByOrder(orderId);
+        updateBillByError(billId, TransactionStatus.FAILED, receipt, finalRemark);
+        billRetryServe.markAbnormal(billId, user.getUserWalletAddress());
+        throw new BusinessException(finalRemark);
     }
 
     /**
@@ -279,6 +369,68 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
     private void checkChainAllowanceAndBalance(String address, BigInteger amount) throws Exception {
         if (paymentUsdtContract.allowanceToPaymentUsdt(address).compareTo(amount) < 0) throw new BusinessException("授权额度不足");
         if (paymentUsdtContract.balanceOf(address).compareTo(amount) < 0) throw new BusinessException("链上余额不足");
+    }
+
+    /**
+     * 检查 AIR 余额与授权额度
+     *
+     * @param address 用户钱包地址
+     * @param amount  AIR 原始数量
+     * @throws Exception 链上查询异常
+     */
+    private void checkAirBalanceAndAllowance(String address, BigInteger amount) throws Exception {
+        BigInteger balance = aionContract.balanceOf(address);
+        if (balance == null || balance.compareTo(amount) < 0) {
+            throw new BusinessException("AIR余额不足");
+        }
+        BigInteger allowance = aionContract.allowance(address, airPaymentCollectorContract.getAddress());
+        if (allowance == null || allowance.compareTo(amount) < 0) {
+            throw new BusinessException("AIR授权额度不足，请先完成授权");
+        }
+    }
+
+    /**
+     * 获取 AIR 闪兑汇率
+     *
+     * 说明：当前需求复用系统配置中的 uPerCoin 作为 AIR -> USDT 的闪兑汇率。
+     *
+     * @return 闪兑汇率
+     */
+    private BigDecimal getAirFlashSwapRate() {
+        WithdrawSettingsVO settings = systemConfigServe.getConfigObject("WITHDRAW_SETTINGS", WithdrawSettingsVO.class);
+        if (settings == null || settings.getUPerCoin() == null || settings.getUPerCoin().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("AIR闪兑汇率未配置");
+        }
+        return settings.getUPerCoin();
+    }
+
+    /**
+     * 计算 AIR 闪兑到账的 USDT 数量
+     *
+     * @param airAmount AIR 数量
+     * @param uPerCoin  闪兑汇率
+     * @return USDT 到账数量
+     */
+    private BigDecimal calculateFlashSwapUsdtAmount(BigDecimal airAmount, BigDecimal uPerCoin) {
+        BigDecimal usdtAmount = airAmount.multiply(uPerCoin).setScale(18, RoundingMode.DOWN);
+        if (usdtAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("当前汇率下可到账USDT数量必须大于0");
+        }
+        return usdtAmount;
+    }
+
+    /**
+     * 组装 AIR 闪兑成功备注
+     *
+     * @param airAmount  AIR 数量
+     * @param uPerCoin   闪兑汇率
+     * @param usdtAmount 到账 USDT 数量
+     * @return 备注
+     */
+    private String buildFlashSwapSuccessRemark(BigDecimal airAmount, BigDecimal uPerCoin, BigDecimal usdtAmount) {
+        return "AIR闪兑成功，AIR数量=" + airAmount.toPlainString()
+                + "，汇率=" + uPerCoin.toPlainString()
+                + "，到账USDT=" + usdtAmount.toPlainString();
     }
 
     /**

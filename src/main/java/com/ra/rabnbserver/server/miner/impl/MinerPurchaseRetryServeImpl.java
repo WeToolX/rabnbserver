@@ -82,6 +82,14 @@ public class MinerPurchaseRetryServeImpl extends AbstractAbnormalRetryService {
                 log.error("销毁重试缺少必要参数，ID={}, cardId={}, orderId={}", dataId, miner.getNftCardId(), miner.getNftBurnOrderId());
                 return false;
             }
+            Boolean approved = cardNftContract.isApprovedForCurrentOperator(miner.getWalletAddress());
+            if (!Boolean.TRUE.equals(approved)) {
+                log.warn("销毁重试检测到用户未授权，矿机ID={}, 用户地址={}, 操作地址={}",
+                        dataId,
+                        miner.getWalletAddress(),
+                        cardNftContract.getOperatorAddress());
+                return false;
+            }
             //todo 重试方法销毁卡牌
             TransactionReceipt receipt = cardNftContract.burnWithOrder(
                     miner.getWalletAddress(),

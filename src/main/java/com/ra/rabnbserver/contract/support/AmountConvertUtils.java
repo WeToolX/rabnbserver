@@ -21,6 +21,10 @@ public final class AmountConvertUtils {
          */
         USDT(18),
         /**
+         * AIR
+         */
+        AIR(18),
+        /**
          * AION
          */
         AION(18);

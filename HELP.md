@@ -1,3 +1,22 @@
+## 重要模块速记（2026-04-19）
+
+- 矿机购买主链路：`src/main/java/com/ra/rabnbserver/server/miner/impl/MinerServeImpl.java`
+  负责用户购买矿机时的余额校验、卡牌授权校验、待处理矿机落库与链上 `burnWithOrder` 销毁回写。
+- 卡牌合约封装：`src/main/java/com/ra/rabnbserver/contract/CardNftContract.java`
+  负责 ERC1155 卡牌余额查询、授权查询、管理员代烧卡牌和当前签名地址读取。
+- AIR收款合约封装：`src/main/java/com/ra/rabnbserver/contract/AirPaymentCollectorContract.java`
+  负责 AIR 收款合约地址读取、预检查与链上扣款调用。
+- 矿机购买异常重试：`src/main/java/com/ra/rabnbserver/server/miner/impl/MinerPurchaseRetryServeImpl.java`
+  负责矿机购买失败后的卡牌销毁补偿重试，并在重试前再次检查用户是否已授权当前签名地址。
+- 异常重试框架核心：`src/main/java/com/ra/rabnbserver/exception/Abnormal/core/AbnormalRetryManager.java`
+  负责异常状态落库、自动修复、自动重试和人工升级，现已加入锁冲突短重试机制。
+- 异常重试调度器：`src/main/java/com/ra/rabnbserver/exception/Abnormal/core/AbnormalRetryScheduler.java`
+  负责周期扫描各异常上下文，遇到数据库锁冲突时仅记录告警并跳过本轮，避免调度线程整体失败。
+- 用户矿机接口：`src/main/java/com/ra/rabnbserver/controller/user/MinerController.java`
+  包含购买矿机、缴纳电费、电费单价查询等用户侧矿机接口。
+- 用户账单服务：`src/main/java/com/ra/rabnbserver/server/user/impl/UserBillServeImpl.java`
+  负责链上充值、AIR闪兑、平台余额账单入账与异常订单记录。
+
 # Getting Started
 
 ## 项目结构（完整 Tree）

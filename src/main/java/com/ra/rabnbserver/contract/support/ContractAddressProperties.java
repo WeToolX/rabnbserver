@@ -46,6 +46,13 @@ public class ContractAddressProperties {
     private String aion;
 
     /**
+     * AIR 收款合约地址
+     */
+    @NotBlank(message = "contract.address.air-payment-collector 不能为空")
+    @Pattern(regexp = ADDRESS_REGEX, message = "contract.address.air-payment-collector 必须为 0x 开头的 40 位十六进制地址")
+    private String airPaymentCollector;
+
+    /**
      * 启动时输出合约地址，便于排查配置问题
      */
     @PostConstruct
@@ -53,5 +60,6 @@ public class ContractAddressProperties {
         log.info("PaymentUSDT 合约地址: {}", paymentUsdt);
         log.info("CardNFT 合约地址: {}", cardNft);
         log.info("AION 合约地址: {}", aion);
+        log.info("AIR 收款合约地址: {}", airPaymentCollector);
     }
 }

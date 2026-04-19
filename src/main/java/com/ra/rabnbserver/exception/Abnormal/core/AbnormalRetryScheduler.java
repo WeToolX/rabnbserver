@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -33,7 +34,16 @@ public class AbnormalRetryScheduler {
         long start = System.currentTimeMillis();
         log.debug("异常重试扫描开始，当前间隔={}秒", properties.getScanIntervalSeconds());
         manager.initializeIfNeeded();
-        manager.getAllContexts().forEach(this::processContext);
+        manager.getAllContexts().forEach(context -> {
+            try {
+                processContext(context);
+            } catch (PessimisticLockingFailureException e) {
+                log.warn("异常重试扫描遇到锁冲突，已跳过本轮处理，服务={}, 原因={}",
+                        context.getConfig().serviceName(), e.getMessage());
+            } catch (Exception e) {
+                log.error("异常重试扫描处理失败，服务={}", context.getConfig().serviceName(), e);
+            }
+        });
         long cost = System.currentTimeMillis() - start;
         log.debug("异常重试扫描结束，耗时={}ms", cost);
     }

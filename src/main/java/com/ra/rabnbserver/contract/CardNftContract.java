@@ -273,6 +273,25 @@ public class CardNftContract extends ContractBase {
     }
 
     /**
+     * 获取当前合约调用签名地址
+     *
+     * @return 当前签名地址
+     */
+    public String getOperatorAddress() {
+        return transactionManager.getFromAddress();
+    }
+
+    /**
+     * 查询用户是否已授权当前签名地址
+     *
+     * @param user 用户地址
+     * @return 是否已授权
+     */
+    public Boolean isApprovedForCurrentOperator(String user) throws Exception {
+        return isApprovedForAll(user, getOperatorAddress());
+    }
+
+    /**
      * 查询卡牌 URI
      *
      * @param cardId 卡牌ID

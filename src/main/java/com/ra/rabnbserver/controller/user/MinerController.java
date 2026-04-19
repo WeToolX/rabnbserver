@@ -5,6 +5,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ra.rabnbserver.VO.GetAdminClaimVO;
+import com.ra.rabnbserver.VO.MinerSettings;
 import com.ra.rabnbserver.dto.MinerElectricityDTO;
 import com.ra.rabnbserver.dto.MinerProfitRecordQueryDTO;
 import com.ra.rabnbserver.dto.MinerPurchaseDTO;
@@ -175,6 +176,25 @@ public class MinerController {
         } catch (BusinessException e) {
             return ApiResponse.error(e.getMessage());
         }
+    }
+
+    /**
+     * 获取当前电费单价
+     */
+    @SaCheckLogin
+    @GetMapping("/electricity-price")
+    public String getElectricityPrice() {
+        if (!ISOPEN) {
+            return ApiResponse.error("暂未开放！");
+        }
+        Long userId = getFormalUserId();
+        MinerSettings settings = systemConfigServe.getConfigObject("MINER_SYSTEM_SETTINGS", MinerSettings.class);
+        if (settings == null || settings.getElectricFee() == null) {
+            log.warn("电费单价配置缺失，userId={}", userId);
+            return ApiResponse.error("电费单价暂未配置");
+        }
+        log.info("获取电费单价成功，userId={}, 电费单价={}", userId, settings.getElectricFee());
+        return ApiResponse.success("获取电费单价成功", settings.getElectricFee());
     }
 
     @SaCheckLogin

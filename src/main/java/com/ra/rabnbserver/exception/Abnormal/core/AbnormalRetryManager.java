@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.context.ApplicationContext;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -133,7 +134,7 @@ public class AbnormalRetryManager {
                 + wrapColumn("err_start_time") + " = NOW() "
                 + "WHERE " + wrapColumn("err_status") + " IN (?, ?)"
                 + " AND " + wrapColumn("err_start_time") + " IS NULL";
-        int filled = jdbcTemplate.update(fillStartTimeSql,
+        int filled = executeUpdateWithLockRetry("异常开始时间补齐", fillStartTimeSql,
                 AbnormalStatus.WAIT_AUTO.getCode(),
                 AbnormalStatus.WAIT_MANUAL.getCode());
         if (filled > 0) {
@@ -151,7 +152,7 @@ public class AbnormalRetryManager {
                 + "WHERE " + wrapColumn(config.statusField()) + " = ?"
                 + " AND " + wrapColumn("err_status") + " IS NOT NULL"
                 + " AND " + wrapColumn("err_status") + " NOT IN (?, ?)";
-        int fixed = jdbcTemplate.update(fixSuccessSql,
+        int fixed = executeUpdateWithLockRetry("异常成功状态修复", fixSuccessSql,
                 AbnormalStatus.AUTO_SUCCESS.getCode(),
                 successValue,
                 AbnormalStatus.AUTO_SUCCESS.getCode(),
@@ -237,13 +238,54 @@ public class AbnormalRetryManager {
         }
         sql.append(" WHERE ").append(wrapColumn(config.idField())).append(" = ?");
         params.add(dataId);
-        int updated = jdbcTemplate.update(sql.toString(), params.toArray());
+        int updated = executeUpdateWithLockRetry("异常状态落库", sql.toString(), params.toArray());
         if (updated == 0) {
             log.warn("异常落库未命中记录，服务={}, 数据ID={}, 请确认业务数据已提交或未被回滚",
                     config.serviceName(), dataId);
             return;
         }
         log.info("异常落库完成，服务={}, 数据ID={}", config.serviceName(), dataId);
+    }
+
+    /**
+     * 执行带锁冲突重试的更新语句，避免瞬时锁竞争直接打断主流程。
+     *
+     * @param actionName 动作名称
+     * @param sql        SQL语句
+     * @param params     参数列表
+     * @return 更新行数
+     */
+    private int executeUpdateWithLockRetry(String actionName, String sql, Object... params) {
+        final int maxAttempts = 3;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return jdbcTemplate.update(sql, params);
+            } catch (PessimisticLockingFailureException e) {
+                if (attempt >= maxAttempts) {
+                    log.error("{} 多次重试后仍发生锁冲突，原因={}", actionName, e.getMessage());
+                    throw e;
+                }
+                long sleepMillis = 200L * attempt;
+                log.warn("{} 遇到锁冲突，准备进行第{}次重试，等待={}ms，原因={}",
+                        actionName, attempt + 1, sleepMillis, e.getMessage());
+                sleepBeforeRetry(sleepMillis);
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * 锁冲突重试前短暂等待，给正在提交的事务释放锁的时间。
+     *
+     * @param sleepMillis 等待毫秒数
+     */
+    private void sleepBeforeRetry(long sleepMillis) {
+        try {
+            Thread.sleep(sleepMillis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("锁冲突重试等待被中断", e);
+        }
     }
 
     /**

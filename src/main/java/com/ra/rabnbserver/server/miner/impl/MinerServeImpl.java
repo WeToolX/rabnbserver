@@ -147,7 +147,6 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         return miners.stream().map(UserMiner::getId).collect(Collectors.toList());
     }
 
-    @Transactional(rollbackFor = Exception.class)
     @Override
     public void buyMinerBatch(Long userId, String minerType, int quantity, Integer cardId) {
         if (quantity <= 0) {
@@ -161,43 +160,19 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             throw new BusinessException(0, "用户不存在");
         }
         String walletAddress = user.getUserWalletAddress();
-        purchaseRetryServe.checkUserErr(walletAddress);
-        try {
-            BigInteger balance = cardNftContract.balanceOf(walletAddress, BigInteger.valueOf(cardId));
-            log.info("卡牌余额:"+balance);
-            if (balance == null || balance.compareTo(BigInteger.valueOf(quantity)) < 0) {
-                throw new BusinessException("卡牌余额不足，当前拥有: " + (balance == null ? 0 : balance));
-            }
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("卡牌状态检查异常: {}", e.getMessage());
-            throw new BusinessException("区块链网络通讯失败，请稍后");
+        if (StrUtil.isBlank(walletAddress)) {
+            throw new BusinessException("用户钱包地址不能为空");
         }
+        purchaseRetryServe.checkUserErr(walletAddress);
+        validatePurchasePrerequisites(walletAddress, quantity, cardId);
 
         String safeMinerType = switch (minerType) {
             case "0", "1", "2", "3" -> minerType;
             default -> "0";
         };
 
-        List<UserMiner> createdMiners = new ArrayList<>();
-        for (int i = 0; i < quantity; i++) {
-            UserMiner miner = new UserMiner();
-            miner.setUserId(userId);
-            miner.setWalletAddress(walletAddress);
-            miner.setMinerId(safeMinerType);
-            miner.setMinerType(safeMinerType);
-            miner.setNftBurnStatus(0);
-            miner.setNftCardId(cardId);
-            miner.setNftBurnOrderId("NFT_BURN_" + userId + "_" + IdWorker.getIdStr());
-            miner.setStatus(0);
-            miner.setIsElectricityPaid(0);
-            miner.setPaymentDate(null);
-            miner.setEligibleDate(null);
-            miner.setIsAccelerated(0);
-            this.save(miner);
-            createdMiners.add(miner);
-        }
+        // 先在短事务中落库待处理矿机，避免链上调用期间长时间持有数据库行锁。
+        List<UserMiner> createdMiners = createPendingMiners(userId, walletAddress, safeMinerType, cardId, quantity);
 
         for (UserMiner miner : createdMiners) {
             try {
@@ -213,6 +188,9 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                             .eq(UserMiner::getId, miner.getId())
                             .update();
                 } else {
+                    log.warn("卡牌销毁回执未成功，矿机ID={}, 回执状态={}",
+                            miner.getId(),
+                            receipt == null ? "空回执" : receipt.getStatus());
                     purchaseRetryServe.markAbnormal(miner.getId());
                 }
             } catch (Exception e) {
@@ -220,6 +198,72 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 purchaseRetryServe.markAbnormal(miner.getId());
             }
         }
+    }
+
+    /**
+     * 校验矿机购买前置条件，避免不满足链上条件时先写入业务数据。
+     *
+     * @param walletAddress 用户钱包地址
+     * @param quantity      购买数量
+     * @param cardId        卡牌ID
+     */
+    private void validatePurchasePrerequisites(String walletAddress, int quantity, Integer cardId) {
+        try {
+            BigInteger balance = cardNftContract.balanceOf(walletAddress, BigInteger.valueOf(cardId));
+            log.info("卡牌余额:{}", balance);
+            if (balance == null || balance.compareTo(BigInteger.valueOf(quantity)) < 0) {
+                throw new BusinessException("卡牌余额不足，当前拥有: " + (balance == null ? 0 : balance));
+            }
+            Boolean approved = cardNftContract.isApprovedForCurrentOperator(walletAddress);
+            String operatorAddress = cardNftContract.getOperatorAddress();
+            log.info("卡牌授权状态检查，用户地址={}, 操作地址={}, 是否授权={}", walletAddress, operatorAddress, approved);
+            if (!Boolean.TRUE.equals(approved)) {
+                throw new BusinessException("当前钱包未授权平台代扣卡牌，请先完成授权后再购买矿机");
+            }
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("卡牌状态检查异常，用户地址={}, 卡牌ID={}, 原因={}", walletAddress, cardId, e.getMessage());
+            throw new BusinessException("区块链网络通讯失败，请稍后");
+        }
+    }
+
+    /**
+     * 创建待销毁卡牌的矿机记录。
+     *
+     * @param userId        用户ID
+     * @param walletAddress 用户钱包地址
+     * @param safeMinerType 规范化后的矿机类型
+     * @param cardId        卡牌ID
+     * @param quantity      购买数量
+     * @return 已持久化的矿机列表
+     */
+    private List<UserMiner> createPendingMiners(Long userId, String walletAddress, String safeMinerType, Integer cardId, int quantity) {
+        List<UserMiner> createdMiners = transactionTemplate.execute(status -> {
+            List<UserMiner> miners = new ArrayList<>();
+            for (int i = 0; i < quantity; i++) {
+                UserMiner miner = new UserMiner();
+                miner.setUserId(userId);
+                miner.setWalletAddress(walletAddress);
+                miner.setMinerId(safeMinerType);
+                miner.setMinerType(safeMinerType);
+                miner.setNftBurnStatus(0);
+                miner.setNftCardId(cardId);
+                miner.setNftBurnOrderId("NFT_BURN_" + userId + "_" + IdWorker.getIdStr());
+                miner.setStatus(0);
+                miner.setIsElectricityPaid(0);
+                miner.setPaymentDate(null);
+                miner.setEligibleDate(null);
+                miner.setIsAccelerated(0);
+                this.save(miner);
+                miners.add(miner);
+            }
+            return miners;
+        });
+        if (createdMiners == null || createdMiners.size() != quantity) {
+            throw new BusinessException("矿机创建失败，请稍后再试");
+        }
+        return createdMiners;
     }
 
     @Transactional(rollbackFor = Exception.class)

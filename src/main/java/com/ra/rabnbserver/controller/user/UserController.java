@@ -299,6 +299,39 @@ public class UserController {
     }
 
     /**
+     * AIR 闪兑平台 USDT 余额
+     */
+    @SaCheckLogin
+    @PostMapping("/amount/flash-swap")
+    public String flashSwap(@RequestBody AirFlashSwapDTO dto) throws Exception {
+        Long userId;
+        try {
+            userId = getFormalUserId();
+        } catch (BusinessException e) {
+            return ApiResponse.error(402, "操作失败：需登录正式账号");
+        }
+        BigDecimal airAmount;
+        try {
+            airAmount = new BigDecimal(dto.getAmount());
+        } catch (Exception e) {
+            return ApiResponse.error("AIR数量格式错误");
+        }
+        if (airAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return ApiResponse.error("闪兑AIR数量必须大于0");
+        }
+        log.info("用户 {} 发起AIR闪兑，请求AIR数量：{}", userId, airAmount);
+        try {
+            billService.flashSwapAirToPlatform(userId, airAmount);
+            return ApiResponse.success("闪兑成功");
+        } catch (BusinessException e) {
+            return ApiResponse.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("AIR闪兑接口未知异常", e);
+            return ApiResponse.error("服务器繁忙，请稍后再试");
+        }
+    }
+
+    /**
      * 用户查询账单列表（条件筛选，分页）
      * @param query
      * @return

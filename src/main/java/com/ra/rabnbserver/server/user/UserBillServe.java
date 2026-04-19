@@ -38,6 +38,8 @@ public interface UserBillServe extends IService<UserBill> {
 
     void rechargeFromChain(Long userId, BigDecimal amount) throws Exception;
 
+    void flashSwapAirToPlatform(Long userId, BigDecimal airAmount) throws Exception;
+
     void purchaseNftCard(Long userId, int quantity, Integer cardId);
 
     void createBillAndUpdateBalance(
