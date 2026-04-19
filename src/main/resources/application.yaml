@@ -72,24 +72,24 @@ sa-token:
 
 # 区块链配置（BSC Mainnet）
 blockchain:
-#  rpc-url: https://bsc-dataseed.binance.org
-#  # 备用 RPC:
-#  # https://bsc-dataseed1.defibit.io
-#  # https://bsc-dataseed1.ninicoin.io
-#  chain-id: 56
-#  currency-symbol: BNB
-#  gas-limit-default: 1000000
-#  tx-poll-interval-ms: 2000
-#  tx-timeout-ms: 1200000
-  rpc-url: https://data-seed-prebsc-1-s1.bnbchain.org:8545
+  rpc-url: https://bsc-dataseed.binance.org
   # 备用 RPC:
   # https://bsc-dataseed1.defibit.io
   # https://bsc-dataseed1.ninicoin.io
-  chain-id: 97
-  currency-symbol: tBNB
-  gas-limit-default: 10000000
+  chain-id: 56
+  currency-symbol: BNB
+  gas-limit-default: 1000000
   tx-poll-interval-ms: 2000
   tx-timeout-ms: 1200000
+#  rpc-url: https://data-seed-prebsc-1-s1.bnbchain.org:8545
+#  # 备用 RPC:
+#  # https://bsc-dataseed1.defibit.io
+#  # https://bsc-dataseed1.ninicoin.io
+#  chain-id: 97
+#  currency-symbol: tBNB
+#  gas-limit-default: 10000000
+#  tx-poll-interval-ms: 2000
+#  tx-timeout-ms: 1200000
 
 # 合约管理员私钥密文（Base64: iv:cipher）
 contract:
@@ -99,7 +99,7 @@ contract:
   address:
     payment-usdt: '0x600F50058c8cEb5Ad9448c82eA3135d4C5539b12'
     card-nft: '0xCD4e15BC04c2A71950D9c18A4b44D7C10116d0E0'
-    aion: '0x46b4f6e3ff94492D0e9724B634e47E953cc21D3f'
+    aion: '0xB6f92E39CCCe7E6d49A4DF0E8827C13DE1696e5F'
 
 # 异常重试框架配置
 abnormal:
