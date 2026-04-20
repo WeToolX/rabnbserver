@@ -283,8 +283,8 @@ public class UserController {
         } catch (Exception e) {
             return ApiResponse.error("金额格式错误");
         }
-        if (amount.compareTo(new BigDecimal("50")) < 0) {
-            return ApiResponse.error("充值金额必须大于等于50");
+        if (amount.compareTo(new BigDecimal("40")) < 0) {
+            return ApiResponse.error("充值金额必须大于等于40");
         }
         log.info("用户 {} 尝试通过链上充值: {}", userId, amount);
         try {
