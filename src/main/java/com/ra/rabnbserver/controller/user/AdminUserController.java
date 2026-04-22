@@ -48,7 +48,6 @@ public class AdminUserController {
     private UserServe userService;
 
     private final CardNftContract cardNftContract;
-    private final CardNftContractV1  cardNftContractV1;
     private final UserBillServe userBillServer;
     private final AdminUserService adminUserService;
     private final AdminRoleService adminRoleService;
@@ -56,9 +55,8 @@ public class AdminUserController {
     private final UserBillServe userBillServe;
     private final WithdrawServe withdrawServe;
 
-    public AdminUserController(CardNftContract cardNftContract, CardNftContractV1 cardNftContractV1, UserBillServe userBillServer, AdminUserService adminUserService, AdminRoleService adminRoleService, AdminPermissionService adminPermissionService, UserBillServe userBillServe, WithdrawServe withdrawServe) {
+    public AdminUserController(CardNftContract cardNftContract, UserBillServe userBillServer, AdminUserService adminUserService, AdminRoleService adminRoleService, AdminPermissionService adminPermissionService, UserBillServe userBillServe, WithdrawServe withdrawServe) {
         this.cardNftContract = cardNftContract;
-        this.cardNftContractV1 = cardNftContractV1;
         this.userBillServer = userBillServer;
         this.adminUserService = adminUserService;
         this.adminRoleService = adminRoleService;
