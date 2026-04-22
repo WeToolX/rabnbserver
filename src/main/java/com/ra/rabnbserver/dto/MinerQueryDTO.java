@@ -32,6 +32,8 @@ public class MinerQueryDTO {
      */
     private String minerId;
 
+    private String walletAddress;
+
     /**
      * 到期状态筛选
      * 1: 已到期 (超过30天未缴费)

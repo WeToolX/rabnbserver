@@ -90,6 +90,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             }
         }
         wrapper.like(StrUtil.isNotBlank(query.getMinerId()), UserMiner::getMinerId, query.getMinerId());
+        wrapper.like(StrUtil.isNotBlank(query.getWalletAddress()), UserMiner::getWalletAddress, query.getWalletAddress());
 
         if (StrUtil.isNotBlank(query.getStartTime())) {
             wrapper.ge(UserMiner::getCreateTime, cn.hutool.core.date.DateUtil.parse(query.getStartTime()).toLocalDateTime());
