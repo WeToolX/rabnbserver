@@ -79,6 +79,14 @@ public class User extends BaseEntity {
     private Integer level;
 
     /**
+     * 用户等级，从1级开始，系统根据直属下级矿机数量自动计算
+     */
+    @TableField("user_grade")
+    @ColumnComment("用户等级，从1级开始，系统根据直属下级矿机数量自动计算")
+    @DefaultValue("1")
+    private Integer userGrade = 1;
+
+    /**
      * 家族路径(0,id1,id2,...)
      */
     @TableField("path")

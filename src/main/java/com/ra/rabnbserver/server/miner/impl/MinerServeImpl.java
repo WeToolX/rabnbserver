@@ -144,6 +144,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         }
 
         this.saveBatch(miners);
+        recalculateDirectParentGrade(user);
         return miners.stream().map(UserMiner::getId).collect(Collectors.toList());
     }
 
@@ -187,6 +188,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                             .set(UserMiner::getNftBurnStatus, 1)
                             .eq(UserMiner::getId, miner.getId())
                             .update();
+                    recalculateDirectParentGrade(user);
                 } else {
                     log.warn("卡牌销毁回执未成功，矿机ID={}, 回执状态={}",
                             miner.getId(),
@@ -347,6 +349,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                         "ELSE DATE_ADD(payment_date, INTERVAL 30 DAY) END")
                 .setSql("eligible_date = NULL")
                 .update();
+        recalculateDirectParentGrade(currentUser);
     }
 
     private void applyQuantityLimit(LambdaQueryWrapper<UserMiner> wrapper, Integer quantity) {
@@ -366,6 +369,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
      */
     @Override
     public void processDailyProfit() throws Exception {
+        recalculateAllUserGrades();
         log.info(">>> 开始执行每日收益分发任务...");
         MinerSettings settings = getSettings();
         LocalDateTime now = LocalDateTime.now();
@@ -710,13 +714,13 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         LocalDateTime todayStart = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
         LocalDateTime todayEnd = LocalDateTime.now().withHour(23).withMinute(59).withSecond(59);
         MinerSettings settings = getSettings();
-        List<MinerSettings.RewardTier> tiers = settings.getTiers();
+        List<MinerSettings.RewardTier> tiers = normalizeRewardTiers(settings.getTiers());
         if (tiers == null || tiers.isEmpty()) {
             log.warn("未配置电费分成阶梯比例，跳过结算");
             return;
         }
         // 按台数门槛从大到小排序，确保优先匹配高档位
-        tiers.sort((a, b) -> b.getMinCount().compareTo(a.getMinCount()));
+        recalculateAllUserGrades(settings, tiers);
         // 获取系统中所有活跃矿机
         List<UserMiner> allActiveMiners = this.list(new LambdaQueryWrapper<UserMiner>().eq(UserMiner::getStatus, 1));
         if (allActiveMiners.isEmpty()) return;
@@ -728,7 +732,6 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         // Map<上级ID, List<直属下级今日缴纳的电费金额>>
         Map<Long, List<BigDecimal>> parentSubFeesMap = new HashMap<>();
         // Map<上级ID, 直属下级活跃矿机总台数>
-        Map<Long, Integer> parentSubActiveCountMap = new HashMap<>();
 
         for (UserMiner m : allActiveMiners) {
             User user = userMap.get(m.getUserId());
@@ -736,7 +739,6 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             Long parentId = getDirectParentId(user);
             if (parentId == null) continue;
             // 统计直属下级的活跃机器总数（用于定比例阶梯）
-            parentSubActiveCountMap.merge(parentId, 1, Integer::sum);
             // 统计今日缴费情况（用于算奖金基数）
             boolean isPaidToday = m.getPaymentDate() != null
                     && m.getPaymentDate().isAfter(todayStart)
@@ -749,14 +751,9 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         parentSubFeesMap.forEach((parentId, fees) -> {
             if (fees.isEmpty()) return;
             // 确定比例：基于该上级的【所有直属下级活跃机器总数】
-            int totalSubMiners = parentSubActiveCountMap.getOrDefault(parentId, 0);
-            BigDecimal ratio = BigDecimal.ZERO;
-            for (MinerSettings.RewardTier tier : tiers) {
-                if (totalSubMiners >= tier.getMinCount()) {
-                    ratio = tier.getRatio();
-                    break;
-                }
-            }
+            UserGradeResult gradeResult = calculateUserGradeResult(parentId, settings, tiers);
+            int totalSubMiners = gradeResult.getMinerCount();
+            BigDecimal ratio = gradeResult.getRatio();
             // 未达门槛不发放
             if (ratio.compareTo(BigDecimal.ZERO) <= 0) return;
             // 计算基数：1人缴费不剔除，多人缴费剔除最高一项
@@ -787,10 +784,178 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         });
     }
 
+
+    @Override
+    public void recalculateUserGrade(Long userId) {
+        if (userId == null || userId <= 0) {
+            return;
+        }
+        MinerSettings settings = getSettings();
+        List<MinerSettings.RewardTier> tiers = normalizeRewardTiers(settings.getTiers());
+        UserGradeResult result = calculateUserGradeResult(userId, settings, tiers);
+        updateUserGrade(userId, result.getGrade());
+    }
+
+    @Override
+    public void recalculateAllUserGrades() {
+        MinerSettings settings = getSettings();
+        List<MinerSettings.RewardTier> tiers = normalizeRewardTiers(settings.getTiers());
+        recalculateAllUserGrades(settings, tiers);
+    }
+
+    @Override
+    public void recalculateUserGradeForTeamArea(Long userId) {
+        recalculateUserGrade(userId);
+    }
+
+    private void recalculateAllUserGrades(MinerSettings settings, List<MinerSettings.RewardTier> tiers) {
+        List<User> allUsers = userMapper.selectList(new LambdaQueryWrapper<User>()
+                .select(User::getId, User::getParentId, User::getPath, User::getUserGrade));
+        if (allUsers == null || allUsers.isEmpty()) {
+            return;
+        }
+
+        Map<Long, User> userMap = allUsers.stream()
+                .collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
+
+        LambdaQueryWrapper<UserMiner> minerWrapper = new LambdaQueryWrapper<UserMiner>()
+                .select(UserMiner::getUserId);
+        applyGradeMinerCondition(minerWrapper, settings);
+        List<UserMiner> miners = this.list(minerWrapper);
+
+        Map<Long, Integer> directSubMinerCountMap = new HashMap<>();
+        for (UserMiner miner : miners) {
+            User owner = userMap.get(miner.getUserId());
+            Long parentId = getDirectParentId(owner);
+            if (parentId != null && parentId > 0) {
+                directSubMinerCountMap.merge(parentId, 1, Integer::sum);
+            }
+        }
+
+        for (User user : allUsers) {
+            int minerCount = directSubMinerCountMap.getOrDefault(user.getId(), 0);
+            UserGradeResult result = matchGrade(minerCount, tiers);
+            Integer oldGrade = user.getUserGrade() == null ? 1 : user.getUserGrade();
+            if (!oldGrade.equals(result.getGrade())) {
+                updateUserGrade(user.getId(), result.getGrade());
+            }
+        }
+    }
+
+    private UserGradeResult calculateUserGradeResult(Long userId, MinerSettings settings, List<MinerSettings.RewardTier> tiers) {
+        if (userId == null || userId <= 0) {
+            return UserGradeResult.none();
+        }
+        List<User> directChildren = userMapper.selectList(new LambdaQueryWrapper<User>()
+                .select(User::getId, User::getParentId, User::getPath))
+                .stream()
+                .filter(user -> userId.equals(getDirectParentId(user)))
+                .collect(Collectors.toList());
+        if (directChildren == null || directChildren.isEmpty()) {
+            return matchGrade(0, tiers);
+        }
+
+        List<Long> childIds = directChildren.stream().map(User::getId).collect(Collectors.toList());
+        LambdaQueryWrapper<UserMiner> minerWrapper = new LambdaQueryWrapper<UserMiner>()
+                .in(UserMiner::getUserId, childIds);
+        applyGradeMinerCondition(minerWrapper, settings);
+        int minerCount = Math.toIntExact(this.count(minerWrapper));
+        return matchGrade(minerCount, tiers);
+    }
+
+    private UserGradeResult matchGrade(int minerCount, List<MinerSettings.RewardTier> tiers) {
+        if (tiers == null || tiers.isEmpty()) {
+            return new UserGradeResult(1, minerCount, BigDecimal.ZERO);
+        }
+        for (MinerSettings.RewardTier tier : tiers) {
+            Integer minCount = tier.getMinCount();
+            if (minCount != null && minerCount >= minCount) {
+                Integer grade = tier.getGrade() == null ? 1 : tier.getGrade();
+                BigDecimal ratio = tier.getRatio() == null ? BigDecimal.ZERO : tier.getRatio();
+                return new UserGradeResult(grade, minerCount, ratio);
+            }
+        }
+        return new UserGradeResult(1, minerCount, BigDecimal.ZERO);
+    }
+
+    private List<MinerSettings.RewardTier> normalizeRewardTiers(List<MinerSettings.RewardTier> tiers) {
+        if (tiers == null || tiers.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<MinerSettings.RewardTier> sortedAsc = tiers.stream()
+                .filter(t -> t != null && t.getMinCount() != null)
+                .sorted(Comparator.comparing(MinerSettings.RewardTier::getMinCount))
+                .collect(Collectors.toList());
+        for (int i = 0; i < sortedAsc.size(); i++) {
+            if (sortedAsc.get(i).getGrade() == null) {
+                sortedAsc.get(i).setGrade(i + 1);
+            }
+        }
+        sortedAsc.sort((a, b) -> b.getMinCount().compareTo(a.getMinCount()));
+        return sortedAsc;
+    }
+
+    private void applyGradeMinerCondition(LambdaQueryWrapper<UserMiner> wrapper, MinerSettings settings) {
+        if (isActiveMinerGradeMode(settings)) {
+            wrapper.eq(UserMiner::getStatus, 1);
+        } else {
+            wrapper.eq(UserMiner::getNftBurnStatus, 1);
+        }
+    }
+
+    private boolean isActiveMinerGradeMode(MinerSettings settings) {
+        return settings == null || settings.getActiveMinerGradeMode() == null || Boolean.TRUE.equals(settings.getActiveMinerGradeMode());
+    }
+
+    private void updateUserGrade(Long userId, Integer grade) {
+        User update = new User();
+        update.setId(userId);
+        update.setUserGrade(grade == null || grade <= 0 ? 1 : grade);
+        userMapper.updateById(update);
+    }
+
+    private void recalculateDirectParentGrade(User user) {
+        Long parentId = getDirectParentId(user);
+        if (parentId != null && parentId > 0) {
+            recalculateUserGrade(parentId);
+        }
+    }
+
+    private static class UserGradeResult {
+        private final Integer grade;
+        private final Integer minerCount;
+        private final BigDecimal ratio;
+
+        private UserGradeResult(Integer grade, Integer minerCount, BigDecimal ratio) {
+            this.grade = grade == null || grade <= 0 ? 1 : grade;
+            this.minerCount = minerCount == null ? 0 : minerCount;
+            this.ratio = ratio == null ? BigDecimal.ZERO : ratio;
+        }
+
+        private static UserGradeResult none() {
+            return new UserGradeResult(1, 0, BigDecimal.ZERO);
+        }
+
+        private Integer getGrade() {
+            return grade;
+        }
+
+        private Integer getMinerCount() {
+            return minerCount;
+        }
+
+        private BigDecimal getRatio() {
+            return ratio;
+        }
+    }
+
     /**
      * 解析直属上级ID
      */
     private Long getDirectParentId(User user) {
+        if (user != null && user.getParentId() != null && user.getParentId() > 0) {
+            return user.getParentId();
+        }
         if (user == null || StrUtil.isBlank(user.getPath()) || "0,".equals(user.getPath())) {
             return null;
         }

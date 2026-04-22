@@ -34,6 +34,12 @@ public interface MinerServe extends IService<UserMiner> {
 
     void buyNftWithFragments(Long userId, FragmentExchangeNftDTO dto) throws Exception;
 
+    void recalculateUserGrade(Long userId);
+
+    void recalculateAllUserGrades();
+
+    void recalculateUserGradeForTeamArea(Long userId);
+
     @Transactional(rollbackFor = Exception.class)
     void processDailyElectricityReward();
 }

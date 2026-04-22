@@ -13,6 +13,7 @@ public class MinerSettings {
     private String electricityRewardTime = "23:50:00"; // daily electricity reward time
     private BigDecimal electricFee = new BigDecimal("10.00"); // electricity fee
     private BigDecimal accelerationFee = new BigDecimal("50.00"); // acceleration pack fee
+    private Boolean activeMinerGradeMode = true; // true: active miners, false: redeemed miners
     private Map<Integer, BigDecimal> distributionRatios = new HashMap<>(); // distribution ratios
     private List<RewardTier> tiers; // reward tiers
     private Map<String, BigDecimal> minerDailyProfits = defaultMinerDailyProfits(); // daily profit per miner type
@@ -48,6 +49,8 @@ public class MinerSettings {
 
     @Data
     public static class RewardTier {
+        /** user grade */
+        private Integer grade;
         /** minimum direct miner count */
         private Integer minCount;
         /** ratio such as 0.15 for 15% */

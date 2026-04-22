@@ -64,6 +64,7 @@ public class SystemConfigServeImpl extends ServiceImpl<SystemConfigMapper, Syste
                 MinerSettings minerSettings = new MinerSettings();
                 minerSettings.setElectricFee(new BigDecimal("10.00"));
                 minerSettings.setAccelerationFee(new BigDecimal("50.00"));
+                minerSettings.setActiveMinerGradeMode(true);
                 Map<String, BigDecimal> minerDailyProfits = new HashMap<>();
                 minerDailyProfits.put("0", BigDecimal.ZERO);
                 minerDailyProfits.put("1", BigDecimal.ZERO);
