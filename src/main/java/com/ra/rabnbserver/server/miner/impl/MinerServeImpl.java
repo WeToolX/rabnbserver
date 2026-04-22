@@ -325,13 +325,14 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         if (currentBalance.compareTo(totalFee) < 0) {
             throw new BusinessException("余额不足，需支付: " + totalFee);
         }
+        String billRemark = buildElectricityBillRemark(dto.getMode(), targets);
         userBillServe.createBillAndUpdateBalance(
                 userId,
                 totalFee,
                 BillType.PLATFORM,
                 FundType.EXPENSE,
                 TransactionType.PURCHASE,
-                "缴纳电费-模式" + dto.getMode(),
+                billRemark,
                 null,
                 null,
                 null,
@@ -351,6 +352,27 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 .setSql("eligible_date = NULL")
                 .update();
         recalculateDirectParentGrade(currentUser);
+    }
+
+    private String buildElectricityBillRemark(Integer mode, List<UserMiner> targets) {
+        List<Long> allIds = targets.stream()
+                .map(UserMiner::getId)
+                .collect(Collectors.toList());
+        List<Long> activationIds = targets.stream()
+                .filter(miner -> Integer.valueOf(0).equals(miner.getStatus()))
+                .map(UserMiner::getId)
+                .collect(Collectors.toList());
+        List<Long> renewalIds = targets.stream()
+                .filter(miner -> !Integer.valueOf(0).equals(miner.getStatus()))
+                .map(UserMiner::getId)
+                .collect(Collectors.toList());
+        return "缴纳电费-模式" + mode
+                + "；矿机ID列表=" + allIds
+                + "；是否续费=" + (!renewalIds.isEmpty())
+                + "；激活矿机ID列表=" + activationIds
+                + "；续费矿机ID列表=" + renewalIds
+                + "；激活数量=" + activationIds.size()
+                + "；续费数量=" + renewalIds.size();
     }
 
     private void applyQuantityLimit(LambdaQueryWrapper<UserMiner> wrapper, Integer quantity) {
