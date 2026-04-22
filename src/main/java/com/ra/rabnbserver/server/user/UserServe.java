@@ -2,8 +2,10 @@ package com.ra.rabnbserver.server.user;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.ra.rabnbserver.VO.team.TeamAreaResultVO;
 import com.ra.rabnbserver.dto.RegisterDataDTO;
 import com.ra.rabnbserver.dto.team.AdminTeamSearchDTO;
+import com.ra.rabnbserver.dto.team.TeamAreaQueryDTO;
 import com.ra.rabnbserver.dto.user.UserQueryDTO;
 import com.ra.rabnbserver.pojo.User;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +31,8 @@ public interface UserServe extends IService<User> {
     void unbindTeamBatch(List<Long> userIds);
 
     IPage<User> selectComplexTeamPage(AdminTeamSearchDTO queryDTO);
+
+    TeamAreaResultVO getTeamAreaList(Long userId, TeamAreaQueryDTO query);
 
     @Transactional(rollbackFor = Exception.class)
     boolean addUser(User user);

@@ -567,3 +567,12 @@ rabnbserver
 - src/main/java/com/ra/rabnbserver/server/user/UserServe.java：新增启动自检所需的邀请码同步服务接口。
 - src/main/java/com/ra/rabnbserver/server/user/impl/UserServeImpl.java：实现启动自检逻辑，批量修正 inviteCode != user_wallet_address 的用户记录，并输出中文日志。
 - src/main/java/com/ra/rabnbserver/mapper/UserMapper.java：新增邀请码不一致统计与批量修正 SQL。
+
+## 团队大小区接口补充（2026-04-22）
+
+- 团队大小区接口：`src/main/java/com/ra/rabnbserver/controller/user/UserController.java`
+  新增 `POST /api/user/team/area-list`，按 `type=1` 返回大区、`type=2` 返回小区；查询前重算当前用户等级，返回直属下级地址、团队人数、已兑换矿机数、已激活矿机数和最后兑换时间。
+- 团队大小区统计 SQL：`src/main/java/com/ra/rabnbserver/mapper/UserMapper.java`
+  `selectDirectAreaStats` 按当前用户直属下级 `parent_id` 聚合 `user_miner`，大区排序规则为已兑换数量倒序、最后兑换时间更早优先、用户 ID 升序兜底。
+- 团队大小区 DTO/VO：`src/main/java/com/ra/rabnbserver/dto/team/TeamAreaQueryDTO.java`、`src/main/java/com/ra/rabnbserver/VO/team/TeamAreaItemVO.java`、`src/main/java/com/ra/rabnbserver/VO/team/TeamAreaResultVO.java`
+  负责承载 `type/page/size` 请求参数和 `records/total/teamCount/purchasedCount/activeCount/currentUserGrade/currentUserElectricityRatio` 响应数据。

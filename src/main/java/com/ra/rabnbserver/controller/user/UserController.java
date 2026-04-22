@@ -8,9 +8,11 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ra.rabnbserver.VO.team.TeamAreaResultVO;
 import com.ra.rabnbserver.crypto.CryptoConstants;
 import com.ra.rabnbserver.crypto.CryptoUtils;
 import com.ra.rabnbserver.dto.*;
+import com.ra.rabnbserver.dto.team.TeamAreaQueryDTO;
 import com.ra.rabnbserver.dto.team.TeamQueryDTO;
 import com.ra.rabnbserver.dto.user.BillQueryDTO;
 import com.ra.rabnbserver.dto.user.WithdrawApplyDTO;
@@ -23,6 +25,7 @@ import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.User;
 import com.ra.rabnbserver.pojo.UserBill;
 import com.ra.rabnbserver.pojo.WithdrawRecord;
+import com.ra.rabnbserver.server.miner.MinerServe;
 import com.ra.rabnbserver.server.user.UserServe;
 import com.ra.rabnbserver.server.user.WithdrawServe;
 import com.ra.rabnbserver.server.user.impl.UserBillRetryServeImpl;
@@ -52,12 +55,14 @@ public class UserController {
     private final UserServe userService;
     private final UserBillServe billService;
     private final UserBillRetryServeImpl billRetryServe;
+    private final MinerServe minerServe;
 
     private final WithdrawServe withdrawServe;
-    public UserController(UserServe userService, UserBillServe billService, UserBillRetryServeImpl billRetryServe, WithdrawServe withdrawServe) {
+    public UserController(UserServe userService, UserBillServe billService, UserBillRetryServeImpl billRetryServe, MinerServe minerServe, WithdrawServe withdrawServe) {
         this.userService = userService;
         this.billService = billService;
         this.billRetryServe = billRetryServe;
+        this.minerServe = minerServe;
         this.withdrawServe = withdrawServe;
     }
 
@@ -216,6 +221,22 @@ public class UserController {
             }
             log.info("获取用户信息成功: {}", user);
             return ApiResponse.success("获取成功", user);
+        } catch (BusinessException e) {
+            return ApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 查询团队大区/小区业绩列表
+     */
+    @SaCheckLogin
+    @PostMapping("/team/area-list")
+    public String getTeamAreaList(@RequestBody(required = false) TeamAreaQueryDTO query) {
+        try {
+            Long userId = getFormalUserId();
+            minerServe.recalculateUserGradeForTeamArea(userId);
+            TeamAreaResultVO result = userService.getTeamAreaList(userId, query);
+            return ApiResponse.success("获取成功", result);
         } catch (BusinessException e) {
             return ApiResponse.error(e.getMessage());
         }

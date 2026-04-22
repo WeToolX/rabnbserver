@@ -1,5 +1,6 @@
 package com.ra.rabnbserver.server.user.impl;
 
+import com.alibaba.fastjson2.JSON;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
@@ -8,27 +9,40 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.ra.rabnbserver.VO.MinerSettings;
+import com.ra.rabnbserver.VO.team.TeamAreaItemVO;
+import com.ra.rabnbserver.VO.team.TeamAreaResultVO;
 import com.ra.rabnbserver.dto.RegisterDataDTO;
 import com.ra.rabnbserver.dto.team.AdminTeamSearchDTO;
+import com.ra.rabnbserver.dto.team.TeamAreaQueryDTO;
 import com.ra.rabnbserver.dto.user.UserQueryDTO;
 import com.ra.rabnbserver.exception.BusinessException;
+import com.ra.rabnbserver.mapper.SystemConfigMapper;
 import com.ra.rabnbserver.mapper.UserMapper;
+import com.ra.rabnbserver.pojo.SystemConfig;
 import com.ra.rabnbserver.pojo.User;
 import com.ra.rabnbserver.server.user.UserServe;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
 @Slf4j
 public class UserServeImpl extends ServiceImpl<UserMapper, User> implements UserServe {
+
+    @Autowired
+    private SystemConfigMapper configMapper;
 
     @Override
     public User getByWalletAddress(String address) {
@@ -460,6 +474,115 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         }
         wrapper.orderByDesc(User::getCreateTime);
         return this.page(page, wrapper);
+    }
+
+    @Override
+    public TeamAreaResultVO getTeamAreaList(Long userId, TeamAreaQueryDTO query) {
+        if (userId == null || userId <= 0) {
+            throw new BusinessException("用户ID不能为空");
+        }
+        TeamAreaQueryDTO safeQuery = normalizeTeamAreaQuery(query);
+        List<TeamAreaItemVO> areas = this.baseMapper.selectDirectAreaStats(userId);
+        if (areas == null) {
+            areas = Collections.emptyList();
+        }
+
+        TeamAreaResultVO result = new TeamAreaResultVO();
+        result.setType(safeQuery.getType());
+        result.setPage(safeQuery.getPage());
+        result.setSize(safeQuery.getSize());
+        result.setTotalPurchasedCount(sumPurchasedCount(areas));
+        result.setTotalActiveCount(sumActiveCount(areas));
+        fillCurrentGradeAndRatio(result, userId);
+
+        if (areas.isEmpty()) {
+            result.setRecords(Collections.emptyList());
+            result.setTotal(0L);
+            return result;
+        }
+
+        TeamAreaItemVO bigArea = areas.get(0);
+        List<TeamAreaItemVO> smallAreas = new ArrayList<>(areas.subList(1, areas.size()));
+        if (safeQuery.getType() == 1) {
+            result.setRecords(Collections.singletonList(bigArea));
+            result.setTotal(1L);
+        } else {
+            result.setRecords(pageSmallAreas(smallAreas, safeQuery));
+            result.setTotal((long) smallAreas.size());
+        }
+        return result;
+    }
+
+    private TeamAreaQueryDTO normalizeTeamAreaQuery(TeamAreaQueryDTO query) {
+        TeamAreaQueryDTO safeQuery = query == null ? new TeamAreaQueryDTO() : query;
+        if (safeQuery.getType() == null || (safeQuery.getType() != 1 && safeQuery.getType() != 2)) {
+            throw new BusinessException("type必须为1-大区或2-小区");
+        }
+        if (safeQuery.getPage() == null || safeQuery.getPage() <= 0) {
+            safeQuery.setPage(1);
+        }
+        if (safeQuery.getSize() == null || safeQuery.getSize() <= 0) {
+            safeQuery.setSize(20);
+        }
+        return safeQuery;
+    }
+
+    private List<TeamAreaItemVO> pageSmallAreas(List<TeamAreaItemVO> smallAreas, TeamAreaQueryDTO query) {
+        if (smallAreas == null || smallAreas.isEmpty()) {
+            return Collections.emptyList();
+        }
+        int page = query.getPage();
+        int size = query.getSize();
+        int fromIndex = Math.max((page - 1) * size, 0);
+        if (fromIndex >= smallAreas.size()) {
+            return Collections.emptyList();
+        }
+        int toIndex = Math.min(fromIndex + size, smallAreas.size());
+        return new ArrayList<>(smallAreas.subList(fromIndex, toIndex));
+    }
+
+    private int sumPurchasedCount(List<TeamAreaItemVO> areas) {
+        return areas.stream()
+                .map(TeamAreaItemVO::getPurchasedCount)
+                .filter(Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
+    }
+
+    private int sumActiveCount(List<TeamAreaItemVO> areas) {
+        return areas.stream()
+                .map(TeamAreaItemVO::getActiveCount)
+                .filter(Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
+    }
+
+    private void fillCurrentGradeAndRatio(TeamAreaResultVO result, Long userId) {
+        User user = this.getById(userId);
+        Integer grade = user == null ? 1 : user.getUserGrade();
+        result.setCurrentUserGrade(grade);
+        result.setCurrentUserElectricityRatio(findRatioByGrade(grade, getMinerSettings()));
+    }
+
+    private BigDecimal findRatioByGrade(Integer grade, MinerSettings settings) {
+        if (grade == null || settings == null || settings.getTiers() == null || settings.getTiers().isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return settings.getTiers().stream()
+                .filter(tier -> tier != null && grade.equals(tier.getGrade()))
+                .map(MinerSettings.RewardTier::getRatio)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(BigDecimal.ZERO);
+    }
+
+    private MinerSettings getMinerSettings() {
+        SystemConfig config = configMapper.selectOne(new LambdaQueryWrapper<SystemConfig>()
+                .eq(SystemConfig::getConfigKey, "MINER_SYSTEM_SETTINGS"));
+        if (config == null || !StringUtils.hasText(config.getConfigValue())) {
+            return new MinerSettings();
+        }
+        return JSON.parseObject(config.getConfigValue(), MinerSettings.class);
     }
 
     @Transactional(rollbackFor = Exception.class)

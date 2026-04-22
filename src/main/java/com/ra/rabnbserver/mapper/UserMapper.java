@@ -1,6 +1,7 @@
 package com.ra.rabnbserver.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.ra.rabnbserver.VO.team.TeamAreaItemVO;
 import com.ra.rabnbserver.pojo.User;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -8,6 +9,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Mapper
 public interface UserMapper extends BaseMapper<User> {
@@ -47,5 +49,27 @@ public interface UserMapper extends BaseMapper<User> {
      */
     @Update("UPDATE user SET invite_code = user_wallet_address WHERE NOT (invite_code <=> user_wallet_address)")
     int syncInviteCodeWithWalletAddress();
+
+    @Select("""
+            SELECT
+                u.id AS userId,
+                u.user_wallet_address AS address,
+                u.team_count AS teamCount,
+                COALESCE(COUNT(um.id), 0) AS purchasedCount,
+                COALESCE(SUM(CASE WHEN um.status = 1 THEN 1 ELSE 0 END), 0) AS activeCount,
+                MAX(um.create_time) AS lastExchangeTime
+            FROM user u
+            LEFT JOIN user_miner um
+                ON um.user_id = u.id
+               AND um.nft_burn_status = 1
+            WHERE u.parent_id = #{userId}
+            GROUP BY u.id, u.user_wallet_address, u.team_count
+            ORDER BY
+                purchasedCount DESC,
+                CASE WHEN lastExchangeTime IS NULL THEN 1 ELSE 0 END ASC,
+                lastExchangeTime ASC,
+                u.id ASC
+            """)
+    List<TeamAreaItemVO> selectDirectAreaStats(@Param("userId") Long userId);
 
 }
