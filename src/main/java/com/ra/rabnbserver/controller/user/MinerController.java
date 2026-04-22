@@ -146,6 +146,9 @@ public class MinerController {
         if (dto.getCardId() == null) {
             return ApiResponse.error("卡牌ID不能为空");
         }
+        if (!Integer.valueOf(3).equals(dto.getCardId())) {
+            return ApiResponse.error("碎片兑换卡牌仅支持兑换金卡");
+        }
         try {
             minerServe.buyNftWithFragments(userId, dto);
             return ApiResponse.success("卡牌兑换成功，已发放至钱包");
