@@ -79,12 +79,12 @@ public class User extends BaseEntity {
     private Integer level;
 
     /**
-     * 用户等级，从1级开始，系统根据直属下级矿机数量自动计算
+     * 用户等级，0表示无等级，达到阶梯后从1级开始，系统根据直属下级矿机数量自动计算
      */
     @TableField("user_grade")
-    @ColumnComment("用户等级，从1级开始，系统根据直属下级矿机数量自动计算")
-    @DefaultValue("1")
-    private Integer userGrade = 1;
+    @ColumnComment("用户等级，0表示无等级，达到阶梯后从1级开始，系统根据直属下级矿机数量自动计算")
+    @DefaultValue("0")
+    private Integer userGrade = 0;
 
     /**
      * 管理员自定义的用户等级。0 表示未进行手动覆盖。
@@ -98,12 +98,12 @@ public class User extends BaseEntity {
         int autoGrade = userGrade == null ? 0 : userGrade;
         int customGrade = customUserGrade == null ? 0 : customUserGrade;
         int finalGrade = Math.max(autoGrade, customGrade);
-        return finalGrade <= 0 ? 1 : finalGrade;
+        return finalGrade <= 0 ? 0 : finalGrade;
     }
 
     @JsonIgnore
     public Integer getAutoUserGrade() {
-        return userGrade == null || userGrade <= 0 ? 1 : userGrade;
+        return userGrade == null || userGrade <= 0 ? 0 : userGrade;
     }
 
     /**

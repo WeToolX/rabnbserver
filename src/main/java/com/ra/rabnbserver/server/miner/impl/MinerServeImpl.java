@@ -15,6 +15,7 @@ import com.ra.rabnbserver.VO.MinerSettings;
 import com.ra.rabnbserver.contract.AionContract;
 import com.ra.rabnbserver.contract.CardNftContract;
 import com.ra.rabnbserver.contract.CardNftContractV1;
+import com.ra.rabnbserver.dto.MinerElectricityActionDTO;
 import com.ra.rabnbserver.dto.MinerElectricityDTO;
 import com.ra.rabnbserver.dto.MinerQueryDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.AdminMinerActionDTO;
@@ -352,6 +353,229 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 .setSql("eligible_date = NULL")
                 .update();
         recalculateDirectParentGrade(currentUser);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @Override
+    public void activateElectricity(Long userId, MinerElectricityActionDTO dto) {
+        log.info("激活矿机缴纳电费传入参数：{}", dto);
+        List<UserMiner> targets = resolveActivateElectricityTargets(userId, dto);
+        String remark = buildElectricityActionBillRemark("激活", dto, targets);
+        payElectricityForTargets(userId, targets, remark, true);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @Override
+    public void renewElectricity(Long userId, MinerElectricityActionDTO dto) {
+        log.info("矿机续费传入参数：{}", dto);
+        List<UserMiner> targets = resolveRenewElectricityTargets(userId, dto);
+        String remark = buildElectricityActionBillRemark("续费", dto, targets);
+        payElectricityForTargets(userId, targets, remark, false);
+    }
+
+    private List<UserMiner> resolveActivateElectricityTargets(Long userId, MinerElectricityActionDTO dto) {
+        if (dto == null) {
+            throw new BusinessException("参数不能为空");
+        }
+        LambdaQueryWrapper<UserMiner> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(UserMiner::getUserId, userId)
+                .eq(UserMiner::getNftBurnStatus, 1)
+                .eq(UserMiner::getStatus, 0);
+        applyElectricityActionCondition(wrapper, dto);
+        List<UserMiner> targets = this.list(wrapper);
+        validateElectricityTargets(dto, targets, "没有可激活的矿机", "部分矿机不可激活，请刷新后重试");
+        return targets;
+    }
+
+    private List<UserMiner> resolveRenewElectricityTargets(Long userId, MinerElectricityActionDTO dto) {
+        if (dto == null) {
+            throw new BusinessException("参数不能为空");
+        }
+        LambdaQueryWrapper<UserMiner> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(UserMiner::getUserId, userId)
+                .eq(UserMiner::getNftBurnStatus, 1);
+        applyRenewScopeCondition(wrapper, dto.getRenewScope());
+        applyElectricityActionCondition(wrapper, dto);
+        List<UserMiner> targets = this.list(wrapper);
+        validateElectricityTargets(dto, targets, "没有可续费的矿机", "部分矿机不可续费，请确认矿机已激活或刷新后重试");
+        return targets;
+    }
+
+    private void applyElectricityActionCondition(LambdaQueryWrapper<UserMiner> wrapper, MinerElectricityActionDTO dto) {
+        String actionType = normalizeElectricityActionType(dto);
+        switch (actionType) {
+            case "IDS":
+                List<Long> requestIds = normalizeUserMinerIds(dto.getUserMinerIds());
+                wrapper.in(UserMiner::getId, requestIds);
+                break;
+            case "TYPE":
+                if (StrUtil.isBlank(dto.getMinerType())) {
+                    throw new BusinessException("请选择矿机类型");
+                }
+                wrapper.eq(UserMiner::getMinerType, dto.getMinerType());
+                wrapper.orderByAsc(UserMiner::getCreateTime).orderByAsc(UserMiner::getId);
+                applyQuantityLimit(wrapper, dto.getQuantity());
+                break;
+            case "ALL":
+                wrapper.orderByAsc(UserMiner::getCreateTime).orderByAsc(UserMiner::getId);
+                applyQuantityLimit(wrapper, dto.getQuantity());
+                break;
+            default:
+                throw new BusinessException("操作方式错误");
+        }
+    }
+
+    private void applyRenewScopeCondition(LambdaQueryWrapper<UserMiner> wrapper, String renewScope) {
+        String scope = StrUtil.blankToDefault(renewScope, "ALL_RENEWABLE").trim().toUpperCase(Locale.ROOT);
+        LocalDateTime expiryLimit = LocalDateTime.now().minusDays(30);
+        LocalDateTime warningLine = LocalDateTime.now().minusDays(25);
+        switch (scope) {
+            case "ALL_RENEWABLE":
+                wrapper.in(UserMiner::getStatus, Arrays.asList(1, 2));
+                break;
+            case "ACTIVE":
+                wrapper.eq(UserMiner::getStatus, 1);
+                break;
+            case "EXPIRING_SOON":
+                wrapper.eq(UserMiner::getStatus, 1)
+                        .ge(UserMiner::getPaymentDate, expiryLimit)
+                        .le(UserMiner::getPaymentDate, warningLine);
+                break;
+            case "EXPIRED":
+                wrapper.and(w -> w.eq(UserMiner::getStatus, 2)
+                        .or(x -> x.eq(UserMiner::getStatus, 1)
+                                .lt(UserMiner::getPaymentDate, expiryLimit)));
+                break;
+            default:
+                throw new BusinessException("续费范围错误");
+        }
+    }
+
+    private String normalizeElectricityActionType(MinerElectricityActionDTO dto) {
+        if (StrUtil.isNotBlank(dto.getActionType())) {
+            return dto.getActionType().trim().toUpperCase(Locale.ROOT);
+        }
+        if (dto.getUserMinerIds() != null && !dto.getUserMinerIds().isEmpty()) {
+            return "IDS";
+        }
+        if (StrUtil.isNotBlank(dto.getMinerType())) {
+            return "TYPE";
+        }
+        return "ALL";
+    }
+
+    private List<Long> normalizeUserMinerIds(List<Long> userMinerIds) {
+        if (userMinerIds == null || userMinerIds.isEmpty()) {
+            throw new BusinessException("请选择矿机");
+        }
+        List<Long> validIds = userMinerIds.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        if (validIds.size() != userMinerIds.size()) {
+            throw new BusinessException("矿机ID不能为空");
+        }
+        LinkedHashSet<Long> distinctIds = new LinkedHashSet<>(validIds);
+        if (distinctIds.size() != validIds.size()) {
+            throw new BusinessException("选择的矿机存在重复，请刷新后重试");
+        }
+        return new ArrayList<>(distinctIds);
+    }
+
+    private void validateElectricityTargets(MinerElectricityActionDTO dto, List<UserMiner> targets, String emptyMessage, String mismatchMessage) {
+        if (targets == null || targets.isEmpty()) {
+            throw new BusinessException(emptyMessage);
+        }
+        if ("IDS".equals(normalizeElectricityActionType(dto))) {
+            int requestCount = normalizeUserMinerIds(dto.getUserMinerIds()).size();
+            if (targets.size() != requestCount) {
+                throw new BusinessException(mismatchMessage);
+            }
+        }
+    }
+
+    private void payElectricityForTargets(Long userId, List<UserMiner> targets, String billRemark, boolean activateAction) {
+        MinerSettings settings = getSettings();
+        BigDecimal unitFee = settings.getElectricFee();
+        if (unitFee == null || unitFee.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("电费单价暂未配置");
+        }
+        BigDecimal totalFee = unitFee.multiply(new BigDecimal(targets.size()));
+        User currentUser = userMapper.selectById(userId);
+        if (currentUser == null) {
+            throw new BusinessException(0, "用户不存在");
+        }
+        BigDecimal currentBalance = currentUser.getBalance() == null ? BigDecimal.ZERO : currentUser.getBalance();
+        if (currentBalance.compareTo(totalFee) < 0) {
+            throw new BusinessException("余额不足，需支付: " + totalFee);
+        }
+        userBillServe.createBillAndUpdateBalance(
+                userId,
+                totalFee,
+                BillType.PLATFORM,
+                FundType.EXPENSE,
+                TransactionType.PURCHASE,
+                billRemark,
+                null,
+                null,
+                null,
+                targets.size(),
+                null
+        );
+
+        List<Long> targetIds = targets.stream().map(UserMiner::getId).collect(Collectors.toList());
+        com.baomidou.mybatisplus.extension.conditions.update.LambdaUpdateChainWrapper<UserMiner> updateWrapper = this.lambdaUpdate()
+                .in(UserMiner::getId, targetIds)
+                .set(UserMiner::getIsElectricityPaid, 1)
+                .set(UserMiner::getStatus, 1)
+                .setSql("eligible_date = NULL");
+        if (activateAction) {
+            updateWrapper.setSql("payment_date = NOW()");
+        } else {
+            updateWrapper.setSql("payment_date = CASE " +
+                    "WHEN payment_date IS NULL OR payment_date < DATE_SUB(NOW(), INTERVAL 30 DAY) " +
+                    "THEN NOW() " +
+                    "ELSE DATE_ADD(payment_date, INTERVAL 30 DAY) END");
+        }
+        if (!updateWrapper.update()) {
+            throw new BusinessException("矿机电费状态更新失败");
+        }
+        recalculateDirectParentGrade(currentUser);
+    }
+
+    private String buildElectricityActionBillRemark(String actionName, MinerElectricityActionDTO dto, List<UserMiner> targets) {
+        LocalDateTime expiryLimit = LocalDateTime.now().minusDays(30);
+        List<Long> allIds = targets.stream().map(UserMiner::getId).collect(Collectors.toList());
+        List<Long> activeIds = targets.stream()
+                .filter(miner -> Integer.valueOf(1).equals(miner.getStatus()) && !isMinerExpired(miner, expiryLimit))
+                .map(UserMiner::getId)
+                .collect(Collectors.toList());
+        List<Long> expiredIds = targets.stream()
+                .filter(miner -> isMinerExpired(miner, expiryLimit))
+                .map(UserMiner::getId)
+                .collect(Collectors.toList());
+        StringBuilder remark = new StringBuilder("矿机电费-").append(actionName)
+                .append("；操作方式=").append(normalizeElectricityActionType(dto))
+                .append("；矿机类型=").append(StrUtil.blankToDefault(dto.getMinerType(), "全部"))
+                .append("；矿机ID列表=").append(allIds)
+                .append("；数量=").append(allIds.size());
+        if ("续费".equals(actionName)) {
+            remark.append("；续费范围=").append(StrUtil.blankToDefault(dto.getRenewScope(), "ALL_RENEWABLE"))
+                    .append("；运行中ID列表=").append(activeIds)
+                    .append("；已到期ID列表=").append(expiredIds);
+        }
+        return remark.toString();
+    }
+
+    private boolean isMinerExpired(UserMiner miner, LocalDateTime expiryLimit) {
+        if (miner == null) {
+            return false;
+        }
+        if (Integer.valueOf(2).equals(miner.getStatus())) {
+            return true;
+        }
+        return Integer.valueOf(1).equals(miner.getStatus())
+                && miner.getPaymentDate() != null
+                && miner.getPaymentDate().isBefore(expiryLimit);
     }
 
     private String buildElectricityBillRemark(Integer mode, List<UserMiner> targets) {
@@ -895,7 +1119,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
 
     private UserGradeResult matchGrade(int minerCount, List<MinerSettings.RewardTier> tiers) {
         if (tiers == null || tiers.isEmpty()) {
-            return new UserGradeResult(1, minerCount, BigDecimal.ZERO);
+            return new UserGradeResult(0, minerCount, BigDecimal.ZERO);
         }
         for (MinerSettings.RewardTier tier : tiers) {
             Integer minCount = tier.getMinCount();
@@ -905,7 +1129,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 return new UserGradeResult(grade, minerCount, ratio);
             }
         }
-        return new UserGradeResult(1, minerCount, BigDecimal.ZERO);
+        return new UserGradeResult(0, minerCount, BigDecimal.ZERO);
     }
 
     private BigDecimal findRatioByGrade(Integer grade, List<MinerSettings.RewardTier> tiers) {
@@ -952,7 +1176,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     private void updateUserGrade(Long userId, Integer grade) {
         User update = new User();
         update.setId(userId);
-        update.setUserGrade(grade == null || grade <= 0 ? 1 : grade);
+        update.setUserGrade(grade == null || grade <= 0 ? 0 : grade);
         userMapper.updateById(update);
     }
 
@@ -969,13 +1193,13 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         private final BigDecimal ratio;
 
         private UserGradeResult(Integer grade, Integer minerCount, BigDecimal ratio) {
-            this.grade = grade == null || grade <= 0 ? 1 : grade;
+            this.grade = grade == null || grade <= 0 ? 0 : grade;
             this.minerCount = minerCount == null ? 0 : minerCount;
             this.ratio = ratio == null ? BigDecimal.ZERO : ratio;
         }
 
         private static UserGradeResult none() {
-            return new UserGradeResult(1, 0, BigDecimal.ZERO);
+            return new UserGradeResult(0, 0, BigDecimal.ZERO);
         }
 
         private Integer getGrade() {

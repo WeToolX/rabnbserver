@@ -559,7 +559,7 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
 
     private void fillCurrentGradeAndRatio(TeamAreaResultVO result, Long userId) {
         User user = this.getById(userId);
-        Integer grade = user == null ? 1 : user.getUserGrade();
+        Integer grade = user == null ? 0 : user.getUserGrade();
         result.setCurrentUserGrade(grade);
         result.setCurrentUserElectricityRatio(findRatioByGrade(grade, getMinerSettings()));
     }

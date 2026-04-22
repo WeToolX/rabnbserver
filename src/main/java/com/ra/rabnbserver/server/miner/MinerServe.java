@@ -3,6 +3,7 @@ package com.ra.rabnbserver.server.miner;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.ra.rabnbserver.VO.GetAdminClaimVO;
+import com.ra.rabnbserver.dto.MinerElectricityActionDTO;
 import com.ra.rabnbserver.dto.MinerElectricityDTO;
 import com.ra.rabnbserver.dto.MinerQueryDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.AdminMinerActionDTO;
@@ -23,6 +24,12 @@ public interface MinerServe extends IService<UserMiner> {
 
     @Transactional(rollbackFor = Exception.class)
     void payElectricity(Long userId, MinerElectricityDTO dto);
+
+    @Transactional(rollbackFor = Exception.class)
+    void activateElectricity(Long userId, MinerElectricityActionDTO dto);
+
+    @Transactional(rollbackFor = Exception.class)
+    void renewElectricity(Long userId, MinerElectricityActionDTO dto);
 
     void processDailyProfit() throws Exception;
 

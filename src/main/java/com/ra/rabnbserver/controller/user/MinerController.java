@@ -6,6 +6,7 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ra.rabnbserver.VO.GetAdminClaimVO;
 import com.ra.rabnbserver.VO.MinerSettings;
+import com.ra.rabnbserver.dto.MinerElectricityActionDTO;
 import com.ra.rabnbserver.dto.MinerElectricityDTO;
 import com.ra.rabnbserver.dto.MinerProfitRecordQueryDTO;
 import com.ra.rabnbserver.dto.MinerPurchaseDTO;
@@ -176,6 +177,42 @@ public class MinerController {
         try {
             minerServe.payElectricity(userId, dto);
             return ApiResponse.success("电费缴纳成功");
+        } catch (BusinessException e) {
+            return ApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 缴纳电费激活矿机，仅处理待激活矿机。
+     */
+    @SaCheckLogin
+    @PostMapping("/electricity/activate")
+    public String activateElectricity(@RequestBody MinerElectricityActionDTO dto) {
+        if (!ISOPEN) {
+            return ApiResponse.error("暂未开放！");
+        }
+        Long userId = getFormalUserId();
+        try {
+            minerServe.activateElectricity(userId, dto);
+            return ApiResponse.success("电费缴纳成功，矿机已激活");
+        } catch (BusinessException e) {
+            return ApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 矿机续费，仅处理运行中、即将到期或已到期矿机。
+     */
+    @SaCheckLogin
+    @PostMapping("/electricity/renew")
+    public String renewElectricity(@RequestBody MinerElectricityActionDTO dto) {
+        if (!ISOPEN) {
+            return ApiResponse.error("暂未开放！");
+        }
+        Long userId = getFormalUserId();
+        try {
+            minerServe.renewElectricity(userId, dto);
+            return ApiResponse.success("矿机续费成功");
         } catch (BusinessException e) {
             return ApiResponse.error(e.getMessage());
         }
