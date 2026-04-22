@@ -29,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -263,19 +264,30 @@ public class AdminUserController {
     @SaCheckLogin
     @PostMapping("/amount/deposit")
     public String deposit(@RequestBody AdminAmountRequestDTO dto) throws Exception {
-        BigDecimal amount = new BigDecimal(dto.getAmount());
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+        if (dto == null || !StringUtils.hasText(dto.getAmount())) {
+            return ApiResponse.error("充值金额不能为空");
+        }
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(dto.getAmount());
+        } catch (NumberFormatException e) {
+            return ApiResponse.error("充值金额格式错误");
+        }
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             return ApiResponse.error("充值金额必须大于0");
         }
         try {
+            boolean manualPerformance = StringUtils.hasText(dto.getSource());
+            String remark = manualPerformance ? dto.getSource().trim() : "系统充值";
+            TransactionType transactionType = manualPerformance ? TransactionType.REWARD : TransactionType.DEPOSIT;
             // 调用统一方法：平台类型、入账类型、充值业务
             userBillServe.createBillAndUpdateBalance(
                     dto.getUserId(),
                     amount,
                     BillType.PLATFORM,
                     FundType.INCOME,
-                    TransactionType.DEPOSIT,
-                    "系统充值",
+                    transactionType,
+                    remark,
                     null, // orderId 为空则内部自动生成
                     null,  // 平台内充值通常无链上 TxHash
                     null,
@@ -286,6 +298,23 @@ public class AdminUserController {
         } catch (BusinessException e) {
             log.error("充值失败: {}", e.getMessage());
             return ApiResponse.error("充值失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 设置或清除后台自定义用户等级
+     */
+    @SaCheckLogin
+    @PostMapping("/grade/set")
+    public String setCustomUserGrade(@RequestBody AdminSetUserGradeDTO dto) {
+        if (dto == null || dto.getUserId() == null) {
+            return ApiResponse.error("用户ID不能为空");
+        }
+        try {
+            userService.setCustomUserGrade(dto.getUserId(), dto.getCustomUserGrade());
+            return ApiResponse.success("设置成功");
+        } catch (BusinessException e) {
+            return ApiResponse.error(e.getMessage());
         }
     }
 

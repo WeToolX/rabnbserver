@@ -37,6 +37,9 @@ public interface UserServe extends IService<User> {
     boolean updateUser(User user);
 
     @Transactional(rollbackFor = Exception.class)
+    void setCustomUserGrade(Long userId, Integer customUserGrade);
+
+    @Transactional(rollbackFor = Exception.class)
     boolean deleteUserWithCascade(Long id);
 
     IPage<User> selectUserPage(UserQueryDTO queryDTO);

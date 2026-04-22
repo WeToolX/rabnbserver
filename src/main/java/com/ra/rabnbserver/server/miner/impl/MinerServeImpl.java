@@ -748,12 +748,19 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             }
         }
         // 开始对有缴费产生的上级进行奖金核算
+        if (parentSubFeesMap.isEmpty()) {
+            return;
+        }
+        Map<Long, User> rewardParentMap = userMapper.selectBatchIds(parentSubFeesMap.keySet()).stream()
+                .collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
         parentSubFeesMap.forEach((parentId, fees) -> {
             if (fees.isEmpty()) return;
             // 确定比例：基于该上级的【所有直属下级活跃机器总数】
             UserGradeResult gradeResult = calculateUserGradeResult(parentId, settings, tiers);
             int totalSubMiners = gradeResult.getMinerCount();
-            BigDecimal ratio = gradeResult.getRatio();
+            User parent = rewardParentMap.get(parentId);
+            Integer effectiveGrade = parent == null ? gradeResult.getGrade() : parent.getUserGrade();
+            BigDecimal ratio = findRatioByGrade(effectiveGrade, tiers);
             // 未达门槛不发放
             if (ratio.compareTo(BigDecimal.ZERO) <= 0) return;
             // 计算基数：1人缴费不剔除，多人缴费剔除最高一项
@@ -810,7 +817,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
 
     private void recalculateAllUserGrades(MinerSettings settings, List<MinerSettings.RewardTier> tiers) {
         List<User> allUsers = userMapper.selectList(new LambdaQueryWrapper<User>()
-                .select(User::getId, User::getParentId, User::getPath, User::getUserGrade));
+                .select(User::getId, User::getParentId, User::getPath, User::getUserGrade, User::getCustomUserGrade));
         if (allUsers == null || allUsers.isEmpty()) {
             return;
         }
@@ -835,7 +842,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         for (User user : allUsers) {
             int minerCount = directSubMinerCountMap.getOrDefault(user.getId(), 0);
             UserGradeResult result = matchGrade(minerCount, tiers);
-            Integer oldGrade = user.getUserGrade() == null ? 1 : user.getUserGrade();
+            Integer oldGrade = user.getAutoUserGrade();
             if (!oldGrade.equals(result.getGrade())) {
                 updateUserGrade(user.getId(), result.getGrade());
             }
@@ -876,6 +883,18 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             }
         }
         return new UserGradeResult(1, minerCount, BigDecimal.ZERO);
+    }
+
+    private BigDecimal findRatioByGrade(Integer grade, List<MinerSettings.RewardTier> tiers) {
+        if (grade == null || tiers == null || tiers.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return tiers.stream()
+                .filter(tier -> tier != null && grade.equals(tier.getGrade()))
+                .map(MinerSettings.RewardTier::getRatio)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(BigDecimal.ZERO);
     }
 
     private List<MinerSettings.RewardTier> normalizeRewardTiers(List<MinerSettings.RewardTier> tiers) {

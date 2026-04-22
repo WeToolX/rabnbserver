@@ -502,6 +502,26 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
 
     @Transactional(rollbackFor = Exception.class)
     @Override
+    public void setCustomUserGrade(Long userId, Integer customUserGrade) {
+        if (userId == null) {
+            throw new BusinessException("用户ID不能为空");
+        }
+        User dbUser = this.getById(userId);
+        if (dbUser == null) {
+            throw new BusinessException("用户不存在");
+        }
+        int grade = customUserGrade == null ? 0 : customUserGrade;
+        if (grade < 0) {
+            throw new BusinessException("自定义等级不能小于0");
+        }
+        this.lambdaUpdate()
+                .eq(User::getId, userId)
+                .set(User::getCustomUserGrade, grade)
+                .update();
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @Override
     public boolean deleteUserWithCascade(Long id) {
         // 获取要删除的用户
         User targetUser = this.getById(id);

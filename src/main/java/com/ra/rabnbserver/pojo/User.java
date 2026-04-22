@@ -87,6 +87,26 @@ public class User extends BaseEntity {
     private Integer userGrade = 1;
 
     /**
+     * 管理员自定义的用户等级。0 表示未进行手动覆盖。
+     */
+    @TableField("custom_user_grade")
+    @ColumnComment("管理员自定义的用户等级。0 表示未进行手动覆盖")
+    @DefaultValue("0")
+    private Integer customUserGrade = 0;
+
+    public Integer getUserGrade() {
+        int autoGrade = userGrade == null ? 0 : userGrade;
+        int customGrade = customUserGrade == null ? 0 : customUserGrade;
+        int finalGrade = Math.max(autoGrade, customGrade);
+        return finalGrade <= 0 ? 1 : finalGrade;
+    }
+
+    @JsonIgnore
+    public Integer getAutoUserGrade() {
+        return userGrade == null || userGrade <= 0 ? 1 : userGrade;
+    }
+
+    /**
      * 家族路径(0,id1,id2,...)
      */
     @TableField("path")
