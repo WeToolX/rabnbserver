@@ -491,8 +491,9 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         result.setType(safeQuery.getType());
         result.setPage(safeQuery.getPage());
         result.setSize(safeQuery.getSize());
-        result.setTotalPurchasedCount(sumPurchasedCount(areas));
-        result.setTotalActiveCount(sumActiveCount(areas));
+        TeamAreaItemVO totalStats = this.baseMapper.selectTeamMinerStats(userId);
+        result.setTotalPurchasedCount(totalStats == null || totalStats.getPurchasedCount() == null ? 0 : totalStats.getPurchasedCount());
+        result.setTotalActiveCount(totalStats == null || totalStats.getActiveCount() == null ? 0 : totalStats.getActiveCount());
         fillCurrentGradeAndRatio(result, userId);
 
         if (areas.isEmpty()) {
@@ -541,22 +542,6 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         return new ArrayList<>(smallAreas.subList(fromIndex, toIndex));
     }
 
-    private int sumPurchasedCount(List<TeamAreaItemVO> areas) {
-        return areas.stream()
-                .map(TeamAreaItemVO::getPurchasedCount)
-                .filter(Objects::nonNull)
-                .mapToInt(Integer::intValue)
-                .sum();
-    }
-
-    private int sumActiveCount(List<TeamAreaItemVO> areas) {
-        return areas.stream()
-                .map(TeamAreaItemVO::getActiveCount)
-                .filter(Objects::nonNull)
-                .mapToInt(Integer::intValue)
-                .sum();
-    }
-
     private void fillCurrentGradeAndRatio(TeamAreaResultVO result, Long userId) {
         User user = this.getById(userId);
         Integer grade = user == null ? 0 : user.getUserGrade();
@@ -570,10 +555,17 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         }
         return settings.getTiers().stream()
                 .filter(tier -> tier != null && grade.equals(tier.getGrade()))
-                .map(MinerSettings.RewardTier::getRatio)
+                .map(this::getTierRewardRatio)
                 .filter(Objects::nonNull)
                 .findFirst()
                 .orElse(BigDecimal.ZERO);
+    }
+
+    private BigDecimal getTierRewardRatio(MinerSettings.RewardTier tier) {
+        if (tier == null) {
+            return BigDecimal.ZERO;
+        }
+        return tier.getRewardRatio() != null ? tier.getRewardRatio() : tier.getRatio();
     }
 
     private MinerSettings getMinerSettings() {

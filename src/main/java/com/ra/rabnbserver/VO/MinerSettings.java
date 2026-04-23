@@ -14,8 +14,10 @@ public class MinerSettings {
     private BigDecimal electricFee = new BigDecimal("10.00"); // electricity fee
     private BigDecimal accelerationFee = new BigDecimal("50.00"); // acceleration pack fee
     private Boolean activeMinerGradeMode = true; // true: active miners, false: redeemed miners
+    private Boolean smallAreaUnlimitedElectricityReward = false; // true: reward all small-area electricity without generation limits
     private Map<Integer, BigDecimal> distributionRatios = new HashMap<>(); // distribution ratios
     private List<RewardTier> tiers; // reward tiers
+    private List<ElectricityGenerationPerformanceRatio> electricityGenerationPerformanceRatios; // generation performance ratios
     private Map<String, BigDecimal> minerDailyProfits = defaultMinerDailyProfits(); // daily profit per miner type
     private Map<Integer, BigDecimal> fragmentToCardRates = new HashMap<>(); // fragment cost per cardId
     private BigDecimal fragmentToCardRate = new BigDecimal("100"); // legacy fallback rate
@@ -51,9 +53,19 @@ public class MinerSettings {
     public static class RewardTier {
         /** user grade */
         private Integer grade;
-        /** minimum direct miner count */
+        /** minimum team active miner count */
         private Integer minCount;
-        /** ratio such as 0.15 for 15% */
+        /** legacy ratio such as 0.15 for 15% */
         private BigDecimal ratio;
+        /** final electricity reward ratio such as 0.15 for 15% */
+        private BigDecimal rewardRatio;
+    }
+
+    @Data
+    public static class ElectricityGenerationPerformanceRatio {
+        /** 1 means direct subordinate generation */
+        private Integer generation;
+        /** performance ratio such as 0.70 for 70% */
+        private BigDecimal performanceRatio;
     }
 }

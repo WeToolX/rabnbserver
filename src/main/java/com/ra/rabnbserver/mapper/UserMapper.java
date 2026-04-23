@@ -52,24 +52,52 @@ public interface UserMapper extends BaseMapper<User> {
 
     @Select("""
             SELECT
-                u.id AS userId,
-                u.user_wallet_address AS address,
-                u.team_count AS teamCount,
+                direct.id AS userId,
+                direct.user_wallet_address AS address,
+                direct.team_count AS teamCount,
                 COALESCE(COUNT(um.id), 0) AS purchasedCount,
-                COALESCE(SUM(CASE WHEN um.status = 1 THEN 1 ELSE 0 END), 0) AS activeCount,
+                COALESCE(SUM(CASE
+                    WHEN um.status = 1
+                     AND um.payment_date IS NOT NULL
+                     AND um.payment_date > DATE_SUB(NOW(), INTERVAL 30 DAY)
+                    THEN 1 ELSE 0 END), 0) AS activeCount,
                 MAX(um.create_time) AS lastExchangeTime
-            FROM user u
+            FROM user direct
+            LEFT JOIN user member
+                ON member.id = direct.id
+                OR member.path LIKE CONCAT(COALESCE(direct.path, '0,'), direct.id, ',%')
             LEFT JOIN user_miner um
-                ON um.user_id = u.id
+                ON um.user_id = member.id
                AND um.nft_burn_status = 1
-            WHERE u.parent_id = #{userId}
-            GROUP BY u.id, u.user_wallet_address, u.team_count
+            WHERE direct.parent_id = #{userId}
+            GROUP BY direct.id, direct.user_wallet_address, direct.team_count
             ORDER BY
                 purchasedCount DESC,
                 CASE WHEN lastExchangeTime IS NULL THEN 1 ELSE 0 END ASC,
                 lastExchangeTime ASC,
-                u.id ASC
+                direct.id ASC
             """)
     List<TeamAreaItemVO> selectDirectAreaStats(@Param("userId") Long userId);
+
+    @Select("""
+            SELECT
+                COALESCE(COUNT(um.id), 0) AS purchasedCount,
+                COALESCE(SUM(CASE
+                    WHEN um.status = 1
+                     AND um.payment_date IS NOT NULL
+                     AND um.payment_date > DATE_SUB(NOW(), INTERVAL 30 DAY)
+                    THEN 1 ELSE 0 END), 0) AS activeCount,
+                MAX(um.create_time) AS lastExchangeTime
+            FROM user root
+            LEFT JOIN user member
+                ON member.id = root.id
+                OR member.path LIKE CONCAT(COALESCE(root.path, '0,'), root.id, ',%')
+            LEFT JOIN user_miner um
+                ON um.user_id = member.id
+               AND um.nft_burn_status = 1
+            WHERE root.id = #{userId}
+            GROUP BY root.id
+            """)
+    TeamAreaItemVO selectTeamMinerStats(@Param("userId") Long userId);
 
 }

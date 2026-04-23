@@ -12,6 +12,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ra.rabnbserver.VO.CreateUserBillVO;
 import com.ra.rabnbserver.VO.GetAdminClaimVO;
 import com.ra.rabnbserver.VO.MinerSettings;
+import com.ra.rabnbserver.VO.team.TeamAreaItemVO;
 import com.ra.rabnbserver.contract.AionContract;
 import com.ra.rabnbserver.contract.CardNftContract;
 import com.ra.rabnbserver.contract.CardNftContractV1;
@@ -26,6 +27,7 @@ import com.ra.rabnbserver.enums.TransactionType;
 import com.ra.rabnbserver.exception.AionContractException;
 import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.mapper.SystemConfigMapper;
+import com.ra.rabnbserver.mapper.UserBillMapper;
 import com.ra.rabnbserver.mapper.UserMapper;
 import com.ra.rabnbserver.mapper.UserMinerMapper;
 import com.ra.rabnbserver.pojo.*;
@@ -50,6 +52,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> implements MinerServe {
     private final UserMapper userMapper;
+    private final UserBillMapper userBillMapper;
     private final UserBillServe userBillServe;
     private final SystemConfigMapper configMapper;
     private final IService<MinerProfitRecord> profitRecordService;
@@ -958,6 +961,10 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     @Transactional(rollbackFor = Exception.class)
     @Override
     public void processDailyElectricityReward() {
+        if (System.currentTimeMillis() >= 0) {
+            processSmallAreaElectricityReward();
+            return;
+        }
         LocalDateTime todayStart = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
         LocalDateTime todayEnd = LocalDateTime.now().withHour(23).withMinute(59).withSecond(59);
         MinerSettings settings = getSettings();
@@ -1038,6 +1045,99 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         });
     }
 
+    private void processSmallAreaElectricityReward() {
+        LocalDateTime todayStart = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime todayEnd = LocalDateTime.now().withHour(23).withMinute(59).withSecond(59).withNano(999999999);
+        MinerSettings settings = getSettings();
+        List<MinerSettings.RewardTier> tiers = normalizeRewardTiers(settings.getTiers());
+        if (tiers == null || tiers.isEmpty()) {
+            log.warn("electricity reward tiers are not configured, skip");
+            return;
+        }
+        recalculateAllUserGrades(settings, tiers);
+
+        List<UserBill> electricityBills = userBillMapper.selectList(new LambdaQueryWrapper<UserBill>()
+                .eq(UserBill::getBillType, BillType.PLATFORM)
+                .eq(UserBill::getFundType, FundType.EXPENSE)
+                .eq(UserBill::getTransactionType, TransactionType.PURCHASE)
+                .gt(UserBill::getNum, 0)
+                .ge(UserBill::getTransactionTime, todayStart)
+                .le(UserBill::getTransactionTime, todayEnd));
+        if (electricityBills.isEmpty()) {
+            return;
+        }
+
+        List<User> allUsers = userMapper.selectList(new LambdaQueryWrapper<User>()
+                .select(User::getId, User::getParentId, User::getPath, User::getUserGrade, User::getCustomUserGrade));
+        Map<Long, User> userMap = allUsers.stream()
+                .collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
+
+        boolean unlimitedSmallArea = Boolean.TRUE.equals(settings.getSmallAreaUnlimitedElectricityReward());
+        Map<Integer, BigDecimal> generationPerformanceRatios = normalizeGenerationPerformanceRatios(settings);
+        if (!unlimitedSmallArea && generationPerformanceRatios.isEmpty()) {
+            log.warn("electricity generation performance ratios are not configured, skip");
+            return;
+        }
+
+        Map<Long, ElectricityRewardSummary> rewardSummaryMap = new HashMap<>();
+        Map<Long, Long> bigAreaChildCache = new HashMap<>();
+
+        for (UserBill bill : electricityBills) {
+            User payer = userMap.get(bill.getUserId());
+            if (payer == null) {
+                continue;
+            }
+            BigDecimal electricityAmount = bill.getAmount() == null ? BigDecimal.ZERO : bill.getAmount();
+            if (electricityAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            List<Long> ancestorIds = getAncestorIdsFromNearest(payer);
+            for (int i = 0; i < ancestorIds.size(); i++) {
+                Long ancestorId = ancestorIds.get(i);
+                User ancestor = userMap.get(ancestorId);
+                if (ancestor == null || isFromBigArea(ancestor, payer, bigAreaChildCache)) {
+                    continue;
+                }
+                int generation = i + 1;
+                BigDecimal performanceRatio = unlimitedSmallArea ? BigDecimal.ONE : generationPerformanceRatios.get(generation);
+                if (performanceRatio == null || performanceRatio.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+                BigDecimal gradeRatio = findRatioByGrade(ancestor.getUserGrade(), tiers);
+                if (gradeRatio.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+                BigDecimal performanceAmount = electricityAmount.multiply(performanceRatio);
+                rewardSummaryMap.computeIfAbsent(ancestorId, id -> new ElectricityRewardSummary())
+                        .add(performanceAmount, gradeRatio, generation);
+            }
+        }
+
+        rewardSummaryMap.forEach((userId, summary) -> {
+            if (summary.getRewardAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                return;
+            }
+            try {
+                userBillServe.createBillAndUpdateBalance(
+                        userId,
+                        summary.getRewardAmount(),
+                        BillType.PLATFORM,
+                        FundType.INCOME,
+                        TransactionType.REWARD,
+                        String.format("small area electricity reward(performance:%s, ratio:%.2f%%, count:%d, max generation:%d)",
+                                summary.getPerformanceAmount(),
+                                summary.getGradeRatio().multiply(new BigDecimal("100")),
+                                summary.getCount(),
+                                summary.getMaxGeneration()),
+                        null, null, null, 0, null
+                );
+                log.info("small area electricity reward success, userId={}, reward={}", userId, summary.getRewardAmount());
+            } catch (Exception e) {
+                log.error("small area electricity reward failed, userId={}, reason={}", userId, e.getMessage());
+            }
+        });
+    }
+
 
     @Override
     public void recalculateUserGrade(Long userId) {
@@ -1077,17 +1177,21 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         applyGradeMinerCondition(minerWrapper, settings);
         List<UserMiner> miners = this.list(minerWrapper);
 
-        Map<Long, Integer> directSubMinerCountMap = new HashMap<>();
+        Map<Long, Integer> teamMinerCountMap = new HashMap<>();
         for (UserMiner miner : miners) {
-            User owner = userMap.get(miner.getUserId());
-            Long parentId = getDirectParentId(owner);
-            if (parentId != null && parentId > 0) {
-                directSubMinerCountMap.merge(parentId, 1, Integer::sum);
+            Long ownerId = miner.getUserId();
+            if (ownerId == null) {
+                continue;
+            }
+            teamMinerCountMap.merge(ownerId, 1, Integer::sum);
+            User owner = userMap.get(ownerId);
+            for (Long ancestorId : getAncestorIdsFromNearest(owner)) {
+                teamMinerCountMap.merge(ancestorId, 1, Integer::sum);
             }
         }
 
         for (User user : allUsers) {
-            int minerCount = directSubMinerCountMap.getOrDefault(user.getId(), 0);
+            int minerCount = teamMinerCountMap.getOrDefault(user.getId(), 0);
             UserGradeResult result = matchGrade(minerCount, tiers);
             Integer oldGrade = user.getAutoUserGrade();
             if (!oldGrade.equals(result.getGrade())) {
@@ -1100,18 +1204,25 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         if (userId == null || userId <= 0) {
             return UserGradeResult.none();
         }
-        List<User> directChildren = userMapper.selectList(new LambdaQueryWrapper<User>()
-                .select(User::getId, User::getParentId, User::getPath))
-                .stream()
-                .filter(user -> userId.equals(getDirectParentId(user)))
-                .collect(Collectors.toList());
-        if (directChildren == null || directChildren.isEmpty()) {
+        User root = userMapper.selectById(userId);
+        if (root == null) {
             return matchGrade(0, tiers);
         }
 
-        List<Long> childIds = directChildren.stream().map(User::getId).collect(Collectors.toList());
+        String teamPathPrefix = StrUtil.blankToDefault(root.getPath(), "0,") + root.getId() + ",";
+        List<Long> teamUserIds = userMapper.selectList(new LambdaQueryWrapper<User>()
+                        .select(User::getId)
+                        .eq(User::getId, userId)
+                        .or()
+                        .likeRight(User::getPath, teamPathPrefix))
+                .stream()
+                .map(User::getId)
+                .collect(Collectors.toList());
+        if (teamUserIds.isEmpty()) {
+            return matchGrade(0, tiers);
+        }
         LambdaQueryWrapper<UserMiner> minerWrapper = new LambdaQueryWrapper<UserMiner>()
-                .in(UserMiner::getUserId, childIds);
+                .in(UserMiner::getUserId, teamUserIds);
         applyGradeMinerCondition(minerWrapper, settings);
         int minerCount = Math.toIntExact(this.count(minerWrapper));
         return matchGrade(minerCount, tiers);
@@ -1125,7 +1236,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             Integer minCount = tier.getMinCount();
             if (minCount != null && minerCount >= minCount) {
                 Integer grade = tier.getGrade() == null ? 1 : tier.getGrade();
-                BigDecimal ratio = tier.getRatio() == null ? BigDecimal.ZERO : tier.getRatio();
+                BigDecimal ratio = getTierRewardRatio(tier);
                 return new UserGradeResult(grade, minerCount, ratio);
             }
         }
@@ -1138,10 +1249,18 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         }
         return tiers.stream()
                 .filter(tier -> tier != null && grade.equals(tier.getGrade()))
-                .map(MinerSettings.RewardTier::getRatio)
+                .map(this::getTierRewardRatio)
                 .filter(Objects::nonNull)
                 .findFirst()
                 .orElse(BigDecimal.ZERO);
+    }
+
+    private BigDecimal getTierRewardRatio(MinerSettings.RewardTier tier) {
+        if (tier == null) {
+            return BigDecimal.ZERO;
+        }
+        return tier.getRewardRatio() != null ? tier.getRewardRatio() :
+                (tier.getRatio() == null ? BigDecimal.ZERO : tier.getRatio());
     }
 
     private List<MinerSettings.RewardTier> normalizeRewardTiers(List<MinerSettings.RewardTier> tiers) {
@@ -1162,11 +1281,10 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     }
 
     private void applyGradeMinerCondition(LambdaQueryWrapper<UserMiner> wrapper, MinerSettings settings) {
-        if (isActiveMinerGradeMode(settings)) {
-            wrapper.eq(UserMiner::getStatus, 1);
-        } else {
-            wrapper.eq(UserMiner::getNftBurnStatus, 1);
-        }
+        wrapper.eq(UserMiner::getNftBurnStatus, 1)
+                .eq(UserMiner::getStatus, 1)
+                .isNotNull(UserMiner::getPaymentDate)
+                .gt(UserMiner::getPaymentDate, LocalDateTime.now().minusDays(30));
     }
 
     private boolean isActiveMinerGradeMode(MinerSettings settings) {
@@ -1181,9 +1299,130 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
     }
 
     private void recalculateDirectParentGrade(User user) {
+        if (user == null) {
+            return;
+        }
+        recalculateUserGrade(user.getId());
+        for (Long ancestorId : getAncestorIdsFromNearest(user)) {
+            recalculateUserGrade(ancestorId);
+        }
+    }
+
+    private Map<Integer, BigDecimal> normalizeGenerationPerformanceRatios(MinerSettings settings) {
+        if (settings == null || settings.getElectricityGenerationPerformanceRatios() == null) {
+            return Collections.emptyMap();
+        }
+        return settings.getElectricityGenerationPerformanceRatios().stream()
+                .filter(item -> item != null
+                        && item.getGeneration() != null
+                        && item.getGeneration() > 0
+                        && item.getPerformanceRatio() != null
+                        && item.getPerformanceRatio().compareTo(BigDecimal.ZERO) > 0)
+                .collect(Collectors.toMap(
+                        MinerSettings.ElectricityGenerationPerformanceRatio::getGeneration,
+                        MinerSettings.ElectricityGenerationPerformanceRatio::getPerformanceRatio,
+                        (a, b) -> b,
+                        TreeMap::new));
+    }
+
+    private boolean isFromBigArea(User ancestor, User payer, Map<Long, Long> bigAreaChildCache) {
+        Long branchChildId = getDirectChildIdUnderAncestor(ancestor, payer);
+        if (branchChildId == null) {
+            return false;
+        }
+        Long bigAreaChildId = bigAreaChildCache.computeIfAbsent(ancestor.getId(), this::findBigAreaChildId);
+        return bigAreaChildId != null && bigAreaChildId.equals(branchChildId);
+    }
+
+    private Long findBigAreaChildId(Long userId) {
+        List<TeamAreaItemVO> areas = userMapper.selectDirectAreaStats(userId);
+        if (areas == null || areas.isEmpty()) {
+            return null;
+        }
+        return areas.get(0).getUserId();
+    }
+
+    private Long getDirectChildIdUnderAncestor(User ancestor, User payer) {
+        if (ancestor == null || payer == null || ancestor.getId() == null || payer.getId() == null
+                || ancestor.getId().equals(payer.getId())) {
+            return null;
+        }
+        List<Long> pathIds = parsePathUserIds(payer.getPath());
+        int ancestorIndex = pathIds.indexOf(ancestor.getId());
+        if (ancestorIndex >= 0) {
+            if (ancestorIndex + 1 < pathIds.size()) {
+                return pathIds.get(ancestorIndex + 1);
+            }
+            return payer.getId();
+        }
+        if (ancestor.getId().equals(payer.getParentId())) {
+            return payer.getId();
+        }
+        return null;
+    }
+
+    private List<Long> getAncestorIdsFromNearest(User user) {
+        if (user == null) {
+            return Collections.emptyList();
+        }
+        List<Long> ancestorIds = parsePathUserIds(user.getPath());
+        Collections.reverse(ancestorIds);
         Long parentId = getDirectParentId(user);
-        if (parentId != null && parentId > 0) {
-            recalculateUserGrade(parentId);
+        if ((ancestorIds.isEmpty() || !Objects.equals(ancestorIds.get(0), parentId))
+                && parentId != null && parentId > 0) {
+            ancestorIds.add(0, parentId);
+        }
+        return ancestorIds.stream()
+                .filter(id -> id != null && id > 0 && !id.equals(user.getId()))
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    private List<Long> parsePathUserIds(String path) {
+        if (StrUtil.isBlank(path)) {
+            return new ArrayList<>();
+        }
+        return Arrays.stream(path.split(","))
+                .filter(s -> StrUtil.isNotBlank(s) && !"0".equals(s))
+                .map(Long::parseLong)
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    private static class ElectricityRewardSummary {
+        private BigDecimal performanceAmount = BigDecimal.ZERO;
+        private BigDecimal rewardAmount = BigDecimal.ZERO;
+        private BigDecimal gradeRatio = BigDecimal.ZERO;
+        private int count = 0;
+        private int maxGeneration = 0;
+
+        private void add(BigDecimal performance, BigDecimal ratio, int generation) {
+            BigDecimal safePerformance = performance == null ? BigDecimal.ZERO : performance;
+            BigDecimal safeRatio = ratio == null ? BigDecimal.ZERO : ratio;
+            this.performanceAmount = this.performanceAmount.add(safePerformance);
+            this.rewardAmount = this.rewardAmount.add(safePerformance.multiply(safeRatio));
+            this.gradeRatio = safeRatio;
+            this.count++;
+            this.maxGeneration = Math.max(this.maxGeneration, generation);
+        }
+
+        private BigDecimal getPerformanceAmount() {
+            return performanceAmount;
+        }
+
+        private BigDecimal getRewardAmount() {
+            return rewardAmount;
+        }
+
+        private BigDecimal getGradeRatio() {
+            return gradeRatio;
+        }
+
+        private int getCount() {
+            return count;
+        }
+
+        private int getMaxGeneration() {
+            return maxGeneration;
         }
     }
 
