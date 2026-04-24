@@ -6,17 +6,17 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * 团队区域查询结果视图对象
+ * 团队大小区查询结果
  */
 @Data
 public class TeamAreaResultVO {
     /**
-     * 区域类型：1-大区, 2-小区
+     * 区域类型：1-大区，2-小区
      */
     private Integer type;
 
     /**
-     * 列表记录详情
+     * 列表记录
      */
     private List<TeamAreaItemVO> records;
 
@@ -24,6 +24,11 @@ public class TeamAreaResultVO {
      * 总记录数（用于分页）
      */
     private Long total;
+
+    /**
+     * 团队总人数
+     */
+    private Integer totalTeamCount;
 
     /**
      * 当前页码
@@ -36,14 +41,29 @@ public class TeamAreaResultVO {
     private Integer size;
 
     /**
-     * 总购买人数
+     * 团队总已购
      */
     private Integer totalPurchasedCount;
 
     /**
-     * 总活跃人数
+     * 团队总激活
      */
     private Integer totalActiveCount;
+
+    /**
+     * 小区总人数
+     */
+    private Integer smallAreaTeamCount;
+
+    /**
+     * 小区总已购
+     */
+    private Integer smallAreaPurchasedCount;
+
+    /**
+     * 小区总激活
+     */
+    private Integer smallAreaActiveCount;
 
     /**
      * 当前用户等级
@@ -51,7 +71,7 @@ public class TeamAreaResultVO {
     private Integer currentUserGrade;
 
     /**
-     * 当前用户电力比例/绩效比例
+     * 当前用户电费分成比例
      */
     private BigDecimal currentUserElectricityRatio;
 }

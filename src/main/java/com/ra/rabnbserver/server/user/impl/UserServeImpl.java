@@ -482,6 +482,7 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
             throw new BusinessException("用户ID不能为空");
         }
         TeamAreaQueryDTO safeQuery = normalizeTeamAreaQuery(query);
+        User currentUser = this.getById(userId);
         List<TeamAreaItemVO> areas = this.baseMapper.selectDirectAreaStats(userId);
         if (areas == null) {
             areas = Collections.emptyList();
@@ -491,10 +492,16 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         result.setType(safeQuery.getType());
         result.setPage(safeQuery.getPage());
         result.setSize(safeQuery.getSize());
+        result.setTotalTeamCount(safeInt(currentUser == null ? null : currentUser.getTeamCount()));
         TeamAreaItemVO totalStats = this.baseMapper.selectTeamMinerStats(userId);
-        result.setTotalPurchasedCount(totalStats == null || totalStats.getPurchasedCount() == null ? 0 : totalStats.getPurchasedCount());
-        result.setTotalActiveCount(totalStats == null || totalStats.getActiveCount() == null ? 0 : totalStats.getActiveCount());
-        fillCurrentGradeAndRatio(result, userId);
+        result.setTotalPurchasedCount(safeInt(totalStats == null ? null : totalStats.getPurchasedCount()));
+        result.setTotalActiveCount(safeInt(totalStats == null ? null : totalStats.getActiveCount()));
+        fillCurrentGradeAndRatio(result, currentUser);
+
+        List<TeamAreaItemVO> smallAreas = areas.size() <= 1
+                ? Collections.emptyList()
+                : new ArrayList<>(areas.subList(1, areas.size()));
+        fillSmallAreaSummary(result, smallAreas);
 
         if (areas.isEmpty()) {
             result.setRecords(Collections.emptyList());
@@ -503,7 +510,6 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         }
 
         TeamAreaItemVO bigArea = areas.get(0);
-        List<TeamAreaItemVO> smallAreas = new ArrayList<>(areas.subList(1, areas.size()));
         if (safeQuery.getType() == 1) {
             result.setRecords(Collections.singletonList(bigArea));
             result.setTotal(1L);
@@ -542,11 +548,37 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         return new ArrayList<>(smallAreas.subList(fromIndex, toIndex));
     }
 
-    private void fillCurrentGradeAndRatio(TeamAreaResultVO result, Long userId) {
-        User user = this.getById(userId);
+    private void fillCurrentGradeAndRatio(TeamAreaResultVO result, User user) {
         Integer grade = user == null ? 0 : user.getUserGrade();
         result.setCurrentUserGrade(grade);
         result.setCurrentUserElectricityRatio(findRatioByGrade(grade, getMinerSettings()));
+    }
+
+    private void fillSmallAreaSummary(TeamAreaResultVO result, List<TeamAreaItemVO> smallAreas) {
+        if (smallAreas == null || smallAreas.isEmpty()) {
+            result.setSmallAreaTeamCount(0);
+            result.setSmallAreaPurchasedCount(0);
+            result.setSmallAreaActiveCount(0);
+            return;
+        }
+        int teamCount = 0;
+        int purchasedCount = 0;
+        int activeCount = 0;
+        for (TeamAreaItemVO item : smallAreas) {
+            if (item == null) {
+                continue;
+            }
+            teamCount += safeInt(item.getTeamCount()) + 1;
+            purchasedCount += safeInt(item.getPurchasedCount());
+            activeCount += safeInt(item.getActiveCount());
+        }
+        result.setSmallAreaTeamCount(teamCount);
+        result.setSmallAreaPurchasedCount(purchasedCount);
+        result.setSmallAreaActiveCount(activeCount);
+    }
+
+    private int safeInt(Integer value) {
+        return value == null ? 0 : value;
     }
 
     private BigDecimal findRatioByGrade(Integer grade, MinerSettings settings) {
