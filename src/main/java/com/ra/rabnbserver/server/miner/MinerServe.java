@@ -8,6 +8,7 @@ import com.ra.rabnbserver.dto.MinerElectricityDTO;
 import com.ra.rabnbserver.dto.MinerQueryDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.AdminMinerActionDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.FragmentExchangeNftDTO;
+import com.ra.rabnbserver.dto.miner.FragmentTransferDTO;
 import com.ra.rabnbserver.pojo.UserMiner;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +41,9 @@ public interface MinerServe extends IService<UserMiner> {
     String adminExchangeUnlocked(AdminMinerActionDTO dto) throws Exception;
 
     void buyNftWithFragments(Long userId, FragmentExchangeNftDTO dto) throws Exception;
+
+    @Transactional(rollbackFor = Exception.class)
+    void transferFragment(Long userId, FragmentTransferDTO dto);
 
     void recalculateUserGrade(Long userId);
 

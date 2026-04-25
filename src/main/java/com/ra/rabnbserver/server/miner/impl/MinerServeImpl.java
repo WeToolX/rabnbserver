@@ -21,6 +21,7 @@ import com.ra.rabnbserver.dto.MinerElectricityDTO;
 import com.ra.rabnbserver.dto.MinerQueryDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.AdminMinerActionDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.FragmentExchangeNftDTO;
+import com.ra.rabnbserver.dto.miner.FragmentTransferDTO;
 import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;
 import com.ra.rabnbserver.enums.TransactionType;
@@ -205,6 +206,84 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 purchaseRetryServe.markAbnormal(miner.getId());
             }
         }
+    }
+    @Transactional(rollbackFor = Exception.class)
+    @Override
+    public void transferFragment(Long userId, FragmentTransferDTO dto) {
+        if (dto == null) {
+            throw new BusinessException("参数不能为空");
+        }
+        if (StrUtil.isBlank(dto.getToAddress())) {
+            throw new BusinessException("接收方钱包地址不能为空");
+        }
+        if (dto.getAmount() == null || dto.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("转账数量必须大于0");
+        }
+        if (dto.getAmount().scale() > 18) {
+            throw new BusinessException("转账数量最多支持18位小数");
+        }
+
+        User receiver = userService.getByWalletAddress(dto.getToAddress().trim());
+        if (receiver == null) {
+            throw new BusinessException("接收方用户不存在");
+        }
+        if (Objects.equals(userId, receiver.getId())) {
+            throw new BusinessException("不能给自己转账");
+        }
+
+        List<User> lockedUsers = userMapper.selectList(new LambdaQueryWrapper<User>()
+                .in(User::getId, Arrays.asList(userId, receiver.getId()))
+                .orderByAsc(User::getId)
+                .last("FOR UPDATE"));
+        Map<Long, User> lockedUserMap = lockedUsers.stream()
+                .collect(Collectors.toMap(User::getId, user -> user, (a, b) -> a));
+        User sender = lockedUserMap.get(userId);
+        receiver = lockedUserMap.get(receiver.getId());
+        if (sender == null || receiver == null) {
+            throw new BusinessException("用户不存在");
+        }
+        if (!isSameLineTeam(sender, receiver)) {
+            throw new BusinessException("发送失败 对方与您不是同一团队");
+        }
+
+        BigDecimal normalizedAmount = dto.getAmount().stripTrailingZeros();
+        if (normalizedAmount.scale() < 0) {
+            normalizedAmount = normalizedAmount.setScale(0);
+        }
+        String rawFragmentNum = normalizedAmount.movePointRight(18).toBigIntegerExact().toString();
+        String orderId = "FRAG_TRANSFER_" + IdWorker.getIdStr();
+
+        CreateUserBillVO senderBill = new CreateUserBillVO();
+        senderBill.setNum(rawFragmentNum);
+        CreateUserBillVO receiverBill = new CreateUserBillVO();
+        receiverBill.setNum(rawFragmentNum);
+
+        userBillServe.createBillAndUpdateBalance(
+                sender.getId(),
+                BigDecimal.ZERO,
+                BillType.FRAGMENT,
+                FundType.EXPENSE,
+                TransactionType.TRANSFER,
+                "发送碎片给 " + receiver.getUserWalletAddress(),
+                orderId,
+                null,
+                null,
+                0,
+                senderBill
+        );
+        userBillServe.createBillAndUpdateBalance(
+                receiver.getId(),
+                BigDecimal.ZERO,
+                BillType.FRAGMENT,
+                FundType.INCOME,
+                TransactionType.TRANSFER,
+                "收到 " + sender.getUserWalletAddress() + " 转赠碎片",
+                orderId,
+                null,
+                null,
+                0,
+                receiverBill
+        );
     }
 
     /**
@@ -1388,6 +1467,26 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 .collect(Collectors.toCollection(ArrayList::new));
     }
 
+    private boolean isAncestor(User sender, User receiver) {
+        if (sender == null || receiver == null || receiver.getId() == null) {
+            return false;
+        }
+        String senderPath = StrUtil.blankToDefault(sender.getPath(), "0,");
+        return senderPath.contains("," + receiver.getId() + ",");
+    }
+
+    private boolean isDescendant(User sender, User receiver) {
+        if (sender == null || receiver == null || sender.getId() == null) {
+            return false;
+        }
+        String receiverPath = StrUtil.blankToDefault(receiver.getPath(), "0,");
+        return receiverPath.contains("," + sender.getId() + ",");
+    }
+
+    private boolean isSameLineTeam(User sender, User receiver) {
+        return isAncestor(sender, receiver) || isDescendant(sender, receiver);
+    }
+
     private static class ElectricityRewardSummary {
         private BigDecimal performanceAmount = BigDecimal.ZERO;
         private BigDecimal rewardAmount = BigDecimal.ZERO;
@@ -1502,3 +1601,4 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         return com.alibaba.fastjson2.JSON.parseObject(config.getConfigValue(), MinerSettings.class);
     }
 }
+

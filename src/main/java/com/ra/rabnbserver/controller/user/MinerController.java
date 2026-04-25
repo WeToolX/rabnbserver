@@ -13,6 +13,7 @@ import com.ra.rabnbserver.dto.MinerPurchaseDTO;
 import com.ra.rabnbserver.dto.MinerQueryDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.AdminMinerActionDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.FragmentExchangeNftDTO;
+import com.ra.rabnbserver.dto.miner.FragmentTransferDTO;
 import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.UserMiner;
@@ -181,7 +182,26 @@ public class MinerController {
             return ApiResponse.error(e.getMessage());
         }
     }
-
+    @SaCheckLogin
+    @PostMapping("/fragment/transfer")
+    public String transferFragment(@RequestBody FragmentTransferDTO dto) {
+        if (!ISOPEN) {
+            return ApiResponse.error("暂未开放！");
+        }
+        Long userId = getFormalUserId();
+        if (dto == null || StrUtil.isBlank(dto.getToAddress()) || dto.getAmount() == null) {
+            return ApiResponse.error("参数缺失");
+        }
+        try {
+            minerServe.transferFragment(userId, dto);
+            return ApiResponse.success("碎片转账成功");
+        } catch (BusinessException e) {
+            return ApiResponse.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("碎片转账失败, userId: {}", userId, e);
+            return ApiResponse.error("系统处理失败");
+        }
+    }
     /**
      * 缴纳电费激活矿机，仅处理待激活矿机。
      */
@@ -273,3 +293,4 @@ public class MinerController {
         return Long.parseLong(loginId);
     }
 }
+
