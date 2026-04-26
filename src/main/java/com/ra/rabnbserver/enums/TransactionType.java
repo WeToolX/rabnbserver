@@ -20,7 +20,8 @@ public enum TransactionType implements BaseEnum{
     EXCHANGE("EXCHANGE", "闪兑"),
     REWARD("REWARD", "奖励"),
     PROFIT("PROFIT", "收益"),
-    TRANSFER("TRANSFER", "转账");
+    TRANSFER("TRANSFER", "转账"),
+    GOLD_QUANT("GOLD_QUANT", "黄金量化");
 
     @EnumValue
     @JsonValue

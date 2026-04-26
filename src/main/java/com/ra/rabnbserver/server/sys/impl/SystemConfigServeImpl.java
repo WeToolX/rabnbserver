@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ra.rabnbserver.VO.MinerSettings;
+import com.ra.rabnbserver.VO.gold.GoldQuantSettingsVO;
 import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.mapper.SystemConfigMapper;
 import com.ra.rabnbserver.pojo.SystemConfig;
@@ -101,6 +102,14 @@ public class SystemConfigServeImpl extends ServiceImpl<SystemConfigMapper, Syste
                 withdrawConfig.setConfigValue("{\"minAmount\":10, \"feeRate\":0.05, \"uPerCoin\":1}");
                 withdrawConfig.setRemark("最小提现金额及手续费率");
                 defaultConfigs.add(withdrawConfig);
+
+                GoldQuantSettingsVO goldQuantSettings = new GoldQuantSettingsVO();
+                SystemConfig goldQuantConfig = new SystemConfig();
+                goldQuantConfig.setConfigKey("GOLD_QUANT_SETTINGS");
+                goldQuantConfig.setConfigName("黄金量化参数配置");
+                goldQuantConfig.setConfigValue(com.alibaba.fastjson2.JSON.toJSONString(goldQuantSettings));
+                goldQuantConfig.setRemark("托管费、窗口维护费、矿机门槛、窗口数量上限");
+                defaultConfigs.add(goldQuantConfig);
 
                 // 3. 平台公告 (示例)
                 SystemConfig noticeConfig = new SystemConfig();
