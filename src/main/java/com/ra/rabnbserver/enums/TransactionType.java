@@ -21,7 +21,9 @@ public enum TransactionType implements BaseEnum{
     REWARD("REWARD", "奖励"),
     PROFIT("PROFIT", "收益"),
     TRANSFER("TRANSFER", "转账"),
-    GOLD_QUANT("GOLD_QUANT", "黄金量化");
+    GOLD_QUANT("GOLD_QUANT", "黄金量化"),
+    GOLD_QUANT_REWARD("GOLD_QUANT_REWARD", "黄金量化奖励分成"),
+    GOLD_QUANT_DISTRIBUTION("GOLD_QUANT_DISTRIBUTION", "黄金量化分销分成");
 
     @EnumValue
     @JsonValue

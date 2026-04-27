@@ -24,6 +24,7 @@ import com.ra.rabnbserver.pojo.GoldQuantAccount;
 import com.ra.rabnbserver.pojo.GoldQuantWindow;
 import com.ra.rabnbserver.pojo.User;
 import com.ra.rabnbserver.pojo.UserMiner;
+import com.ra.rabnbserver.server.gold.GoldQuantCommissionService;
 import com.ra.rabnbserver.server.gold.GoldQuantServe;
 import com.ra.rabnbserver.server.sys.SystemConfigServe;
 import com.ra.rabnbserver.server.user.UserBillServe;
@@ -51,6 +52,7 @@ public class GoldQuantServeImpl extends ServiceImpl<GoldQuantWindowMapper, GoldQ
     private final UserMinerMapper userMinerMapper;
     private final UserBillServe userBillServe;
     private final SystemConfigServe systemConfigServe;
+    private final GoldQuantCommissionService goldQuantCommissionService;
 
     @Override
     public GoldQuantHomeVO getHome(Long userId) {
@@ -132,6 +134,7 @@ public class GoldQuantServeImpl extends ServiceImpl<GoldQuantWindowMapper, GoldQ
         }
 
         BigDecimal amount = settings.getWindowMaintenanceFee().multiply(BigDecimal.valueOf(quantity));
+        String orderId = "GQ_BUY_" + IdWorker.getIdStr();
         userBillServe.createBillAndUpdateBalance(
                 userId,
                 amount,
@@ -139,7 +142,7 @@ public class GoldQuantServeImpl extends ServiceImpl<GoldQuantWindowMapper, GoldQ
                 FundType.EXPENSE,
                 TransactionType.GOLD_QUANT,
                 "黄金量化窗口维护费 x" + quantity,
-                "GQ_BUY_" + IdWorker.getIdStr(),
+                orderId,
                 null,
                 null,
                 quantity,
@@ -158,6 +161,7 @@ public class GoldQuantServeImpl extends ServiceImpl<GoldQuantWindowMapper, GoldQ
             windows.add(window);
         }
         this.saveBatch(windows);
+        goldQuantCommissionService.settleWindowOrder(userId, orderId, amount);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -174,6 +178,7 @@ public class GoldQuantServeImpl extends ServiceImpl<GoldQuantWindowMapper, GoldQ
             throw new BusinessException("量化窗口不存在");
         }
         GoldQuantSettingsVO settings = getSettings();
+        String orderId = "GQ_RENEW_" + IdWorker.getIdStr();
         userBillServe.createBillAndUpdateBalance(
                 userId,
                 settings.getWindowMaintenanceFee(),
@@ -181,13 +186,14 @@ public class GoldQuantServeImpl extends ServiceImpl<GoldQuantWindowMapper, GoldQ
                 FundType.EXPENSE,
                 TransactionType.GOLD_QUANT,
                 "黄金量化窗口续费 windowId=" + windowId,
-                "GQ_RENEW_" + IdWorker.getIdStr(),
+                orderId,
                 null,
                 null,
                 1,
                 null
         );
         renewLockedWindows(List.of(window), settings);
+        goldQuantCommissionService.settleWindowOrder(userId, orderId, settings.getWindowMaintenanceFee());
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -211,6 +217,7 @@ public class GoldQuantServeImpl extends ServiceImpl<GoldQuantWindowMapper, GoldQ
         GoldQuantSettingsVO settings = getSettings();
         BigDecimal amount = settings.getWindowMaintenanceFee().multiply(BigDecimal.valueOf(quantity));
         String windowIds = windows.stream().map(window -> String.valueOf(window.getId())).collect(Collectors.joining(","));
+        String orderId = "GQ_BATCH_" + IdWorker.getIdStr();
         userBillServe.createBillAndUpdateBalance(
                 userId,
                 amount,
@@ -218,13 +225,14 @@ public class GoldQuantServeImpl extends ServiceImpl<GoldQuantWindowMapper, GoldQ
                 FundType.EXPENSE,
                 TransactionType.GOLD_QUANT,
                 "黄金量化窗口批量续费 ids=" + windowIds,
-                "GQ_BATCH_" + IdWorker.getIdStr(),
+                orderId,
                 null,
                 null,
                 quantity,
                 null
         );
         renewLockedWindows(windows, settings);
+        goldQuantCommissionService.settleWindowOrder(userId, orderId, amount);
     }
 
     @Override
