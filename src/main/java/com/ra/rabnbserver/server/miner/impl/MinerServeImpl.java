@@ -12,6 +12,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ra.rabnbserver.VO.CreateUserBillVO;
 import com.ra.rabnbserver.VO.GetAdminClaimVO;
 import com.ra.rabnbserver.VO.MinerSettings;
+import com.ra.rabnbserver.VO.miner.AdminMinerUserStatisticsVO;
 import com.ra.rabnbserver.VO.team.TeamAreaItemVO;
 import com.ra.rabnbserver.contract.AionContract;
 import com.ra.rabnbserver.contract.CardNftContract;
@@ -21,6 +22,7 @@ import com.ra.rabnbserver.dto.MinerElectricityDTO;
 import com.ra.rabnbserver.dto.MinerQueryDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.AdminMinerActionDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.FragmentExchangeNftDTO;
+import com.ra.rabnbserver.dto.miner.AdminMinerUserStatisticsQueryDTO;
 import com.ra.rabnbserver.dto.miner.FragmentTransferDTO;
 import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;
@@ -105,6 +107,40 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         }
         wrapper.orderByDesc(UserMiner::getCreateTime);
         return this.page(pageParam, wrapper);
+    }
+
+    @Override
+    public IPage<AdminMinerUserStatisticsVO> getAdminUserStatisticsPage(AdminMinerUserStatisticsQueryDTO query) {
+        AdminMinerUserStatisticsQueryDTO safeQuery = query == null ? new AdminMinerUserStatisticsQueryDTO() : query;
+        int page = safePage(safeQuery.getPage());
+        int size = safeSize(safeQuery.getSize());
+        LocalDateTime startTime = parseStartTime(safeQuery.getStartTime());
+        LocalDateTime endTime = parseEndTime(safeQuery.getEndTime());
+        boolean timeFiltered = startTime != null || endTime != null;
+
+        List<User> users = userMapper.selectList(new LambdaQueryWrapper<User>()
+                .like(StrUtil.isNotBlank(safeQuery.getWalletAddress()), User::getUserWalletAddress, safeQuery.getWalletAddress())
+                .orderByDesc(User::getCreateTime));
+        users = users.stream()
+                .filter(user -> safeQuery.getUserGrade() == null || Objects.equals(user.getUserGrade(), safeQuery.getUserGrade()))
+                .collect(Collectors.toList());
+        if (users.isEmpty()) {
+            return emptyPage(page, size);
+        }
+
+        List<Long> userIds = users.stream().map(User::getId).collect(Collectors.toList());
+        List<UserMiner> miners = this.list(new LambdaQueryWrapper<UserMiner>()
+                .in(UserMiner::getUserId, userIds)
+                .eq(UserMiner::getNftBurnStatus, 1));
+        Map<Long, List<UserMiner>> minerMap = miners.stream()
+                .filter(miner -> !isAdminAssignedMiner(miner))
+                .collect(Collectors.groupingBy(UserMiner::getUserId));
+        Map<Long, BigDecimal> rewardMap = sumMinerRewardByUser(userIds, startTime, endTime);
+
+        List<AdminMinerUserStatisticsVO> records = users.stream()
+                .map(user -> buildAdminMinerUserStatistics(user, minerMap.get(user.getId()), rewardMap.get(user.getId()), timeFiltered, startTime, endTime))
+                .collect(Collectors.toList());
+        return pageList(records, page, size);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -414,12 +450,12 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 totalFee,
                 BillType.PLATFORM,
                 FundType.EXPENSE,
-                TransactionType.PURCHASE,
+                TransactionType.MINER_ELECTRICITY,
                 billRemark,
                 null,
                 null,
                 null,
-                0,
+                targets.size(),
                 null
         );
 
@@ -595,7 +631,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 totalFee,
                 BillType.PLATFORM,
                 FundType.EXPENSE,
-                TransactionType.PURCHASE,
+                TransactionType.MINER_ELECTRICITY,
                 billRemark,
                 null,
                 null,
@@ -1111,7 +1147,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 try {
                     userBillServe.createBillAndUpdateBalance(
                             parentId, rewardAmount, BillType.PLATFORM, FundType.INCOME,
-                            TransactionType.REWARD,
+                            TransactionType.MINER_ELECTRICITY_REWARD,
                             String.format("直属下级电费分成(下级总机:%d, 比例:%.2f%%, 缴费人数:%d)",
                                     totalSubMiners, ratio.multiply(new BigDecimal("100")), fees.size()),
                             null, null, null, 0, null
@@ -1135,13 +1171,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         }
         recalculateAllUserGrades(settings, tiers);
 
-        List<UserBill> electricityBills = userBillMapper.selectList(new LambdaQueryWrapper<UserBill>()
-                .eq(UserBill::getBillType, BillType.PLATFORM)
-                .eq(UserBill::getFundType, FundType.EXPENSE)
-                .eq(UserBill::getTransactionType, TransactionType.PURCHASE)
-                .gt(UserBill::getNum, 0)
-                .ge(UserBill::getTransactionTime, todayStart)
-                .le(UserBill::getTransactionTime, todayEnd));
+        List<UserBill> electricityBills = listElectricityBills(todayStart, todayEnd);
         if (electricityBills.isEmpty()) {
             return;
         }
@@ -1159,7 +1189,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
         }
 
         Map<Long, ElectricityRewardSummary> rewardSummaryMap = new HashMap<>();
-        Map<Long, Long> bigAreaChildCache = new HashMap<>();
+        Map<Long, Long> bigAreaUserCache = new HashMap<>();
 
         for (UserBill bill : electricityBills) {
             User payer = userMap.get(bill.getUserId());
@@ -1174,7 +1204,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             for (int i = 0; i < ancestorIds.size(); i++) {
                 Long ancestorId = ancestorIds.get(i);
                 User ancestor = userMap.get(ancestorId);
-                if (ancestor == null || isFromBigArea(ancestor, payer, bigAreaChildCache)) {
+                if (ancestor == null || isFromBigArea(ancestor, payer, bigAreaUserCache)) {
                     continue;
                 }
                 int generation = i + 1;
@@ -1202,7 +1232,7 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                         summary.getRewardAmount(),
                         BillType.PLATFORM,
                         FundType.INCOME,
-                        TransactionType.REWARD,
+                        TransactionType.MINER_ELECTRICITY_REWARD,
                         String.format("small area electricity reward(performance:%s, ratio:%.2f%%, count:%d, max generation:%d)",
                                 summary.getPerformanceAmount(),
                                 summary.getGradeRatio().multiply(new BigDecimal("100")),
@@ -1215,6 +1245,25 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                 log.error("small area electricity reward failed, userId={}, reason={}", userId, e.getMessage());
             }
         });
+    }
+
+    private List<UserBill> listElectricityBills(LocalDateTime startTime, LocalDateTime endTime) {
+        return userBillMapper.selectList(new LambdaQueryWrapper<UserBill>()
+                .eq(UserBill::getBillType, BillType.PLATFORM)
+                .eq(UserBill::getFundType, FundType.EXPENSE)
+                .gt(UserBill::getNum, 0)
+                .ge(UserBill::getTransactionTime, startTime)
+                .le(UserBill::getTransactionTime, endTime)
+                .and(wrapper -> wrapper
+                        .eq(UserBill::getTransactionType, TransactionType.MINER_ELECTRICITY)
+                        .or(legacy -> legacy
+                                .eq(UserBill::getTransactionType, TransactionType.PURCHASE)
+                                .and(remark -> remark
+                                        .like(UserBill::getRemark, "电费")
+                                        .or()
+                                        .like(UserBill::getRemark, "激活")
+                                        .or()
+                                        .like(UserBill::getRemark, "续费")))));
     }
 
 
@@ -1404,40 +1453,21 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
                         TreeMap::new));
     }
 
-    private boolean isFromBigArea(User ancestor, User payer, Map<Long, Long> bigAreaChildCache) {
-        Long branchChildId = getDirectChildIdUnderAncestor(ancestor, payer);
-        if (branchChildId == null) {
+    private boolean isFromBigArea(User ancestor, User payer, Map<Long, Long> bigAreaUserCache) {
+        if (ancestor == null || payer == null || ancestor.getId() == null || payer.getId() == null
+                || ancestor.getId().equals(payer.getId())) {
             return false;
         }
-        Long bigAreaChildId = bigAreaChildCache.computeIfAbsent(ancestor.getId(), this::findBigAreaChildId);
-        return bigAreaChildId != null && bigAreaChildId.equals(branchChildId);
+        Long bigAreaUserId = bigAreaUserCache.computeIfAbsent(ancestor.getId(), this::findBigAreaUserId);
+        return bigAreaUserId != null && bigAreaUserId.equals(payer.getId());
     }
 
-    private Long findBigAreaChildId(Long userId) {
+    private Long findBigAreaUserId(Long userId) {
         List<TeamAreaItemVO> areas = userMapper.selectDirectAreaStats(userId);
         if (areas == null || areas.isEmpty()) {
             return null;
         }
         return areas.get(0).getUserId();
-    }
-
-    private Long getDirectChildIdUnderAncestor(User ancestor, User payer) {
-        if (ancestor == null || payer == null || ancestor.getId() == null || payer.getId() == null
-                || ancestor.getId().equals(payer.getId())) {
-            return null;
-        }
-        List<Long> pathIds = parsePathUserIds(payer.getPath());
-        int ancestorIndex = pathIds.indexOf(ancestor.getId());
-        if (ancestorIndex >= 0) {
-            if (ancestorIndex + 1 < pathIds.size()) {
-                return pathIds.get(ancestorIndex + 1);
-            }
-            return payer.getId();
-        }
-        if (ancestor.getId().equals(payer.getParentId())) {
-            return payer.getId();
-        }
-        return null;
     }
 
     private List<Long> getAncestorIdsFromNearest(User user) {
@@ -1485,6 +1515,114 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
 
     private boolean isSameLineTeam(User sender, User receiver) {
         return isAncestor(sender, receiver) || isDescendant(sender, receiver);
+    }
+
+    private boolean isAdminAssignedMiner(UserMiner miner) {
+        return miner != null
+                && "3".equals(miner.getMinerType())
+                && miner.getNftCardId() == null
+                && StrUtil.isNotBlank(miner.getMinerId())
+                && miner.getMinerId().startsWith("SPECIAL_");
+    }
+
+    private AdminMinerUserStatisticsVO buildAdminMinerUserStatistics(User user,
+                                                                    List<UserMiner> miners,
+                                                                    BigDecimal rewardAmount,
+                                                                    boolean timeFiltered,
+                                                                    LocalDateTime startTime,
+                                                                    LocalDateTime endTime) {
+        List<UserMiner> safeMiners = miners == null ? Collections.emptyList() : miners;
+        AdminMinerUserStatisticsVO vo = new AdminMinerUserStatisticsVO();
+        vo.setUserId(user.getId());
+        vo.setWalletAddress(user.getUserWalletAddress());
+        vo.setUserGrade(user.getUserGrade());
+        vo.setPerformanceDistributedAmount(rewardAmount == null ? BigDecimal.ZERO : rewardAmount);
+        if (timeFiltered) {
+            vo.setPurchasedCount(0);
+            vo.setActiveCount((int) safeMiners.stream()
+                    .filter(miner -> isMinerPaymentInRange(miner, startTime, endTime))
+                    .count());
+        } else {
+            LocalDateTime activeLine = LocalDateTime.now().minusDays(30);
+            vo.setPurchasedCount(safeMiners.size());
+            vo.setActiveCount((int) safeMiners.stream()
+                    .filter(miner -> Integer.valueOf(1).equals(miner.getStatus()))
+                    .filter(miner -> miner.getPaymentDate() != null && miner.getPaymentDate().isAfter(activeLine))
+                    .count());
+        }
+        return vo;
+    }
+
+    private boolean isMinerPaymentInRange(UserMiner miner, LocalDateTime startTime, LocalDateTime endTime) {
+        if (miner == null || miner.getPaymentDate() == null) {
+            return false;
+        }
+        if (startTime != null && miner.getPaymentDate().isBefore(startTime)) {
+            return false;
+        }
+        return endTime == null || !miner.getPaymentDate().isAfter(endTime);
+    }
+
+    private Map<Long, BigDecimal> sumMinerRewardByUser(List<Long> userIds, LocalDateTime startTime, LocalDateTime endTime) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        LambdaQueryWrapper<UserBill> wrapper = new LambdaQueryWrapper<UserBill>()
+                .select(UserBill::getUserId, UserBill::getAmount)
+                .in(UserBill::getUserId, userIds)
+                .eq(UserBill::getBillType, BillType.PLATFORM)
+                .eq(UserBill::getFundType, FundType.INCOME)
+                .in(UserBill::getTransactionType, TransactionType.REWARD, TransactionType.MINER_ELECTRICITY_REWARD);
+        if (startTime != null) {
+            wrapper.ge(UserBill::getTransactionTime, startTime);
+        }
+        if (endTime != null) {
+            wrapper.le(UserBill::getTransactionTime, endTime);
+        }
+        return userBillMapper.selectList(wrapper).stream()
+                .filter(bill -> bill.getUserId() != null && bill.getAmount() != null)
+                .collect(Collectors.groupingBy(
+                        UserBill::getUserId,
+                        Collectors.reducing(BigDecimal.ZERO, UserBill::getAmount, BigDecimal::add)));
+    }
+
+    private LocalDateTime parseStartTime(String value) {
+        return StrUtil.isBlank(value) ? null : cn.hutool.core.date.DateUtil.parse(value).toLocalDateTime()
+                .withHour(0).withMinute(0).withSecond(0).withNano(0);
+    }
+
+    private LocalDateTime parseEndTime(String value) {
+        return StrUtil.isBlank(value) ? null : cn.hutool.core.date.DateUtil.parse(value).toLocalDateTime()
+                .withHour(23).withMinute(59).withSecond(59).withNano(999999999);
+    }
+
+    private int safePage(Integer page) {
+        return page == null || page <= 0 ? 1 : page;
+    }
+
+    private int safeSize(Integer size) {
+        return size == null || size <= 0 ? 10 : size;
+    }
+
+    private IPage<AdminMinerUserStatisticsVO> emptyPage(int page, int size) {
+        Page<AdminMinerUserStatisticsVO> result = new Page<>(page, size);
+        result.setRecords(Collections.emptyList());
+        result.setTotal(0);
+        return result;
+    }
+
+    private IPage<AdminMinerUserStatisticsVO> pageList(List<AdminMinerUserStatisticsVO> records, int page, int size) {
+        Page<AdminMinerUserStatisticsVO> result = new Page<>(page, size);
+        int fromIndex = Math.max((page - 1) * size, 0);
+        if (records == null || fromIndex >= records.size()) {
+            result.setRecords(Collections.emptyList());
+            result.setTotal(records == null ? 0 : records.size());
+            return result;
+        }
+        int toIndex = Math.min(fromIndex + size, records.size());
+        result.setRecords(new ArrayList<>(records.subList(fromIndex, toIndex)));
+        result.setTotal(records.size());
+        return result;
     }
 
     private static class ElectricityRewardSummary {

@@ -74,4 +74,5 @@ public class TeamAreaResultVO {
      * 当前用户电费分成比例
      */
     private BigDecimal currentUserElectricityRatio;
+    private BigDecimal teamRewardDistributedAmount;
 }

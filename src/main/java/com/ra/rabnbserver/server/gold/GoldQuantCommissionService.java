@@ -2,12 +2,14 @@ package com.ra.rabnbserver.server.gold;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.ra.rabnbserver.VO.gold.AdminGoldQuantUserStatisticsVO;
 import com.ra.rabnbserver.VO.gold.GoldQuantCommissionRecordVO;
 import com.ra.rabnbserver.VO.gold.GoldQuantCommissionSettingsVO;
 import com.ra.rabnbserver.VO.gold.GoldQuantCommissionStatisticsVO;
 import com.ra.rabnbserver.VO.gold.GoldQuantTeamAreaVO;
 import com.ra.rabnbserver.VO.gold.GoldQuantTeamSummaryVO;
 import com.ra.rabnbserver.dto.gold.AdminGoldQuantCommissionQueryDTO;
+import com.ra.rabnbserver.dto.gold.AdminGoldQuantUserStatisticsQueryDTO;
 import com.ra.rabnbserver.dto.gold.GoldQuantCommissionQueryDTO;
 import com.ra.rabnbserver.pojo.GoldQuantCommissionRecord;
 
@@ -26,6 +28,8 @@ public interface GoldQuantCommissionService extends IService<GoldQuantCommission
     IPage<GoldQuantCommissionRecordVO> getAdminCommissionPage(AdminGoldQuantCommissionQueryDTO query);
 
     GoldQuantCommissionStatisticsVO getAdminCommissionStatistics(AdminGoldQuantCommissionQueryDTO query);
+
+    IPage<AdminGoldQuantUserStatisticsVO> getAdminUserStatisticsPage(AdminGoldQuantUserStatisticsQueryDTO query);
 
     GoldQuantCommissionSettingsVO getRules();
 }

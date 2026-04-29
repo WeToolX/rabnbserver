@@ -138,4 +138,10 @@ public class User extends BaseEntity {
     @DefaultValue("0")
     private String fragmentBalance;
 
+    @TableField(exist = false)
+    private Integer goldQuantRewardLevel;
+
+    @TableField(exist = false)
+    private Integer goldQuantDistributionLevel;
+
 }

@@ -13,6 +13,7 @@ import com.ra.rabnbserver.dto.MinerPurchaseDTO;
 import com.ra.rabnbserver.dto.MinerQueryDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.AdminMinerActionDTO;
 import com.ra.rabnbserver.dto.adminMinerAction.FragmentExchangeNftDTO;
+import com.ra.rabnbserver.dto.miner.ElectricityRewardRecordQueryDTO;
 import com.ra.rabnbserver.dto.miner.FragmentTransferDTO;
 import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.model.ApiResponse;
@@ -20,6 +21,7 @@ import com.ra.rabnbserver.pojo.UserMiner;
 import com.ra.rabnbserver.server.miner.MinerProfitRecordServe;
 import com.ra.rabnbserver.server.miner.MinerServe;
 import com.ra.rabnbserver.server.sys.SystemConfigServe;
+import com.ra.rabnbserver.server.user.UserBillServe;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,6 +35,7 @@ public class MinerController {
     private final MinerServe minerServe;
     private final MinerProfitRecordServe minerProfitRecordServe;
     private final SystemConfigServe systemConfigServe;
+    private final UserBillServe userBillServe;
 
     @Value("${ADMIN.ISOPEN:true}")
     private Boolean ISOPEN;
@@ -266,6 +269,16 @@ public class MinerController {
         Long userId = getFormalUserId();
         queryDTO.setUserId(userId);
         return ApiResponse.success(minerProfitRecordServe.findPage(queryDTO));
+    }
+
+    @SaCheckLogin
+    @PostMapping("/electricity-reward/list")
+    public String getElectricityRewardList(@RequestBody(required = false) ElectricityRewardRecordQueryDTO queryDTO) {
+        if (!ISOPEN) {
+            return ApiResponse.error("暂未开放！");
+        }
+        Long userId = getFormalUserId();
+        return ApiResponse.success(userBillServe.getElectricityRewardRecordList(userId, queryDTO));
     }
 
     /**

@@ -52,9 +52,9 @@ public interface UserMapper extends BaseMapper<User> {
 
     @Select("""
             SELECT
-                direct.id AS userId,
-                direct.user_wallet_address AS address,
-                direct.team_count AS teamCount,
+                downline.id AS userId,
+                downline.user_wallet_address AS address,
+                1 AS teamCount,
                 COALESCE(COUNT(um.id), 0) AS purchasedCount,
                 COALESCE(SUM(CASE
                     WHEN um.status = 1
@@ -62,20 +62,19 @@ public interface UserMapper extends BaseMapper<User> {
                      AND um.payment_date > DATE_SUB(NOW(), INTERVAL 30 DAY)
                     THEN 1 ELSE 0 END), 0) AS activeCount,
                 MAX(um.create_time) AS lastExchangeTime
-            FROM user direct
-            LEFT JOIN user member
-                ON member.id = direct.id
-                OR member.path LIKE CONCAT(COALESCE(direct.path, '0,'), direct.id, ',%')
+            FROM user root
+            JOIN user downline
+                ON downline.path LIKE CONCAT(COALESCE(root.path, '0,'), root.id, ',%')
             LEFT JOIN user_miner um
-                ON um.user_id = member.id
+                ON um.user_id = downline.id
                AND um.nft_burn_status = 1
-            WHERE direct.parent_id = #{userId}
-            GROUP BY direct.id, direct.user_wallet_address, direct.team_count
+            WHERE root.id = #{userId}
+            GROUP BY downline.id, downline.user_wallet_address
             ORDER BY
                 purchasedCount DESC,
                 CASE WHEN lastExchangeTime IS NULL THEN 1 ELSE 0 END ASC,
                 lastExchangeTime ASC,
-                direct.id ASC
+                downline.id ASC
             """)
     List<TeamAreaItemVO> selectDirectAreaStats(@Param("userId") Long userId);
 
@@ -90,8 +89,7 @@ public interface UserMapper extends BaseMapper<User> {
                 MAX(um.create_time) AS lastExchangeTime
             FROM user root
             LEFT JOIN user member
-                ON member.id = root.id
-                OR member.path LIKE CONCAT(COALESCE(root.path, '0,'), root.id, ',%')
+                ON member.path LIKE CONCAT(COALESCE(root.path, '0,'), root.id, ',%')
             LEFT JOIN user_miner um
                 ON um.user_id = member.id
                AND um.nft_burn_status = 1

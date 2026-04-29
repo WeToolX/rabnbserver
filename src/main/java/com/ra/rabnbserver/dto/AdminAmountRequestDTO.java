@@ -1,5 +1,6 @@
 package com.ra.rabnbserver.dto;
 
+import com.ra.rabnbserver.enums.TransactionType;
 import lombok.Data;
 
 @Data
@@ -12,6 +13,7 @@ public class AdminAmountRequestDTO {
      * 金额
      */
     private String amount;
+    private TransactionType transactionType;
 
     /**
      * 自定义资金来源或备注；例如：v1 团队电力绩效。

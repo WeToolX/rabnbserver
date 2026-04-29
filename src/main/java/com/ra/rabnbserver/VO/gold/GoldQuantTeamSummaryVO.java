@@ -15,4 +15,7 @@ public class GoldQuantTeamSummaryVO {
     private Integer distributionLevel;
     private String rewardGenerationRange;
     private BigDecimal distributionRatio;
+    private BigDecimal rewardDistributedAmount;
+    private BigDecimal distributionDistributedAmount;
+    private BigDecimal totalDistributedAmount;
 }

@@ -5,7 +5,9 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.ra.rabnbserver.VO.AdminBillStatisticsVO;
 import com.ra.rabnbserver.VO.CreateUserBillVO;
 import com.ra.rabnbserver.VO.PaymentUsdtMetaVO;
+import com.ra.rabnbserver.VO.miner.ElectricityRewardRecordListVO;
 import com.ra.rabnbserver.dto.admin.bill.AdminBillQueryDTO;
+import com.ra.rabnbserver.dto.miner.ElectricityRewardRecordQueryDTO;
 import com.ra.rabnbserver.dto.user.BillQueryDTO;
 import com.ra.rabnbserver.enums.BillType;
 import com.ra.rabnbserver.enums.FundType;
@@ -35,6 +37,8 @@ public interface UserBillServe extends IService<UserBill> {
 //    );
 
     IPage<UserBill> getUserBillPage(Long userId, BillQueryDTO query);
+
+    ElectricityRewardRecordListVO getElectricityRewardRecordList(Long userId, ElectricityRewardRecordQueryDTO query);
 
     void rechargeFromChain(Long userId, BigDecimal amount) throws Exception;
 

@@ -13,6 +13,7 @@ import com.ra.rabnbserver.VO.AdminBillStatisticsVO;
 import com.ra.rabnbserver.VO.CreateUserBillVO;
 import com.ra.rabnbserver.VO.PaymentUsdtMetaVO;
 import com.ra.rabnbserver.VO.WithdrawSettingsVO;
+import com.ra.rabnbserver.VO.miner.ElectricityRewardRecordListVO;
 import com.ra.rabnbserver.contract.AionContract;
 import com.ra.rabnbserver.contract.AirPaymentCollectorContract;
 import com.ra.rabnbserver.contract.CardNftContract;
@@ -20,6 +21,7 @@ import com.ra.rabnbserver.contract.CardNftContractV1;
 import com.ra.rabnbserver.contract.PaymentUsdtContract;
 import com.ra.rabnbserver.contract.support.AmountConvertUtils;
 import com.ra.rabnbserver.dto.admin.bill.AdminBillQueryDTO;
+import com.ra.rabnbserver.dto.miner.ElectricityRewardRecordQueryDTO;
 import com.ra.rabnbserver.dto.user.BillQueryDTO;
 import com.ra.rabnbserver.enums.*;
 import com.ra.rabnbserver.exception.BusinessException;
@@ -52,6 +54,9 @@ import java.util.regex.Pattern;
 @Slf4j
 @RequiredArgsConstructor
 public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> implements UserBillServe {
+    private static final String LEGACY_ELECTRICITY_REWARD_REMARK = "\u7535\u8d39\u5206\u6210";
+    private static final String SMALL_AREA_ELECTRICITY_REWARD_REMARK = "electricity reward";
+
     private final UserMapper userMapper;
     private final TransactionTemplate transactionTemplate;
     private final EtfCardServe etfCardServe;
@@ -295,7 +300,7 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
                 CreateUserBillVO vo = new CreateUserBillVO();
                 vo.setCardId(cardId);
                 createBillAndUpdateBalance(userId, BigDecimal.ZERO, BillType.ON_CHAIN, FundType.INCOME,
-                        TransactionType.REWARD, "系统管理员手动分发 x" + amount, orderId, null, null, amount, vo);
+                        TransactionType.ADMIN_MANUALLY_DISTRIBUTES_NFT, "系统管理员手动分发 x" + amount, orderId, null, null, amount, vo);
             } catch (Exception e) {
                 status.setRollbackOnly();
                 throw e;
@@ -651,5 +656,86 @@ public class UserBillServeImpl extends ServiceImpl<UserBillMapper, UserBill> imp
         if (StringUtils.isNotBlank(query.getEndDate())) wrapper.le(UserBill::getTransactionTime, DateUtil.parse(query.getEndDate()).toLocalDateTime().with(LocalTime.MAX));
         wrapper.orderByDesc(UserBill::getTransactionTime).orderByDesc(UserBill::getId);
         return this.page(new Page<>(query.getPage() == null ? 1 : query.getPage(), query.getSize() == null ? 10 : query.getSize()), wrapper);
+    }
+
+    @Override
+    public ElectricityRewardRecordListVO getElectricityRewardRecordList(Long userId, ElectricityRewardRecordQueryDTO query) {
+        ElectricityRewardRecordQueryDTO safeQuery = normalizeElectricityRewardRecordQuery(query);
+        LambdaQueryWrapper<UserBill> wrapper = new LambdaQueryWrapper<UserBill>()
+                .eq(UserBill::getUserId, userId);
+        applyElectricityRewardCondition(wrapper);
+        if (StringUtils.isNotBlank(safeQuery.getStartTime())) {
+            wrapper.ge(UserBill::getTransactionTime, DateUtil.parse(safeQuery.getStartTime()).toLocalDateTime().with(LocalTime.MIN));
+        }
+        if (StringUtils.isNotBlank(safeQuery.getEndTime())) {
+            wrapper.le(UserBill::getTransactionTime, DateUtil.parse(safeQuery.getEndTime()).toLocalDateTime().with(LocalTime.MAX));
+        }
+        wrapper.orderByDesc(UserBill::getTransactionTime).orderByDesc(UserBill::getId);
+
+        IPage<UserBill> page = this.page(new Page<>(safeQuery.getPageNo(), safeQuery.getPageSize()), wrapper);
+        User user = userMapper.selectById(userId);
+
+        ElectricityRewardRecordListVO result = new ElectricityRewardRecordListVO();
+        result.setRecords(page);
+        result.setTotalAmount(sumElectricityRewardAmount(userId, safeQuery));
+        result.setTeamTotalCount(user == null || user.getTeamCount() == null ? 0 : user.getTeamCount());
+        return result;
+    }
+
+    private ElectricityRewardRecordQueryDTO normalizeElectricityRewardRecordQuery(ElectricityRewardRecordQueryDTO query) {
+        ElectricityRewardRecordQueryDTO safeQuery = query == null ? new ElectricityRewardRecordQueryDTO() : query;
+        if (safeQuery.getPageNo() == null || safeQuery.getPageNo() <= 0) {
+            safeQuery.setPageNo(1);
+        }
+        if (safeQuery.getPageSize() == null || safeQuery.getPageSize() <= 0) {
+            safeQuery.setPageSize(10);
+        }
+        return safeQuery;
+    }
+
+    private void applyElectricityRewardCondition(LambdaQueryWrapper<UserBill> wrapper) {
+        wrapper.eq(UserBill::getBillType, BillType.PLATFORM)
+                .eq(UserBill::getFundType, FundType.INCOME)
+                .eq(UserBill::getStatus, TransactionStatus.SUCCESS)
+                .and(type -> type
+                        .eq(UserBill::getTransactionType, TransactionType.MINER_ELECTRICITY_REWARD)
+                        .or(legacy -> legacy
+                                .eq(UserBill::getTransactionType, TransactionType.REWARD)
+                                .and(remark -> remark
+                                        .like(UserBill::getRemark, SMALL_AREA_ELECTRICITY_REWARD_REMARK)
+                                        .or()
+                                        .like(UserBill::getRemark, LEGACY_ELECTRICITY_REWARD_REMARK))));
+    }
+
+    private BigDecimal sumElectricityRewardAmount(Long userId, ElectricityRewardRecordQueryDTO query) {
+        QueryWrapper<UserBill> wrapper = new QueryWrapper<>();
+        wrapper.select("COALESCE(SUM(amount), 0)")
+                .eq("user_id", userId);
+        applyElectricityRewardCondition(wrapper);
+        if (StringUtils.isNotBlank(query.getStartTime())) {
+            wrapper.ge("transaction_time", DateUtil.parse(query.getStartTime()).toLocalDateTime().with(LocalTime.MIN));
+        }
+        if (StringUtils.isNotBlank(query.getEndTime())) {
+            wrapper.le("transaction_time", DateUtil.parse(query.getEndTime()).toLocalDateTime().with(LocalTime.MAX));
+        }
+        List<Object> values = this.baseMapper.selectObjs(wrapper);
+        if (values == null || values.isEmpty() || values.get(0) == null) {
+            return BigDecimal.ZERO;
+        }
+        return new BigDecimal(values.get(0).toString());
+    }
+
+    private void applyElectricityRewardCondition(QueryWrapper<UserBill> wrapper) {
+        wrapper.eq("bill_type", BillType.PLATFORM.getCode())
+                .eq("fund_type", FundType.INCOME.getCode())
+                .eq("status", TransactionStatus.SUCCESS.getCode())
+                .and(type -> type
+                        .eq("transaction_type", TransactionType.MINER_ELECTRICITY_REWARD.getCode())
+                        .or(legacy -> legacy
+                                .eq("transaction_type", TransactionType.REWARD.getCode())
+                                .and(remark -> remark
+                                        .like("remark", SMALL_AREA_ELECTRICITY_REWARD_REMARK)
+                                        .or()
+                                        .like("remark", LEGACY_ELECTRICITY_REWARD_REMARK))));
     }
 }

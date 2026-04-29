@@ -10,17 +10,25 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ra.rabnbserver.VO.MinerSettings;
+import com.ra.rabnbserver.VO.gold.GoldQuantCommissionSettingsVO;
 import com.ra.rabnbserver.VO.team.TeamAreaItemVO;
 import com.ra.rabnbserver.VO.team.TeamAreaResultVO;
 import com.ra.rabnbserver.dto.RegisterDataDTO;
 import com.ra.rabnbserver.dto.team.AdminTeamSearchDTO;
 import com.ra.rabnbserver.dto.team.TeamAreaQueryDTO;
 import com.ra.rabnbserver.dto.user.UserQueryDTO;
+import com.ra.rabnbserver.enums.BillType;
+import com.ra.rabnbserver.enums.FundType;
+import com.ra.rabnbserver.enums.TransactionType;
 import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.mapper.SystemConfigMapper;
+import com.ra.rabnbserver.mapper.UserBillMapper;
+import com.ra.rabnbserver.mapper.GoldQuantWindowMapper;
 import com.ra.rabnbserver.mapper.UserMapper;
+import com.ra.rabnbserver.pojo.GoldQuantWindow;
 import com.ra.rabnbserver.pojo.SystemConfig;
 import com.ra.rabnbserver.pojo.User;
+import com.ra.rabnbserver.pojo.UserBill;
 import com.ra.rabnbserver.server.user.UserServe;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +41,9 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -43,6 +53,12 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
 
     @Autowired
     private SystemConfigMapper configMapper;
+
+    @Autowired
+    private UserBillMapper userBillMapper;
+
+    @Autowired
+    private GoldQuantWindowMapper goldQuantWindowMapper;
 
     @Override
     public User getByWalletAddress(String address) {
@@ -497,6 +513,7 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         result.setTotalPurchasedCount(safeInt(totalStats == null ? null : totalStats.getPurchasedCount()));
         result.setTotalActiveCount(safeInt(totalStats == null ? null : totalStats.getActiveCount()));
         fillCurrentGradeAndRatio(result, currentUser);
+        result.setTeamRewardDistributedAmount(sumMinerTeamReward(userId));
 
         List<TeamAreaItemVO> smallAreas = areas.size() <= 1
                 ? Collections.emptyList()
@@ -568,7 +585,7 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
             if (item == null) {
                 continue;
             }
-            teamCount += safeInt(item.getTeamCount()) + 1;
+            teamCount += safeInt(item.getTeamCount());
             purchasedCount += safeInt(item.getPurchasedCount());
             activeCount += safeInt(item.getActiveCount());
         }
@@ -598,6 +615,19 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
             return BigDecimal.ZERO;
         }
         return tier.getRewardRatio() != null ? tier.getRewardRatio() : tier.getRatio();
+    }
+
+    private BigDecimal sumMinerTeamReward(Long userId) {
+        List<UserBill> bills = userBillMapper.selectList(new LambdaQueryWrapper<UserBill>()
+                .select(UserBill::getAmount)
+                .eq(UserBill::getUserId, userId)
+                .eq(UserBill::getBillType, BillType.PLATFORM)
+                .eq(UserBill::getFundType, FundType.INCOME)
+                .in(UserBill::getTransactionType, TransactionType.REWARD, TransactionType.MINER_ELECTRICITY_REWARD));
+        return bills.stream()
+                .map(UserBill::getAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private MinerSettings getMinerSettings() {
@@ -720,18 +750,163 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
 
     @Override
     public IPage<User> selectUserPage(UserQueryDTO queryDTO) {
-        Page<User> page = new Page<>(queryDTO.getPage(), queryDTO.getSize());
+        UserQueryDTO safeQuery = queryDTO == null ? new UserQueryDTO() : queryDTO;
+        Page<User> page = new Page<>(safePage(safeQuery.getPage()), safeSize(safeQuery.getSize()));
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-        wrapper.like(StringUtils.hasText(queryDTO.getUserWalletAddress()),
-                User::getUserWalletAddress, queryDTO.getUserWalletAddress());
-        if (StrUtil.isNotBlank(queryDTO.getStartTime())) {
-            wrapper.ge(User::getCreateTime, DateUtil.parse(queryDTO.getStartTime()).toLocalDateTime());
+        wrapper.like(StringUtils.hasText(safeQuery.getUserWalletAddress()),
+                User::getUserWalletAddress, safeQuery.getUserWalletAddress());
+        wrapper.apply(safeQuery.getUserGrade() != null,
+                "GREATEST(COALESCE(user_grade,0), COALESCE(custom_user_grade,0)) = {0}",
+                safeQuery.getUserGrade());
+        if (StrUtil.isNotBlank(safeQuery.getStartTime())) {
+            wrapper.ge(User::getCreateTime, DateUtil.parse(safeQuery.getStartTime()).toLocalDateTime());
         }
-        if (StrUtil.isNotBlank(queryDTO.getEndTime())) {
-            wrapper.le(User::getCreateTime, DateUtil.parse(queryDTO.getEndTime()).toLocalDateTime());
+        if (StrUtil.isNotBlank(safeQuery.getEndTime())) {
+            wrapper.le(User::getCreateTime, DateUtil.parse(safeQuery.getEndTime()).toLocalDateTime());
         }
         wrapper.orderByDesc(User::getCreateTime);
-        return this.page(page, wrapper);
+        if (safeQuery.getGoldQuantRewardLevel() == null && safeQuery.getGoldQuantDistributionLevel() == null) {
+            IPage<User> result = this.page(page, wrapper);
+            fillGoldQuantLevels(result.getRecords());
+            return result;
+        }
+
+        List<User> users = this.list(wrapper);
+        fillGoldQuantLevels(users);
+        List<User> filtered = users.stream()
+                .filter(user -> safeQuery.getGoldQuantRewardLevel() == null
+                        || Objects.equals(user.getGoldQuantRewardLevel(), safeQuery.getGoldQuantRewardLevel()))
+                .filter(user -> safeQuery.getGoldQuantDistributionLevel() == null
+                        || Objects.equals(user.getGoldQuantDistributionLevel(), safeQuery.getGoldQuantDistributionLevel()))
+                .collect(Collectors.toList());
+        return pageUsers(filtered, safePage(safeQuery.getPage()), safeSize(safeQuery.getSize()));
+    }
+
+    private void fillGoldQuantLevels(List<User> users) {
+        if (users == null || users.isEmpty()) {
+            return;
+        }
+        GoldQuantCommissionSettingsVO settings = getGoldQuantCommissionSettings();
+        List<User> allUsers = this.list(new LambdaQueryWrapper<User>()
+                .select(User::getId, User::getParentId, User::getPath));
+        Map<Long, User> userMap = allUsers.stream()
+                .collect(Collectors.toMap(User::getId, user -> user, (a, b) -> a));
+        Map<Long, Integer> ownWindowCountMap = goldQuantWindowMapper.selectList(new LambdaQueryWrapper<GoldQuantWindow>()
+                        .select(GoldQuantWindow::getUserId)
+                        .eq(GoldQuantWindow::getStatus, 1)
+                        .gt(GoldQuantWindow::getMaintenanceExpireTime, java.time.LocalDateTime.now()))
+                .stream()
+                .filter(window -> window.getUserId() != null)
+                .collect(Collectors.groupingBy(
+                        GoldQuantWindow::getUserId,
+                        Collectors.collectingAndThen(Collectors.counting(), Long::intValue)));
+
+        for (User user : users) {
+            int rewardLevel = matchGoldQuantRewardLevel(countDirectValidWindowBuyers(user.getId(), userMap, ownWindowCountMap), settings);
+            int distributionLevel = matchGoldQuantDistributionLevel(countTeamValidWindows(user, userMap, ownWindowCountMap), settings);
+            user.setGoldQuantRewardLevel(rewardLevel);
+            user.setGoldQuantDistributionLevel(distributionLevel);
+        }
+    }
+
+    private int countDirectValidWindowBuyers(Long userId, Map<Long, User> userMap, Map<Long, Integer> ownWindowCountMap) {
+        return (int) userMap.values().stream()
+                .filter(user -> Objects.equals(user.getParentId(), userId))
+                .filter(user -> ownWindowCountMap.getOrDefault(user.getId(), 0) > 0)
+                .count();
+    }
+
+    private int countTeamValidWindows(User user, Map<Long, User> userMap, Map<Long, Integer> ownWindowCountMap) {
+        if (user == null || user.getId() == null) {
+            return 0;
+        }
+        String prefix = StrUtil.blankToDefault(user.getPath(), "0,") + user.getId() + ",";
+        int total = 0;
+        for (User item : userMap.values()) {
+            if (!Objects.equals(item.getId(), user.getId())
+                    && StrUtil.isNotBlank(item.getPath())
+                    && item.getPath().startsWith(prefix)) {
+                total += ownWindowCountMap.getOrDefault(item.getId(), 0);
+            }
+        }
+        return total;
+    }
+
+    private int matchGoldQuantRewardLevel(int directValidBuyerCount, GoldQuantCommissionSettingsVO settings) {
+        return settings.getRewardLevels().stream()
+                .filter(item -> item.getDirectValidBuyerCount() != null && directValidBuyerCount >= item.getDirectValidBuyerCount())
+                .map(GoldQuantCommissionSettingsVO.RewardLevelRule::getLevel)
+                .filter(Objects::nonNull)
+                .max(Integer::compareTo)
+                .orElse(0);
+    }
+
+    private int matchGoldQuantDistributionLevel(int teamValidWindowCount, GoldQuantCommissionSettingsVO settings) {
+        return settings.getDistributionLevels().stream()
+                .filter(item -> item.getTeamValidWindowCount() != null && teamValidWindowCount >= item.getTeamValidWindowCount())
+                .max(Comparator.comparing(GoldQuantCommissionSettingsVO.DistributionLevelRule::getTeamValidWindowCount))
+                .map(item -> item.getLevel() == null ? 0 : item.getLevel())
+                .orElse(0);
+    }
+
+    private GoldQuantCommissionSettingsVO getGoldQuantCommissionSettings() {
+        SystemConfig config = configMapper.selectOne(new LambdaQueryWrapper<SystemConfig>()
+                .eq(SystemConfig::getConfigKey, "GOLD_QUANT_COMMISSION_SETTINGS"));
+        GoldQuantCommissionSettingsVO settings = config == null || !StringUtils.hasText(config.getConfigValue())
+                ? new GoldQuantCommissionSettingsVO()
+                : JSON.parseObject(config.getConfigValue(), GoldQuantCommissionSettingsVO.class);
+        if (settings.getRewardLevels() == null || settings.getRewardLevels().isEmpty()) {
+            settings.setRewardLevels(defaultGoldQuantRewardLevels());
+        }
+        if (settings.getDistributionLevels() == null || settings.getDistributionLevels().isEmpty()) {
+            settings.setDistributionLevels(defaultGoldQuantDistributionLevels());
+        }
+        return settings;
+    }
+
+    private List<GoldQuantCommissionSettingsVO.RewardLevelRule> defaultGoldQuantRewardLevels() {
+        List<GoldQuantCommissionSettingsVO.RewardLevelRule> rules = new ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            GoldQuantCommissionSettingsVO.RewardLevelRule rule = new GoldQuantCommissionSettingsVO.RewardLevelRule();
+            rule.setLevel(i);
+            rule.setDirectValidBuyerCount(i);
+            rules.add(rule);
+        }
+        return rules;
+    }
+
+    private List<GoldQuantCommissionSettingsVO.DistributionLevelRule> defaultGoldQuantDistributionLevels() {
+        int[] counts = {50, 100, 300, 500, 1000, 2000, 5000, 10000, 20000};
+        List<GoldQuantCommissionSettingsVO.DistributionLevelRule> rules = new ArrayList<>();
+        for (int i = 0; i < counts.length; i++) {
+            GoldQuantCommissionSettingsVO.DistributionLevelRule rule = new GoldQuantCommissionSettingsVO.DistributionLevelRule();
+            rule.setLevel(i + 1);
+            rule.setTeamValidWindowCount(counts[i]);
+            rules.add(rule);
+        }
+        return rules;
+    }
+
+    private IPage<User> pageUsers(List<User> users, int page, int size) {
+        Page<User> result = new Page<>(page, size);
+        int fromIndex = Math.max((page - 1) * size, 0);
+        if (users == null || fromIndex >= users.size()) {
+            result.setRecords(Collections.emptyList());
+            result.setTotal(users == null ? 0 : users.size());
+            return result;
+        }
+        int toIndex = Math.min(fromIndex + size, users.size());
+        result.setRecords(new ArrayList<>(users.subList(fromIndex, toIndex)));
+        result.setTotal(users.size());
+        return result;
+    }
+
+    private int safePage(Integer page) {
+        return page == null || page <= 0 ? 1 : page;
+    }
+
+    private int safeSize(Integer size) {
+        return size == null || size <= 0 ? 10 : size;
     }
 
     /**

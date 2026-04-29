@@ -89,7 +89,7 @@ public class UserBillRetryServeImpl extends AbstractAbnormalRetryService {
             }
 
             // NFT分发类业务支持由后端执行器代为补发
-            if (TransactionType.PURCHASE.equals(bill.getTransactionType()) || TransactionType.REWARD.equals(bill.getTransactionType())) {
+            if (isNftDistributionType(bill.getTransactionType())) {
                 if (bill.getNum() == null || bill.getNum() <= 0) return false;
                 if (bill.getCardId() == null) {
                     log.error("补发NFT失败：账单缺少卡牌ID，账单ID={}", dataId);
@@ -110,6 +110,12 @@ public class UserBillRetryServeImpl extends AbstractAbnormalRetryService {
             log.error("重试执行异常，账单ID：{}", dataId, e);
         }
         return false;
+    }
+
+    private boolean isNftDistributionType(TransactionType transactionType) {
+        return TransactionType.PURCHASE.equals(transactionType)
+                || TransactionType.REWARD.equals(transactionType)
+                || TransactionType.ADMIN_MANUALLY_DISTRIBUTES_NFT.equals(transactionType);
     }
 
     /**

@@ -4,8 +4,10 @@ import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.annotation.SaCheckRole;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ra.rabnbserver.VO.AdminAssignSpecialMinerVO;
+import com.ra.rabnbserver.VO.miner.AdminMinerUserStatisticsVO;
 import com.ra.rabnbserver.dto.AssignSpecialMinerDTO;
 import com.ra.rabnbserver.dto.MinerQueryDTO;
+import com.ra.rabnbserver.dto.miner.AdminMinerUserStatisticsQueryDTO;
 import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.model.ApiResponse;
 import com.ra.rabnbserver.pojo.UserMiner;
@@ -40,6 +42,25 @@ public class AdminMinerController {
             IPage<UserMiner> result = minerServe.getUserMinerPage(0L, query);
             return ApiResponse.success("获取成功", result);
         } catch (Exception e) {
+            return ApiResponse.error("查询失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 查询用户矿机状态统计
+     * @param query
+     * @return
+     */
+    @SaCheckLogin
+    @PostMapping("/user-statistics")
+    public String getUserStatistics(@RequestBody(required = false) AdminMinerUserStatisticsQueryDTO query) {
+        try {
+            IPage<AdminMinerUserStatisticsVO> result = minerServe.getAdminUserStatisticsPage(query);
+            return ApiResponse.success("获取成功", result);
+        } catch (java.time.format.DateTimeParseException | cn.hutool.core.date.DateException e) {
+            return ApiResponse.error("日期格式错误，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss 格式");
+        } catch (Exception e) {
+            log.error("getUserStatistics error", e);
             return ApiResponse.error("查询失败: " + e.getMessage());
         }
     }

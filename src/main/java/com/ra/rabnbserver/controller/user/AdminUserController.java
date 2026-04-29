@@ -5,7 +5,6 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ra.rabnbserver.contract.CardNftContract;
-import com.ra.rabnbserver.contract.CardNftContractV1;
 import com.ra.rabnbserver.dto.*;
 import com.ra.rabnbserver.dto.admin.user.AdminUserLoginDTO;
 import com.ra.rabnbserver.dto.team.AdminTeamSearchDTO;
@@ -275,9 +274,9 @@ public class AdminUserController {
             return ApiResponse.error("充值金额必须大于0");
         }
         try {
-            boolean manualPerformance = StringUtils.hasText(dto.getSource());
-            String remark = manualPerformance ? dto.getSource().trim() : "系统充值";
-            TransactionType transactionType = manualPerformance ? TransactionType.REWARD : TransactionType.DEPOSIT;
+            boolean hasRemark = StringUtils.hasText(dto.getSource());
+            String remark = hasRemark ? dto.getSource().trim() : "系统充值";
+            TransactionType transactionType = dto.getTransactionType() == null ? TransactionType.DEPOSIT : dto.getTransactionType();
             // 调用统一方法：平台类型、入账类型、充值业务
             userBillServe.createBillAndUpdateBalance(
                     dto.getUserId(),
