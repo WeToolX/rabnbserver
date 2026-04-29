@@ -855,36 +855,13 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         GoldQuantCommissionSettingsVO settings = config == null || !StringUtils.hasText(config.getConfigValue())
                 ? new GoldQuantCommissionSettingsVO()
                 : JSON.parseObject(config.getConfigValue(), GoldQuantCommissionSettingsVO.class);
-        if (settings.getRewardLevels() == null || settings.getRewardLevels().isEmpty()) {
-            settings.setRewardLevels(defaultGoldQuantRewardLevels());
+        if (settings.getRewardLevels() == null) {
+            settings.setRewardLevels(new ArrayList<>());
         }
-        if (settings.getDistributionLevels() == null || settings.getDistributionLevels().isEmpty()) {
-            settings.setDistributionLevels(defaultGoldQuantDistributionLevels());
+        if (settings.getDistributionLevels() == null) {
+            settings.setDistributionLevels(new ArrayList<>());
         }
         return settings;
-    }
-
-    private List<GoldQuantCommissionSettingsVO.RewardLevelRule> defaultGoldQuantRewardLevels() {
-        List<GoldQuantCommissionSettingsVO.RewardLevelRule> rules = new ArrayList<>();
-        for (int i = 1; i <= 5; i++) {
-            GoldQuantCommissionSettingsVO.RewardLevelRule rule = new GoldQuantCommissionSettingsVO.RewardLevelRule();
-            rule.setLevel(i);
-            rule.setDirectValidBuyerCount(i);
-            rules.add(rule);
-        }
-        return rules;
-    }
-
-    private List<GoldQuantCommissionSettingsVO.DistributionLevelRule> defaultGoldQuantDistributionLevels() {
-        int[] counts = {50, 100, 300, 500, 1000, 2000, 5000, 10000, 20000};
-        List<GoldQuantCommissionSettingsVO.DistributionLevelRule> rules = new ArrayList<>();
-        for (int i = 0; i < counts.length; i++) {
-            GoldQuantCommissionSettingsVO.DistributionLevelRule rule = new GoldQuantCommissionSettingsVO.DistributionLevelRule();
-            rule.setLevel(i + 1);
-            rule.setTeamValidWindowCount(counts[i]);
-            rules.add(rule);
-        }
-        return rules;
     }
 
     private IPage<User> pageUsers(List<User> users, int page, int size) {

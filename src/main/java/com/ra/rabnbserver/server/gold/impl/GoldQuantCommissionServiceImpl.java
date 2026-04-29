@@ -789,101 +789,28 @@ public class GoldQuantCommissionServiceImpl
      */
     private GoldQuantCommissionSettingsVO normalizeSettings(GoldQuantCommissionSettingsVO settings) {
         GoldQuantCommissionSettingsVO result = settings == null ? new GoldQuantCommissionSettingsVO() : settings;
-        // 代数规则级别门槛为空则初始化默认值
-        if (result.getRewardLevels() == null || result.getRewardLevels().isEmpty()) {
-            result.setRewardLevels(defaultRewardLevels());
+        // 规则列表为null时规整为空列表；空列表表示未配置规则，不再补默认规则。
+        if (result.getRewardLevels() == null) {
+            result.setRewardLevels(new ArrayList<>());
         }
-        // 代数规则比例详情为空则初始化默认值
-        if (result.getRewardRules() == null || result.getRewardRules().isEmpty()) {
-            result.setRewardRules(defaultRewardRules());
+        if (result.getRewardRules() == null) {
+            result.setRewardRules(new ArrayList<>());
         }
-        // 极差团队规则为空则初始化默认值
-        if (result.getDistributionLevels() == null || result.getDistributionLevels().isEmpty()) {
-            result.setDistributionLevels(defaultDistributionLevels());
+        if (result.getDistributionLevels() == null) {
+            result.setDistributionLevels(new ArrayList<>());
         }
         // 未设定最大穿透级差层级限制时，默认给15层防无底洞
         if (result.getDistributionMaxGeneration() == null || result.getDistributionMaxGeneration() <= 0) {
             result.setDistributionMaxGeneration(15);
         }
         // 保证内部规则列表是有序的，方便上游处理逻辑
-        result.getRewardLevels().sort(Comparator.comparing(GoldQuantCommissionSettingsVO.RewardLevelRule::getLevel));
-        result.getRewardRules().sort(Comparator.comparing(GoldQuantCommissionSettingsVO.RewardGenerationRule::getLevel));
-        result.getDistributionLevels().sort(Comparator.comparing(GoldQuantCommissionSettingsVO.DistributionLevelRule::getTeamValidWindowCount));
+        result.getRewardLevels().sort(Comparator.comparing(GoldQuantCommissionSettingsVO.RewardLevelRule::getLevel,
+                Comparator.nullsLast(Integer::compareTo)));
+        result.getRewardRules().sort(Comparator.comparing(GoldQuantCommissionSettingsVO.RewardGenerationRule::getLevel,
+                Comparator.nullsLast(Integer::compareTo)));
+        result.getDistributionLevels().sort(Comparator.comparing(GoldQuantCommissionSettingsVO.DistributionLevelRule::getTeamValidWindowCount,
+                Comparator.nullsLast(Integer::compareTo)));
         return result;
-    }
-
-    /**
-     * 生成默认的代数奖励升级条件（1推1, 2推2以此类推）
-     *
-     * @return 列表结果
-     */
-    private List<GoldQuantCommissionSettingsVO.RewardLevelRule> defaultRewardLevels() {
-        List<GoldQuantCommissionSettingsVO.RewardLevelRule> rules = new ArrayList<>();
-        for (int i = 1; i <= 5; i++) {
-            GoldQuantCommissionSettingsVO.RewardLevelRule rule = new GoldQuantCommissionSettingsVO.RewardLevelRule();
-            rule.setLevel(i);
-            rule.setDirectValidBuyerCount(i);
-            rules.add(rule);
-        }
-        return rules;
-    }
-
-    /**
-     * 生成默认的代数奖励各级对应的提成比例规则网格
-     *
-     * @return 列表结果
-     */
-    private List<GoldQuantCommissionSettingsVO.RewardGenerationRule> defaultRewardRules() {
-        List<GoldQuantCommissionSettingsVO.RewardGenerationRule> rules = new ArrayList<>();
-        rules.add(rewardRule(1, 1, 1, "0.05"));
-        rules.add(rewardRule(2, 2, 2, "0.03"));
-        rules.add(rewardRule(3, 3, 10, "0.01"));
-        rules.add(rewardRule(4, 11, 14, "0.03"));
-        rules.add(rewardRule(5, 15, null, "0.05"));
-        return rules;
-    }
-
-    /**
-     * 内部辅助：实例化单条代数奖励提成规则
-     */
-    private GoldQuantCommissionSettingsVO.RewardGenerationRule rewardRule(
-            int level, int minGeneration, Integer maxGeneration, String ratio) {
-        GoldQuantCommissionSettingsVO.RewardGenerationRule rule = new GoldQuantCommissionSettingsVO.RewardGenerationRule();
-        rule.setLevel(level);
-        rule.setMinGeneration(minGeneration);
-        rule.setMaxGeneration(maxGeneration);
-        rule.setRatio(new BigDecimal(ratio));
-        return rule;
-    }
-
-    /**
-     * 生成默认的无限极差团队分红的门槛和比例设置
-     *
-     * @return 列表结果
-     */
-    private List<GoldQuantCommissionSettingsVO.DistributionLevelRule> defaultDistributionLevels() {
-        List<GoldQuantCommissionSettingsVO.DistributionLevelRule> rules = new ArrayList<>();
-        rules.add(distributionRule(1, 50, "0.15"));
-        rules.add(distributionRule(2, 100, "0.175"));
-        rules.add(distributionRule(3, 300, "0.20"));
-        rules.add(distributionRule(4, 500, "0.225"));
-        rules.add(distributionRule(5, 1000, "0.24"));
-        rules.add(distributionRule(6, 2000, "0.255"));
-        rules.add(distributionRule(7, 5000, "0.27"));
-        rules.add(distributionRule(8, 10000, "0.285"));
-        rules.add(distributionRule(9, 20000, "0.30"));
-        return rules;
-    }
-
-    /**
-     * 内部辅助：实例化单条级差团队规则配置
-     */
-    private GoldQuantCommissionSettingsVO.DistributionLevelRule distributionRule(int level, int count, String ratio) {
-        GoldQuantCommissionSettingsVO.DistributionLevelRule rule = new GoldQuantCommissionSettingsVO.DistributionLevelRule();
-        rule.setLevel(level);
-        rule.setTeamValidWindowCount(count);
-        rule.setRatio(new BigDecimal(ratio));
-        return rule;
     }
 
     /**
