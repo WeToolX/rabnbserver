@@ -514,6 +514,8 @@ public class UserServeImpl extends ServiceImpl<UserMapper, User> implements User
         result.setTotalActiveCount(safeInt(totalStats == null ? null : totalStats.getActiveCount()));
         fillCurrentGradeAndRatio(result, currentUser);
         result.setTeamRewardDistributedAmount(sumMinerTeamReward(userId));
+        List<TeamAreaItemVO> directRecords = this.baseMapper.selectDirectTeamAreaStats(userId);
+        result.setDirectRecords(directRecords == null ? Collections.emptyList() : directRecords);
 
         List<TeamAreaItemVO> smallAreas = areas.size() <= 1
                 ? Collections.emptyList()

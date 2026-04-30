@@ -1170,6 +1170,10 @@ public class MinerServeImpl extends ServiceImpl<UserMinerMapper, UserMiner> impl
             return;
         }
         recalculateAllUserGrades(settings, tiers);
+        if (!Boolean.TRUE.equals(settings.getElectricityRewardEnabled())) {
+            log.info("矿工电费奖励开关未开启，跳过佣金收益分配");
+            return;
+        }
 
         List<UserBill> electricityBills = listElectricityBills(todayStart, todayEnd);
         if (electricityBills.isEmpty()) {

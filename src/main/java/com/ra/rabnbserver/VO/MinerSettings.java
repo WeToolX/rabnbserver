@@ -15,6 +15,7 @@ public class MinerSettings {
     private BigDecimal accelerationFee = new BigDecimal("50.00"); // acceleration pack fee
     private Boolean activeMinerGradeMode = true; // true: active miners, false: redeemed miners
     private Boolean smallAreaUnlimitedElectricityReward = false; // true: reward all small-area electricity without generation limits
+    private Boolean electricityRewardEnabled = false; // miner electricity reward commission switch
     private Map<Integer, BigDecimal> distributionRatios = new HashMap<>(); // distribution ratios
     private List<RewardTier> tiers; // reward tiers
     private List<ElectricityGenerationPerformanceRatio> electricityGenerationPerformanceRatios; // generation performance ratios

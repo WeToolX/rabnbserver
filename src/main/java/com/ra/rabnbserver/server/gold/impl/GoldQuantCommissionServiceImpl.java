@@ -12,6 +12,7 @@ import com.ra.rabnbserver.VO.gold.AdminGoldQuantUserStatisticsVO;
 import com.ra.rabnbserver.VO.gold.GoldQuantCommissionRecordVO;
 import com.ra.rabnbserver.VO.gold.GoldQuantCommissionSettingsVO;
 import com.ra.rabnbserver.VO.gold.GoldQuantCommissionStatisticsVO;
+import com.ra.rabnbserver.VO.gold.GoldQuantTeamAreaResultVO;
 import com.ra.rabnbserver.VO.gold.GoldQuantTeamAreaVO;
 import com.ra.rabnbserver.VO.gold.GoldQuantTeamSummaryVO;
 import com.ra.rabnbserver.dto.gold.AdminGoldQuantCommissionQueryDTO;
@@ -189,13 +190,16 @@ public class GoldQuantCommissionServiceImpl
      * @return 包含多条支线业绩信息的列表
      */
     @Override
-    public List<GoldQuantTeamAreaVO> getTeamAreas(Long userId) {
+    public GoldQuantTeamAreaResultVO getTeamAreas(Long userId) {
         TeamSnapshot snapshot = buildSnapshot();
         User user = snapshot.userMap.get(userId);
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
-        return buildTeamAreas(user, snapshot);
+        GoldQuantTeamAreaResultVO result = new GoldQuantTeamAreaResultVO();
+        result.setRecords(buildTeamAreas(user, snapshot));
+        result.setDirectRecords(buildDirectTeamAreas(user, snapshot));
+        return result;
     }
 
     /**
@@ -343,6 +347,10 @@ public class GoldQuantCommissionServiceImpl
     private void settleReward(User sourceUser, String sourceOrderId, Long sourceBillId, BigDecimal orderAmount,
                               GoldQuantCommissionSettingsVO settings, TeamSnapshot snapshot) {
         // 从近到远获取所有直系上级（推荐链上的祖先节点）
+        if (!Boolean.TRUE.equals(settings.getRewardCommissionEnabled())) {
+            log.info("gold quant reward commission switch is disabled, orderId={}", sourceOrderId);
+            return;
+        }
         List<User> ancestors = getAncestorsFromNearest(sourceUser, snapshot.userMap);
         for (int i = 0; i < ancestors.size(); i++) {
             User ancestor = ancestors.get(i);
@@ -384,6 +392,10 @@ public class GoldQuantCommissionServiceImpl
      */
     private void settleDistribution(User sourceUser, String sourceOrderId, Long sourceBillId, BigDecimal orderAmount,
                                     GoldQuantCommissionSettingsVO settings, TeamSnapshot snapshot) {
+        if (!Boolean.TRUE.equals(settings.getDistributionCommissionEnabled())) {
+            log.info("gold quant distribution commission switch is disabled, orderId={}", sourceOrderId);
+            return;
+        }
         // 最大拨出代数必须显式配置；没有配置则不执行分销分成。
         if (settings.getDistributionMaxGeneration() == null || settings.getDistributionMaxGeneration() <= 0) {
             return;
@@ -584,6 +596,32 @@ public class GoldQuantCommissionServiceImpl
         return areas;
     }
 
+    private List<GoldQuantTeamAreaVO> buildDirectTeamAreas(User user, TeamSnapshot snapshot) {
+        List<User> directUsers = snapshot.userMap.values().stream()
+                .filter(item -> Objects.equals(item.getParentId(), user.getId()))
+                .collect(Collectors.toList());
+        if (directUsers.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Long, LocalDateTime> teamLastWindowTimeMap = new HashMap<>();
+        List<GoldQuantTeamAreaVO> areas = new ArrayList<>();
+        for (User directUser : directUsers) {
+            GoldQuantTeamAreaVO vo = new GoldQuantTeamAreaVO();
+            vo.setUserId(directUser.getId());
+            vo.setWalletAddress(directUser.getUserWalletAddress());
+            vo.setTeamCount(countTeamUsersIncludeSelf(directUser, snapshot));
+            vo.setValidWindowCount(countTeamValidWindowsIncludeSelf(directUser, snapshot));
+            vo.setBigArea(false);
+            teamLastWindowTimeMap.put(directUser.getId(), findTeamLastWindowTimeIncludeSelf(directUser, snapshot));
+            areas.add(vo);
+        }
+
+        areas.sort(teamAreaComparator(teamLastWindowTimeMap));
+        areas.get(0).setBigArea(true);
+        return areas;
+    }
+
     /**
      * 自定义比较器：用于排序确定伞下的“大区”
      * 比较规则：有效窗口数(降序) -> 最后开窗时间(升序/先发优势) -> ID兜底
@@ -596,6 +634,15 @@ public class GoldQuantCommissionServiceImpl
                 .comparing(GoldQuantTeamAreaVO::getValidWindowCount, Comparator.nullsFirst(Integer::compareTo))
                 .reversed() // 有效窗口数多的大区排前面
                 .thenComparing(item -> snapshot.lastWindowTimeMap.get(item.getUserId()),
+                        Comparator.nullsLast(LocalDateTime::compareTo))
+                .thenComparing(GoldQuantTeamAreaVO::getUserId);
+    }
+
+    private Comparator<GoldQuantTeamAreaVO> teamAreaComparator(Map<Long, LocalDateTime> lastWindowTimeMap) {
+        return Comparator
+                .comparing(GoldQuantTeamAreaVO::getValidWindowCount, Comparator.nullsFirst(Integer::compareTo))
+                .reversed()
+                .thenComparing(item -> lastWindowTimeMap.get(item.getUserId()),
                         Comparator.nullsLast(LocalDateTime::compareTo))
                 .thenComparing(GoldQuantTeamAreaVO::getUserId);
     }
@@ -617,6 +664,48 @@ public class GoldQuantCommissionServiceImpl
             }
         }
         return total;
+    }
+
+    private int countTeamUsers(User user, TeamSnapshot snapshot) {
+        int total = 0;
+        String prefix = pathPrefix(user);
+        for (User item : snapshot.userMap.values()) {
+            if (!Objects.equals(item.getId(), user.getId()) && isInSubtree(item, prefix)) {
+                total++;
+            }
+        }
+        return total;
+    }
+
+    private int countTeamUsersIncludeSelf(User user, TeamSnapshot snapshot) {
+        return 1 + countTeamUsers(user, snapshot);
+    }
+
+    private int countTeamValidWindowsIncludeSelf(User user, TeamSnapshot snapshot) {
+        return snapshot.ownWindowCountMap.getOrDefault(user.getId(), 0) + countTeamValidWindows(user, snapshot);
+    }
+
+    private LocalDateTime findTeamLastWindowTime(User user, TeamSnapshot snapshot) {
+        LocalDateTime lastTime = null;
+        String prefix = pathPrefix(user);
+        for (User item : snapshot.userMap.values()) {
+            if (!Objects.equals(item.getId(), user.getId()) && isInSubtree(item, prefix)) {
+                LocalDateTime itemTime = snapshot.lastWindowTimeMap.get(item.getId());
+                if (itemTime != null && (lastTime == null || itemTime.isAfter(lastTime))) {
+                    lastTime = itemTime;
+                }
+            }
+        }
+        return lastTime;
+    }
+
+    private LocalDateTime findTeamLastWindowTimeIncludeSelf(User user, TeamSnapshot snapshot) {
+        LocalDateTime lastTime = snapshot.lastWindowTimeMap.get(user.getId());
+        LocalDateTime teamLastTime = findTeamLastWindowTime(user, snapshot);
+        if (teamLastTime != null && (lastTime == null || teamLastTime.isAfter(lastTime))) {
+            lastTime = teamLastTime;
+        }
+        return lastTime;
     }
 
     /**

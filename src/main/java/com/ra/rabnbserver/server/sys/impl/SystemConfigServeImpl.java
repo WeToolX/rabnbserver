@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ra.rabnbserver.VO.MinerSettings;
+import com.ra.rabnbserver.VO.gold.GoldQuantCommissionSettingsVO;
 import com.ra.rabnbserver.VO.gold.GoldQuantSettingsVO;
 import com.ra.rabnbserver.exception.BusinessException;
 import com.ra.rabnbserver.mapper.SystemConfigMapper;
@@ -66,6 +67,7 @@ public class SystemConfigServeImpl extends ServiceImpl<SystemConfigMapper, Syste
                 minerSettings.setElectricFee(new BigDecimal("10.00"));
                 minerSettings.setAccelerationFee(new BigDecimal("50.00"));
                 minerSettings.setActiveMinerGradeMode(true);
+                minerSettings.setElectricityRewardEnabled(false);
                 Map<String, BigDecimal> minerDailyProfits = new HashMap<>();
                 minerDailyProfits.put("0", BigDecimal.ZERO);
                 minerDailyProfits.put("1", BigDecimal.ZERO);
@@ -110,6 +112,14 @@ public class SystemConfigServeImpl extends ServiceImpl<SystemConfigMapper, Syste
                 goldQuantConfig.setConfigValue(com.alibaba.fastjson2.JSON.toJSONString(goldQuantSettings));
                 goldQuantConfig.setRemark("托管费、窗口维护费、矿机门槛、窗口数量上限");
                 defaultConfigs.add(goldQuantConfig);
+
+                GoldQuantCommissionSettingsVO goldQuantCommissionSettings = new GoldQuantCommissionSettingsVO();
+                SystemConfig goldQuantCommissionConfig = new SystemConfig();
+                goldQuantCommissionConfig.setConfigKey("GOLD_QUANT_COMMISSION_SETTINGS");
+                goldQuantCommissionConfig.setConfigName("黄金量化双分成规则配置");
+                goldQuantCommissionConfig.setConfigValue(com.alibaba.fastjson2.JSON.toJSONString(goldQuantCommissionSettings));
+                goldQuantCommissionConfig.setRemark("奖励分成、分销分成开关及等级比例配置");
+                defaultConfigs.add(goldQuantCommissionConfig);
 
                 // 3. 平台公告 (示例)
                 SystemConfig noticeConfig = new SystemConfig();

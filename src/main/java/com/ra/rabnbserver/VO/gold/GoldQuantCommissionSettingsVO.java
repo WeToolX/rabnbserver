@@ -8,6 +8,8 @@ import java.util.List;
 
 @Data
 public class GoldQuantCommissionSettingsVO {
+    private Boolean rewardCommissionEnabled = false;
+    private Boolean distributionCommissionEnabled = false;
     private List<RewardLevelRule> rewardLevels = new ArrayList<>();
     private List<RewardGenerationRule> rewardRules = new ArrayList<>();
     private List<DistributionLevelRule> distributionLevels = new ArrayList<>();

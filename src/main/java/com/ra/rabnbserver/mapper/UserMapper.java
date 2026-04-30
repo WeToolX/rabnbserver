@@ -80,6 +80,37 @@ public interface UserMapper extends BaseMapper<User> {
 
     @Select("""
             SELECT
+                direct_user.id AS userId,
+                direct_user.user_wallet_address AS address,
+                COALESCE(COUNT(DISTINCT member.id), 0) AS teamCount,
+                COALESCE(COUNT(um.id), 0) AS purchasedCount,
+                COALESCE(SUM(CASE
+                    WHEN um.status = 1
+                     AND um.payment_date IS NOT NULL
+                     AND um.payment_date > DATE_SUB(NOW(), INTERVAL 30 DAY)
+                    THEN 1 ELSE 0 END), 0) AS activeCount,
+                MAX(um.create_time) AS lastExchangeTime
+            FROM user root
+            JOIN user direct_user
+                ON direct_user.parent_id = root.id
+            LEFT JOIN user member
+                ON member.id = direct_user.id
+                OR member.path LIKE CONCAT(COALESCE(direct_user.path, '0,'), direct_user.id, ',%')
+            LEFT JOIN user_miner um
+                ON um.user_id = member.id
+               AND um.nft_burn_status = 1
+            WHERE root.id = #{userId}
+            GROUP BY direct_user.id, direct_user.user_wallet_address
+            ORDER BY
+                purchasedCount DESC,
+                CASE WHEN lastExchangeTime IS NULL THEN 1 ELSE 0 END ASC,
+                lastExchangeTime ASC,
+                direct_user.id ASC
+            """)
+    List<TeamAreaItemVO> selectDirectTeamAreaStats(@Param("userId") Long userId);
+
+    @Select("""
+            SELECT
                 COALESCE(COUNT(um.id), 0) AS purchasedCount,
                 COALESCE(SUM(CASE
                     WHEN um.status = 1

@@ -20,6 +20,8 @@ public class TeamAreaResultVO {
      */
     private List<TeamAreaItemVO> records;
 
+    private List<TeamAreaItemVO> directRecords;
+
     /**
      * 总记录数（用于分页）
      */
