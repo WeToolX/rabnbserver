@@ -384,10 +384,11 @@ public class GoldQuantCommissionServiceImpl
      */
     private void settleDistribution(User sourceUser, String sourceOrderId, Long sourceBillId, BigDecimal orderAmount,
                                     GoldQuantCommissionSettingsVO settings, TeamSnapshot snapshot) {
-        // 获取配置中最大拨出代数（深度限制），如果没有配置默认15层
-        int maxGeneration = settings.getDistributionMaxGeneration() == null || settings.getDistributionMaxGeneration() <= 0
-                ? 15
-                : settings.getDistributionMaxGeneration();
+        // 最大拨出代数必须显式配置；没有配置则不执行分销分成。
+        if (settings.getDistributionMaxGeneration() == null || settings.getDistributionMaxGeneration() <= 0) {
+            return;
+        }
+        int maxGeneration = settings.getDistributionMaxGeneration();
 
         // 获取触发用户的级差等级，以便往上计算级差时扣除已被拿走的极差等级（拨差逻辑）
         int maxQualifiedLevel = matchDistributionLevel(countTeamValidWindows(sourceUser, snapshot), settings).level;
@@ -798,10 +799,6 @@ public class GoldQuantCommissionServiceImpl
         }
         if (result.getDistributionLevels() == null) {
             result.setDistributionLevels(new ArrayList<>());
-        }
-        // 未设定最大穿透级差层级限制时，默认给15层防无底洞
-        if (result.getDistributionMaxGeneration() == null || result.getDistributionMaxGeneration() <= 0) {
-            result.setDistributionMaxGeneration(15);
         }
         // 保证内部规则列表是有序的，方便上游处理逻辑
         result.getRewardLevels().sort(Comparator.comparing(GoldQuantCommissionSettingsVO.RewardLevelRule::getLevel,

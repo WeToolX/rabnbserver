@@ -11,7 +11,7 @@ public class GoldQuantCommissionSettingsVO {
     private List<RewardLevelRule> rewardLevels = new ArrayList<>();
     private List<RewardGenerationRule> rewardRules = new ArrayList<>();
     private List<DistributionLevelRule> distributionLevels = new ArrayList<>();
-    private Integer distributionMaxGeneration = 15;
+    private Integer distributionMaxGeneration;
 
     @Data
     public static class RewardLevelRule {
